@@ -47,5 +47,6 @@ export function buildStudioLink(params: {
     c: params.contentId,
     b: params.briefHeadline,
   });
-  return `http://localhost:3001?prefill=${encoded}`;
+  const studioBase = process.env.STUDIO_URL || "http://localhost:3001";
+  return `${studioBase}?prefill=${encoded}`;
 }

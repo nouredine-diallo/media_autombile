@@ -121,9 +121,16 @@ echo "  Or run the SSL setup script:"
 echo "  bash setup-ssl.sh"
 echo ""
 
-# ── 9. Copy landing page ──
-sudo mkdir -p /opt/media-labs/landing
-sudo cp "$INSTALL_DIR/landing/index.html" /opt/media-labs/landing/
-sudo cp -r "$INSTALL_DIR/nginx" /opt/media-labs/
+# ── 9. Copy Nginx config ──
+sudo mkdir -p /opt/media-labs
+sudo cp "$INSTALL_DIR/nginx/media-labs.conf" /etc/nginx/sites-available/media-labs.conf
+sudo ln -sf /etc/nginx/sites-available/media-labs.conf /etc/nginx/sites-enabled/media-labs.conf
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl reload nginx
+
+echo ""
+echo "  Nginx config installed. After DNS propagates, run:"
+echo "  sudo certbot --nginx -d media-labs.is-a.dev -d radar.media-labs.is-a.dev -d studio.media-labs.is-a.dev"
+echo ""
 
 echo "  Done! 🚀"
