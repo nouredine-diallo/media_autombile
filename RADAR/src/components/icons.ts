@@ -17,6 +17,7 @@ export {
   PenLine as IconPenLine,
   BookOpen as IconGuide,
   BarChart3 as IconStats,
+  CalendarCheck as IconCalendarCheck,
   Calendar as IconCalendar,
   Handshake as IconPartners,
   Palette as IconStudio,

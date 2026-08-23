@@ -1,0 +1,152 @@
+{
+  "test1.jpg": {
+    "sourceWidth": 1920,
+    "sourceHeight": 1280,
+    "bbox": {
+      "left": 431,
+      "top": 147,
+      "width": 1083,
+      "height": 937
+    }
+  },
+  "test3.webp": {
+    "sourceWidth": 1500,
+    "sourceHeight": 1000,
+    "bbox": {
+      "left": 262,
+      "top": 421,
+      "width": 965,
+      "height": 579
+    }
+  },
+  "test33.jpeg": {
+    "sourceWidth": 1920,
+    "sourceHeight": 1280,
+    "bbox": {
+      "left": 457,
+      "top": 832,
+      "width": 1001,
+      "height": 448
+    }
+  },
+  "test2.jpg": {
+    "sourceWidth": 1920,
+    "sourceHeight": 1280,
+    "bbox": {
+      "left": 59,
+      "top": 120,
+      "width": 1819,
+      "height": 1160
+    }
+  },
+  "test12.avif": {
+    "sourceWidth": 1200,
+    "sourceHeight": 800,
+    "bbox": {
+      "left": 498,
+      "top": 403,
+      "width": 261,
+      "height": 336
+    }
+  },
+  "test21.jpg": {
+    "sourceWidth": 1920,
+    "sourceHeight": 1280,
+    "bbox": {
+      "left": 595,
+      "top": 614,
+      "width": 1130,
+      "height": 604
+    }
+  },
+  "test23.jpg": {
+    "sourceWidth": 1920,
+    "sourceHeight": 1280,
+    "bbox": {
+      "left": 227,
+      "top": 328,
+      "width": 1388,
+      "height": 801
+    }
+  },
+  "test13.jpg": {
+    "sourceWidth": 1920,
+    "sourceHeight": 1281,
+    "bbox": {
+      "left": 371,
+      "top": 0,
+      "width": 627,
+      "height": 968
+    }
+  },
+  "test6.jpg": {
+    "sourceWidth": 1024,
+    "sourceHeight": 676,
+    "bbox": {
+      "left": 108,
+      "top": 139,
+      "width": 805,
+      "height": 428
+    }
+  },
+  "test61.jpg": {
+    "sourceWidth": 1024,
+    "sourceHeight": 676,
+    "bbox": {
+      "left": 137,
+      "top": 0,
+      "width": 753,
+      "height": 676
+    }
+  },
+  "test7.webp": {
+    "sourceWidth": 2880,
+    "sourceHeight": 1620,
+    "bbox": {
+      "left": 538,
+      "top": 0,
+      "width": 1787,
+      "height": 1620
+    }
+  },
+  "test71.avif": {
+    "sourceWidth": 720,
+    "sourceHeight": 480,
+    "bbox": {
+      "left": 23,
+      "top": 0,
+      "width": 662,
+      "height": 480
+    }
+  },
+  "test31.webp": {
+    "sourceWidth": 1500,
+    "sourceHeight": 1000,
+    "bbox": {
+      "left": 0,
+      "top": 25,
+      "width": 1117,
+      "height": 975
+    }
+  },
+  "test32.webp": {
+    "sourceWidth": 1500,
+    "sourceHeight": 1000,
+    "bbox": {
+      "left": 254,
+      "top": 514,
+      "width": 999,
+      "height": 486
+    }
+  },
+  "test-personne.jpg": {
+    "sourceWidth": 1354,
+    "sourceHeight": 1200,
+    "bbox": {
+      "left": 558,
+      "top": 109,
+      "width": 445,
+      "height": 574
+    }
+  }
+}

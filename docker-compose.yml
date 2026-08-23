@@ -15,8 +15,7 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - DB_PATH=/app/data/radar.db
-      - AUTH_PASSWORD=${RADAR_AUTH_PASSWORD:-lma-dashboard-dev}
-      - PARTNER_PASSPHRASE=${RADAR_PARTNER_PASSPHRASE:-lma-partners-dev}
+      - AUTH_PASSWORD=${AUTH_PASSWORD:-work}
       - SESSION_SECRET=${SESSION_SECRET:-change-me-in-production-use-openssl-rand-base64-32}
       - GROQ_API_KEY=${GROQ_API_KEY}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
@@ -41,7 +40,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - AUTH_PASSWORD=${STUDIO_AUTH_PASSWORD:-studio-automobile-dev}
+      - AUTH_PASSWORD=${AUTH_PASSWORD:-work}
       - SESSION_SECRET=${SESSION_SECRET:-change-me-in-production-use-openssl-rand-base64-32}
       - GROQ_API_KEY=${GROQ_API_KEY}
     healthcheck:

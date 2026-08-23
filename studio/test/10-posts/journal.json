@@ -1,0 +1,150 @@
+[
+  {
+    "nom": "01-mercedes-3a",
+    "gabarit": "3a",
+    "theme": "Mercedes SL 60 AMG",
+    "photos": [
+      "test33.jpeg",
+      "test31.webp",
+      "test32.webp"
+    ],
+    "titre": "Mercedes SL 60 AMG : le roadster qui réinvente le luxe des années 2000",
+    "fit": {
+      "ok": true,
+      "message": "Fond compatible avec le gabarit 3A : le sujet effleure les bulles (11 % et 2 %)."
+    },
+    "fichier": "test/10-posts/01-mercedes-3a.png"
+  },
+  {
+    "nom": "02-mercedes-3b",
+    "gabarit": "3b",
+    "theme": "Mercedes SL 60 AMG intérieur",
+    "photos": [
+      "test33.jpeg",
+      "test31.jpg",
+      "test32.webp"
+    ],
+    "titre": "Le cockpit de la Mercedes SL 60 AMG : luxe et sportivité à l’état pur",
+    "fit": {
+      "ok": true,
+      "message": "Fond compatible avec le gabarit 3B : le sujet effleure les bulles (12 % et 0 %)."
+    },
+    "fichier": "test/10-posts/02-mercedes-3b.png"
+  },
+  {
+    "nom": "03-wec-3a",
+    "gabarit": "3a",
+    "theme": "Hypercars du championnat du monde WEC",
+    "photos": [
+      "test21.jpg",
+      "test2.jpg",
+      "test23.jpg"
+    ],
+    "titre": "Les hypercars WEC : quand la technologie dépasse les limites du circuit",
+    "fit": {
+      "ok": true,
+      "message": "Fond compatible avec le gabarit 3A : le sujet effleure les bulles (27 % et 9 %)."
+    },
+    "fichier": "test/10-posts/03-wec-3a.png"
+  },
+  {
+    "nom": "04-wec-2a",
+    "gabarit": "2a",
+    "theme": "Porsche 963 en endurance",
+    "photos": [
+      "test23.jpg",
+      "test2.jpg"
+    ],
+    "titre": "Porsche 963 : le nouveau monstre de l’endurance qui défie les records",
+    "fit": {
+      "ok": true,
+      "message": "Fond compatible avec le gabarit 2A : le sujet effleure les bulles (31 %)."
+    },
+    "fichier": "test/10-posts/04-wec-2a.png"
+  },
+  {
+    "nom": "05-renault-1a",
+    "gabarit": "1a",
+    "theme": "Renault 5 E-Tech électrique",
+    "photos": [
+      "test12.avif"
+    ],
+    "titre": "Renault 5 E‑Tech : l’électrique qui rend hommage à la légende des années 80",
+    "fit": {
+      "ok": true,
+      "message": "Gabarit sans bulle : sujet correctement placé."
+    },
+    "fichier": "test/10-posts/05-renault-1a.png"
+  },
+  {
+    "nom": "06-renault-1b",
+    "gabarit": "1b",
+    "theme": "Intérieur de la Renault 5 E-Tech",
+    "photos": [
+      "test13.jpg"
+    ],
+    "titre": "Renault 5 E‑Tech : un habitacle futuriste au look rétro revisité",
+    "fit": {
+      "ok": true,
+      "message": "Gabarit sans bulle : sujet correctement placé."
+    },
+    "fichier": "test/10-posts/06-renault-1b.png"
+  },
+  {
+    "nom": "07-mercedes-2a",
+    "gabarit": "2a",
+    "theme": "Tableau de bord Mercedes des années 90",
+    "photos": [
+      "test33.jpeg",
+      "test31.webp"
+    ],
+    "titre": "Le tableau de bord 90's de Mercedes : un vrai voyage rétro en cuir et chrome",
+    "fit": {
+      "ok": true,
+      "message": "Fond compatible avec le gabarit 2A : le sujet effleure les bulles (0 %)."
+    },
+    "fichier": "test/10-posts/07-mercedes-2a.png"
+  },
+  {
+    "nom": "08-personne-1a",
+    "gabarit": "1a",
+    "theme": "Hiroshi Okuda ancien président de Toyota",
+    "photos": [
+      "test-personne.jpg"
+    ],
+    "titre": "Hiroshi Okuda, l’ancien président de Toyota, s’éteint à 93 ans",
+    "fit": {
+      "ok": true,
+      "message": "Gabarit sans bulle : sujet correctement placé."
+    },
+    "fichier": "test/10-posts/08-personne-1a.png"
+  },
+  {
+    "nom": "09-renault-1a",
+    "gabarit": "1a",
+    "theme": "Renault 5 E-Tech de retour",
+    "photos": [
+      "test1.jpg"
+    ],
+    "titre": "Renault 5 E‑Tech : le mythique 5 revient en version électrifiée",
+    "fit": {
+      "ok": true,
+      "message": "Gabarit sans bulle : sujet correctement placé."
+    },
+    "fichier": "test/10-posts/09-renault-1a.png"
+  },
+  {
+    "nom": "10-wec-1b",
+    "gabarit": "1b",
+    "theme": "Ferrari 499P en pit lane",
+    "photos": [
+      "test2.jpg"
+    ],
+    "titre": "Ferrari 499P : le prototype qui transforme le pit lane en showroom",
+    "fit": {
+      "ok": true,
+      "message": "Gabarit sans bulle : sujet correctement placé."
+    },
+    "fichier": "test/10-posts/10-wec-1b.png"
+  }
+]

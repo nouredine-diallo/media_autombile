@@ -8,7 +8,6 @@ const encodedKey = new TextEncoder().encode(secretKey);
 export interface SessionPayload {
   userId: string;
   userName?: string;
-  partnerAccess?: boolean;
   expiresAt: Date;
 }
 
@@ -16,7 +15,6 @@ export async function encrypt(payload: SessionPayload) {
   return new SignJWT({
     userId: payload.userId,
     userName: payload.userName || null,
-    partnerAccess: payload.partnerAccess || false,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -32,7 +30,6 @@ export async function decrypt(session: string | undefined = "") {
     return payload as {
       userId: string;
       userName?: string;
-      partnerAccess?: boolean;
     };
   } catch {
     return null;
@@ -42,10 +39,9 @@ export async function decrypt(session: string | undefined = "") {
 export async function createSession(
   userId: string,
   userName?: string,
-  partnerAccess?: boolean
 ) {
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  const session = await encrypt({ userId, userName, partnerAccess, expiresAt });
+  const session = await encrypt({ userId, userName, expiresAt });
   const cookieStore = await cookies();
 
   cookieStore.set("session", session, {
@@ -71,14 +67,6 @@ export async function getSession() {
 export async function requireAuth() {
   const session = await getSession();
   if (!session) {
-    return null;
-  }
-  return session;
-}
-
-export async function requirePartnerAccess() {
-  const session = await getSession();
-  if (!session || !session.partnerAccess) {
     return null;
   }
   return session;

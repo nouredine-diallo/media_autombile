@@ -84,18 +84,12 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
 # Shared
 SESSION_SECRET=$SESSION_SECRET
 GROQ_API_KEY=${GROQ_API_KEY:-gsk_your_key_here}
-
-# RADAR
-RADAR_AUTH_PASSWORD=lma-dashboard-prod
-RADAR_PARTNER_PASSPHRASE=lma-partners-prod
+AUTH_PASSWORD=work
 
 # Google (optional)
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REDIRECT_URI=https://radar.media-labs.is-a.dev/api/auth/google/callback
-
-# STUDIO
-STUDIO_AUTH_PASSWORD=studio-automobile-prod
 EOF
     echo "  ⚠️  Edit $INSTALL_DIR/.env to set GROQ_API_KEY!"
 else

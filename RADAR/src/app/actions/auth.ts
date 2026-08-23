@@ -16,15 +16,12 @@ export async function login(_prevState: string | undefined, formData: FormData) 
 
 export async function selectName(_prevState: string | undefined, formData: FormData) {
   const name = formData.get("name") as string;
-  const partnerPassphrase = formData.get("partnerPassphrase") as string;
 
   if (!name || name.trim().length === 0) {
     return "Veuillez sélectionner votre nom";
   }
 
-  const partnerAccess = partnerPassphrase === process.env.PARTNER_PASSPHRASE;
-
-  await createSession("user", name.trim(), partnerAccess);
+  await createSession("user", name.trim());
   redirect("/");
 }
 
@@ -39,7 +36,6 @@ export async function getCurrentUser() {
   return {
     userId: session.userId,
     userName: session.userName || "Utilisateur",
-    partnerAccess: session.partnerAccess || false,
   };
 }
 

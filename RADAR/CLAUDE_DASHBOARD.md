@@ -42,20 +42,29 @@ Le Dashboard est conçu pour **5 à 10 personnes qui se connaissent**, pas pour 
 ## 2. Architecture finale
 
 ```
-Dashboard (localhost:3000) — Le cœur
-├── /                      ← Accueil : "à faire aujourd'hui" + statut pipeline
-├── /events                ← RADAR : veille (avec visuels sources)
-├── /events/[id]           ← RADAR : détail (sources → brief → article → validation → visuels)
-├── /ready                 ← Articles validés → ouverture STUDIO (avec images)
-├── /corrections           ← Suivi des corrections
-├── /stats                 ← Dépôt CSV Instagram, ratios, tendances
-├── /partenaires           ← Tracker livrables + génération rapport PDF
-├── /drive                 ← Explorateur Drive (avec prévisualisation images)
-├── /calendrier            ← Vue semaine avec drag-and-drop
-└── Pipeline auto          ← Cron toutes les 4h : ingest → visuels → clustering
+media-labs.is-a.dev → RADAR (Le cœur)
+├── /login               ← Auth : mot de passe "work"
+├── /select-name         ← Choix Daniel / Test
+├── /                    ← Accueil : "à faire aujourd'hui" + statut pipeline
+├── /events              ← RADAR : veille (avec visuels sources)
+├── /events/[id]         ← RADAR : détail (sources → brief → article → validation → visuels)
+├── /ready               ← Articles validés → ouverture STUDIO (avec images)
+├── /corrections         ← Suivi des corrections
+├── /stats               ← Dépôt CSV Instagram, ratios, tendances
+├── /partenaires         ← Tracker livrables + génération rapport PDF
+├── /drive               ← Explorateur Drive (avec prévisualisation images)
+├── /calendrier          ← Vue semaine avec drag-and-drop
+└── Pipeline auto        ← Cron toutes les 4h : ingest → visuels → clustering
 
-STUDIO (localhost:3001) — App séparée, travail indépendant
+studio.media-labs.is-a.dev → STUDIO (App séparée, sans auth obligatoire)
 ```
+
+### Auth simplifié (Phase 1 — 2026-08-23)
+- **Mot de passe unique** : `work` (RADAR et STUDIO)
+- **2 utilisateurs** : Daniel, Test (plus de 10 noms, plus de passphrase partenaires)
+- **Login design** : fond `#982124` (rouge bordeaux mat), logo LMA centré, carte glass dégradé `#CE2526`→`#8C1A1C`, border-radius 16px, backdrop-blur
+- **STUDIO** : pas de middleware de session, accessible sans re-login
+- **Supprimé** : `partnerAccess` du JWT, passphrase partenaires, `/partenaires` accessible à tous
 
 ### Pipeline automatique (cron)
 ```
@@ -100,6 +109,9 @@ Rédacteur voit une vignette dans Sources
 - **L'identifiant de contenu partagé** relie les événements RADAR, posts STUDIO et partenaires sans ressaisie
 - **Zéro LLM dans le Dashboard** — tout chiffre est calculé en code, jamais généré librement
 - **Les images suivent la hiérarchie** : RSS (gratuit) → og:image scraping (gratuit) → recherche manuelle (coût marginal)
+- **Auth simplifié** : mot de passe `work`, 2 utilisateurs (Daniel, Test), STUDIO sans middleware de session
+- **Pas de landing page** : `media-labs.is-a.dev` pointe directement vers RADAR (l'entrée du dashboard)
+- **Nginx sur l'hôte** : SSL/TLS via Let's Encrypt, proxy vers les containers Docker sur ports 3001/3002
 
 ---
 
@@ -107,15 +119,25 @@ Rédacteur voit une vignette dans Sources
 
 ### Parcours 1 : La journée type du Rédacteur
 ```
-1. Ouvre localhost:3000
-2. Voit l'accueil "à faire aujourd'hui" + statut pipeline (vert/orange/rouge)
-3. Items urgents en haut, événements avec visuels
-4. Clique sur un événement RADAR → brief généré → article rédigé
+1. Ouvre media-labs.is-a.dev (ou radar.media-labs.is-a.dev)
+2. Page de login : fond bordeaux #982124, logo LMA, carte glass → mot de passe "work"
+3. Choix du nom : Daniel ou Test
+4. Voit l'accueil "à faire aujourd'hui" + statut pipeline (vert/orange/rouge)
+5. Items urgents en haut, événements avec visuels
+6. Clique sur un événement RADAR → brief généré → article rédigé
    → Colonne Sources affiche les images des articles RSS
    → Visual search a trouvé og:image si RSS n'en avait pas
-5. Valide l'article → bouton "Créer un post Instagram" → STUDIO s'ouvre AVEC l'image
-6. Dans STUDIO : image déjà chargée, titre pré-rempli → gabarit → export
-7. Terminé. Retour au dashboard.
+7. Valide l'article → bouton "Créer un post Instagram" → STUDIO s'ouvre AVEC l'image
+8. Dans STUDIO : image déjà chargée, titre pré-rempli → gabarit → export
+9. Terminé. Retour au dashboard.
+```
+
+### Parcours 1b : Planification d'une publication
+```
+1. Sur /ready, chaque article validé a un bouton "Planifier"
+2. Clique → sélecteur de date → choisi une date (min : demain)
+3. Clique OK → événement "publication_instagram" créé dans le calendrier
+4. L'article affiche "Planifié" (pas de re-planification possible)
 ```
 
 ### Parcours 2 : Le reporting partenaire (Responsable partenaires)
@@ -254,7 +276,7 @@ l'usage, c'est qu'elle est trop appuyée.
 | Partenaires (/partenaires) | P0 | **En ligne** | Tracker + rapport PDF |
 | Drive (/drive) | P0 | **En ligne** | Explorateur **avec prévisualisation images** |
 | Calendrier (/calendrier) | P1 | **En ligne** | Vue semaine avec drag-and-drop |
-| Auth 3 niveaux | P0 | **En ligne** | Mot de passe + nom + passphrase |
+| Auth simplifié | P0 | **En ligne** | Mot de passe `work` → choix Daniel/Test |
 | **Pipeline automatique** | P0 | **En ligne** | Cron toutes les 4h : ingest → visuels → clustering |
 | **Recherche de visuels** | P0 | **En ligne** | RSS enclosure + og:image scraping + scoring |
 | **Indicateur pipeline** | P1 | **En ligne** | Statut temps réel sur l'accueil |

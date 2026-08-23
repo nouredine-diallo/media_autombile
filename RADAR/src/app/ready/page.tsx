@@ -2,6 +2,7 @@ import { getDb } from "@/lib/db";
 import { buildStudioLink } from "@/lib/studio-prefill";
 import { PageHeader } from "@/components/PageHeader";
 import { Badge, ButtonLink, EmptyState, Thumb } from "@/components/ui";
+import { PlanifierButton } from "@/components/PlanifierButton";
 import {
   IconArrowRight,
   IconCheck,
@@ -118,7 +119,8 @@ export default function ReadyForInstagram() {
                   </p>
                 </div>
 
-                <div className="flex shrink-0 items-start">
+                <div className="flex shrink-0 items-start gap-2">
+                  <PlanifierButton articleId={article.id} />
                   <ButtonLink
                     href={buildStudioLink({
                       title: article.title,

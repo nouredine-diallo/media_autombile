@@ -16,7 +16,6 @@ async function verifySession(token: string) {
     return payload as {
       userId: string;
       userName?: string;
-      partnerAccess?: boolean;
     };
   } catch {
     return null;
@@ -42,11 +41,6 @@ export async function middleware(request: NextRequest) {
 
   if (!session) {
     return NextResponse.redirect(new URL("/login", request.url));
-  }
-
-  // Check partner access for /partenaires
-  if (pathname.startsWith("/partenaires") && !session.partnerAccess) {
-    return NextResponse.redirect(new URL("/", request.url));
   }
 
   return NextResponse.next();

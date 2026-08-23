@@ -3,36 +3,84 @@
 import { useActionState } from "react";
 import { selectName } from "@/app/actions/auth";
 
-const TEAM_MEMBERS = [
-  "Alexandre",
-  "Baptiste",
-  "Clément",
-  "David",
-  "Emmanuel",
-  "François",
-  "Gabriel",
-  "Hugo",
-  "Ioannis",
-  "Julien",
-];
+const TEAM_MEMBERS = ["Daniel", "Test"];
 
 export default function SelectNamePage() {
   const [error, action, pending] = useActionState(selectName, undefined);
 
   return (
-    <div className="flex min-h-[calc(100vh-4.5rem)] items-center justify-center bg-[var(--surface-base)]">
-      <div className="w-full max-w-sm rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-8">
-        <h1 className="mb-2 text-center text-xl font-semibold text-[var(--text-primary)]">
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#982124",
+        padding: "1.5rem",
+      }}
+    >
+      {/* Logo */}
+      <img
+        src="/logo.png"
+        alt="Le Média Automobile"
+        style={{
+          width: 140,
+          height: "auto",
+          marginBottom: "2rem",
+          opacity: 0.95,
+        }}
+      />
+
+      {/* Carte glass */}
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 380,
+          borderRadius: 16,
+          padding: "2.5rem 2rem",
+          background:
+            "linear-gradient(135deg, rgba(206,37,38,0.85) 0%, rgba(140,26,28,0.92) 100%)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          border: "1px solid rgba(255,255,255,0.15)",
+          boxShadow:
+            "0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.1)",
+        }}
+      >
+        <h1
+          style={{
+            textAlign: "center",
+            fontSize: "1.25rem",
+            fontWeight: 600,
+            color: "#fff",
+            marginBottom: "0.25rem",
+          }}
+        >
           Qui êtes-vous ?
         </h1>
-        <p className="mb-6 text-center text-sm text-[var(--text-secondary)]">
+        <p
+          style={{
+            textAlign: "center",
+            fontSize: "0.8rem",
+            color: "rgba(255,255,255,0.65)",
+            marginBottom: "1.75rem",
+          }}
+        >
           Sélectionnez votre nom pour cette session
         </p>
-        <form action={action} className="flex flex-col gap-4">
+
+        <form action={action} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           <div>
             <label
               htmlFor="name"
-              className="mb-1 block text-sm font-medium text-[var(--text-secondary)]"
+              style={{
+                display: "block",
+                fontSize: "0.8rem",
+                fontWeight: 500,
+                color: "rgba(255,255,255,0.8)",
+                marginBottom: "0.35rem",
+              }}
             >
               Nom
             </label>
@@ -40,49 +88,78 @@ export default function SelectNamePage() {
               id="name"
               name="name"
               required
-              className="w-full rounded-md border border-[var(--border-subtle)] bg-[var(--surface-base)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
               autoFocus
+              style={{
+                width: "100%",
+                padding: "0.6rem 0.75rem",
+                borderRadius: 8,
+                border: "1px solid rgba(255,255,255,0.2)",
+                background: "rgba(0,0,0,0.25)",
+                color: "#fff",
+                fontSize: "0.875rem",
+                outline: "none",
+                appearance: "none",
+                cursor: "pointer",
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.45)")}
+              onBlur={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)")}
             >
-              <option value="">Sélectionner...</option>
+              <option value="" style={{ background: "#8C1A1C", color: "#fff" }}>
+                Sélectionner…
+              </option>
               {TEAM_MEMBERS.map((name) => (
-                <option key={name} value={name}>
+                <option key={name} value={name} style={{ background: "#8C1A1C", color: "#fff" }}>
                   {name}
                 </option>
               ))}
             </select>
           </div>
 
-          <div className="border-t border-[var(--border-subtle)] pt-4">
-            <label
-              htmlFor="partnerPassphrase"
-              className="mb-1 block text-sm font-medium text-[var(--text-secondary)]"
-            >
-              Passphrase partenaires (optionnel)
-            </label>
-            <input
-              id="partnerPassphrase"
-              name="partnerPassphrase"
-              type="password"
-              className="w-full rounded-md border border-[var(--border-subtle)] bg-[var(--surface-base)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-              placeholder="Uniquement si accès partenaires"
-            />
-            <p className="mt-1 text-xs text-[var(--text-muted)]">
-              Nécessaire pour accéder à la section Partenaires
-            </p>
-          </div>
-
           {error && (
-            <p className="text-sm text-[var(--danger)]">{error}</p>
+            <p
+              style={{
+                fontSize: "0.8rem",
+                color: "#FCA5A5",
+                marginTop: "-0.25rem",
+              }}
+            >
+              {error}
+            </p>
           )}
+
           <button
             type="submit"
             disabled={pending}
-            className="w-full rounded-md bg-[var(--brand)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--brand-hover)] disabled:opacity-50 btn-glow-blue"
+            style={{
+              width: "100%",
+              padding: "0.65rem",
+              borderRadius: 8,
+              border: "none",
+              background: "rgba(255,255,255,0.95)",
+              color: "#8C1A1C",
+              fontSize: "0.875rem",
+              fontWeight: 600,
+              cursor: pending ? "not-allowed" : "pointer",
+              opacity: pending ? 0.6 : 1,
+              transition: "opacity 0.15s",
+            }}
           >
-            {pending ? "Connexion..." : "Continuer"}
+            {pending ? "Connexion…" : "Continuer"}
           </button>
         </form>
       </div>
+
+      {/* Signature moteur */}
+      <p
+        style={{
+          marginTop: "2rem",
+          fontSize: "0.65rem",
+          color: "rgba(255,255,255,0.3)",
+          textAlign: "center",
+        }}
+      >
+        LAN_D Core Engine — v1.0.0
+      </p>
     </div>
   );
 }

@@ -1,0 +1,18 @@
+import { chromium } from "playwright";
+const BASE = "http://localhost:4100";
+const b = await chromium.launch();
+const c = await b.newContext({ viewport: { width: 1500, height: 1100 }, deviceScaleFactor: 2 });
+c.setDefaultTimeout(240_000); c.setDefaultNavigationTimeout(240_000);
+const p = await c.newPage();
+await p.goto(`${BASE}/login`); await p.fill("#password", process.env.AUTH_PASSWORD);
+await p.click('button[type="submit"]'); await p.waitForURL(`${BASE}/`);
+await p.goto(`${BASE}/titres`, { waitUntil: "networkidle" });
+await p.setInputFiles('input[type="file"]', ["test33.jpeg", "test31.webp", "test32.webp"]);
+await p.waitForSelector("text=/Fond compatible|laisse peu/", { timeout: 240_000 });
+const ap = p.locator("div.relative.overflow-hidden.rounded-xl").first();
+const bb = await ap.boundingBox();
+await p.mouse.move(bb.x + bb.width * 0.68, bb.y + bb.height * 0.308);
+await p.waitForTimeout(400);
+await p.screenshot({ path: "test/manip-survol.png", clip: { x: bb.x - 30, y: bb.y - 20, width: bb.width + 60, height: bb.height + 60 } });
+console.log("ok");
+await b.close();
