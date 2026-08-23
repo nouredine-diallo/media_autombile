@@ -1,0 +1,57 @@
+version: "3.8"
+
+services:
+  radar:
+    build:
+      context: ./RADAR
+      dockerfile: Dockerfile
+    container_name: lma-radar
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"
+    volumes:
+      - radar-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_PATH=/app/data/radar.db
+      - AUTH_PASSWORD=${RADAR_AUTH_PASSWORD:-lma-dashboard-dev}
+      - PARTNER_PASSPHRASE=${RADAR_PARTNER_PASSPHRASE:-lma-partners-dev}
+      - SESSION_SECRET=${SESSION_SECRET:-change-me-in-production-use-openssl-rand-base64-32}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-https://radar.media-labs.is-a.dev/api/auth/google/callback}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  studio:
+    build:
+      context: ./studio
+      dockerfile: Dockerfile
+    container_name: lma-studio
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3002:3000"
+    volumes:
+      - studio-uploads:/app/uploads
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - AUTH_PASSWORD=${STUDIO_AUTH_PASSWORD:-studio-automobile-dev}
+      - SESSION_SECRET=${SESSION_SECRET:-change-me-in-production-use-openssl-rand-base64-32}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  radar-data:
+    driver: local
+  studio-uploads:
+    driver: local

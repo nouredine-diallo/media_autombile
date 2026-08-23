@@ -1,0 +1,38 @@
+node_modules
+.next
+.env
+.env.local
+.env*.local
+
+# RADAR
+RADAR/radar.db
+RADAR/radar.db-wal
+RADAR/radar.db-shm
+
+# Studio uploads (too large for git)
+studio/uploads/
+studio/post-*
+
+# Test images
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.avif
+!landing/
+
+# OS files
+.DS_Store
+Thumbs.db
+*:Zone.Identifier
+
+# IDE
+.vscode
+.idea
+
+# Build artifacts
+dist
+out
+
+# Models (downloaded at build time)
+studio/models/u2net.onnx
