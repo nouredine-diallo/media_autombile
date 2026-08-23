@@ -16,7 +16,7 @@
 set -euo pipefail
 
 DOMAIN="media-labs.is-a.dev"
-REPO_URL="https://github.com/your-username/media_autombile.git"  # ← CHANGE THIS
+REPO_URL="https://github.com/nouredine-diallo/media_autombile.git"
 INSTALL_DIR="/opt/media-labs"
 
 echo "═══════════════════════════════════════════════════"
