@@ -27,7 +27,12 @@ export const metadata: Metadata = {
   description: "Centre de contrôle pour la production de contenu automobile",
 };
 
+import { initCron } from "@/lib/startup";
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
+  // Safe to initialize cron/db on the main thread during rendering
+  initCron();
+
   return (
     <html
       lang="fr"
