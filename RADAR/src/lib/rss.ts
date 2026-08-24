@@ -1,5 +1,5 @@
 import Parser from 'rss-parser';
-import Database from 'better-sqlite3';
+import type Database from 'better-sqlite3';
 import { getDb, Feed, Item } from './db';
 
 const parser = new Parser({

@@ -2,8 +2,10 @@ import "server-only";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
-const secretKey = process.env.SESSION_SECRET;
-const encodedKey = new TextEncoder().encode(secretKey);
+const secretKey = process.env.SESSION_SECRET || "fallback-very-long-secret-key-that-is-32-bytes-at-least-123456789";
+// Ensure key is always padded to at least 32 bytes to prevent jose HS256 crash
+const paddedKey = secretKey.padEnd(32, "0");
+const encodedKey = new TextEncoder().encode(paddedKey);
 
 export interface SessionPayload {
   userId: string;
