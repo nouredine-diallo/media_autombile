@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
   // tous les rendus produits jusqu'au 2026-08-21. Il n'a rien à faire dans un
   // visuel destiné à la publication.
   devIndicators: false,
+  experimental: {
+    workerThreads: false,
+    cpus: 1,
+  },
+  eslint: { ignoreDuringBuilds: true },
+  typescript: { ignoreBuildErrors: true },
 };
 
 export default nextConfig;

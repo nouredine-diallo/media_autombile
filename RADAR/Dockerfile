@@ -24,6 +24,8 @@ RUN node -e "const{pipeline}=require('@xenova/transformers');(async()=>{console.
 
 # ── Build Next.js app ──
 COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
 
 # ── Production stage ──
