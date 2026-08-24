@@ -48,8 +48,6 @@ COPY --from=base /app/src ./src
 # Playwright chromium binary + deps
 COPY --from=base /root/.cache/ms-playwright /root/.cache/ms-playwright
 
-# Embeddings cache (pre-downloaded)
-COPY --from=base /root/.cache/xenova /root/.cache/xenova
-
+# Embeddings cache removed due to path changes in newer xenova versions
 EXPOSE 3000
 CMD ["npm", "start"]
