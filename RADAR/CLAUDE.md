@@ -167,6 +167,66 @@ Suivre l'ordre des étapes du cahier des charges (§8, Étape 0 à 8). Ne pas sa
 
 ---
 
+## 9b. Contrat d'interface STUDIO → RADAR (callback export)
+
+Après un export réussi vers Drive, STUDIO envoie un callback silencieux à RADAR pour marquer l'article comme exporté.
+
+**Endpoint :** `POST /api/events/[contentId]/exported`
+- Body : `{ driveUrl: string, driveFileId?: string }`
+- Pas d'auth requise (réseau interne partagé)
+- Fire-and-forget : si RADAR est down, l'export STUDIO continue normalement
+- Met à jour `articles.exported_at` + `articles.drive_url`
+- Retourne toujours `{ ok: true }` même si l'article n'est pas trouvé (non-fatal)
+
+**Variables d'environnement :**
+- `STUDIO_URL` — URL de STUDIO (utilisé par `buildStudioLink()` et la stat tile du Dashboard)
+- `RADAR_URL` — URL de RADAR (utilisé par STUDIO pour le callback, configuré dans `studio/.env.local`)
+
+**Dashboard :** Les articles exportés affichent "Ouvrir dans Drive" au lieu de "Créer un post". Le lien Drive est cliquable.
+
+---
+
+## 9b. Auto-flag et Cache Cleanup
+
+### Auto-flag des images de faible qualité
+
+Le pipeline inclut une étape d'auto-flag qui analyse automatiquement la qualité des images et les classe en catégories :
+
+**Critères de jugement (basés sur les gabarits STUDIO) :**
+- Résolution minimale : 800×1000 px (format Instagram 4:5)
+- Score composite qualité : résolution (0.4) + contraste (0.3) + netteté (0.3)
+- Contraste minimal : 30%
+- Netteté minimale : 20% (variance du Laplacien)
+
+**Verdicts :**
+- `ok` : qualité suffisante, pas de flag
+- `marginal` : qualité acceptable mais à surveiller (contraste ou netteté faibles)
+- `bad` : qualité insuffisante, flag pour revue humaine
+
+**Fichiers :**
+- `RADAR/src/lib/autoFlag.ts` — analyse qualité, règles de jugement, batch auto-flag
+- Intégré au pipeline en étape 6 (après preflight STUDIO)
+
+### Cache Cleanup et Archivage
+
+Nettoyage automatique des données obsolètes pour maintenir les performances :
+
+**Règles de rétention :**
+- `visual-cache` : 72 heures (fichiers images temporaires)
+- `pipeline_runs` : 30 jours (historique des exécutions)
+- `items sans image` : 14 jours (flag comme doublons)
+- `events sans article` : 7 jours (suppression orphelins)
+- `calendar_events passés` : 90 jours (hors publications Instagram)
+
+**Fichiers :**
+- `RADAR/src/lib/cacheCleanup.ts` — logique de nettoyage, stats
+- Intégré au pipeline en étape 7 (dernière étape)
+
+**API Dashboard :**
+- `GET /api/cache-stats` — retourne les statistiques du cache pour affichage
+
+---
+
 ## 10. Quand s'arrêter et demander
 
 Faire un choix autonome et documenté est préférable à une question à chaque micro-décision — mais s'arrêter explicitement pour :

@@ -1,7 +1,9 @@
 import cron, { type ScheduledTask } from 'node-cron';
 import { getFeeds, fetchFeed, storeItems, updateFeedLastFetched } from './rss';
-import { findImagesForItems } from './visualSearch';
+import { findImagesForItems, cleanupVisualCache, preflightItemsWithoutVerdict } from './visualSearch';
 import { startPipelineRun, completePipelineRun, getDb } from './db';
+import { batchAutoFlag } from './autoFlag';
+import { runCacheCleanup } from './cacheCleanup';
 
 interface CronConfig {
   ingestInterval: string;  // cron expression, default: every 4 hours
@@ -63,6 +65,51 @@ async function runPipeline(): Promise<void> {
       console.log(`[CRON] Embedded: ${embedded}, Events: ${events}`);
     } catch (error) {
       console.error('[CRON] Scoring error:', error);
+    }
+
+    // Step 4: Clean up old visual-cache files (>72h)
+    let cacheCleaned = 0;
+    try {
+      const cacheResult = cleanupVisualCache();
+      cacheCleaned = cacheResult.removed;
+      if (cacheCleaned > 0) {
+        console.log(`[CRON] Visual cache cleanup: ${cacheCleaned} old files removed, ${cacheResult.kept} kept`);
+      }
+    } catch (error) {
+      console.error('[CRON] Cache cleanup error:', error);
+    }
+
+    // Step 5: Preflight — check gabarit compatibility for images without verdict
+    let preflied = 0;
+    try {
+      const preflightResult = await preflightItemsWithoutVerdict();
+      preflied = preflightResult.checked;
+      if (preflied > 0) {
+        console.log(`[CRON] Preflight: ${preflied} images checked — ${preflightResult.ok} ok, ${preflightResult.marginal} marginal, ${preflightResult.bad} bad`);
+      }
+    } catch (error) {
+      console.error('[CRON] Preflight error:', error);
+    }
+
+    // Step 6: Auto-flag low quality images
+    let autoFlagged = 0;
+    try {
+      const flagResult = await batchAutoFlag();
+      autoFlagged = flagResult.flagged;
+      if (autoFlagged > 0) {
+        console.log(`[CRON] Auto-flag: ${autoFlagged} images analysed — ${flagResult.ok} ok, ${flagResult.marginal} marginal, ${flagResult.bad} bad`);
+      }
+    } catch (error) {
+      console.error('[CRON] Auto-flag error:', error);
+    }
+
+    // Step 7: Cache cleanup and archival
+    let cacheCleanupResult = null;
+    try {
+      cacheCleanupResult = await runCacheCleanup();
+      console.log(`[CRON] Cache cleanup: ${cacheCleanupResult.pipelineRunsDeleted} runs, ${cacheCleanupResult.itemsArchived} items, ${cacheCleanupResult.eventsDeleted} events, ${cacheCleanupResult.calendarEventsDeleted} calendar events`);
+    } catch (error) {
+      console.error('[CRON] Cache cleanup error:', error);
     }
 
     completePipelineRun(runId, 'completed', {

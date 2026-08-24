@@ -18,9 +18,18 @@ export async function POST(request: Request) {
   const { action, config } = body;
 
   if (action === 'run') {
-    // Trigger a manual run
+    // Vérifier si le pipeline est déjà en cours
+    const cronStatus = getCronStatus();
+    if (cronStatus.running) {
+      return NextResponse.json({ 
+        success: false, 
+        message: 'Pipeline déjà en cours d\'exécution' 
+      }, { status: 409 });
+    }
+
+    // Déclencher une exécution manuelle en arrière-plan
     runPipeline().catch(console.error);
-    return NextResponse.json({ success: true, message: 'Pipeline triggered' });
+    return NextResponse.json({ success: true, message: 'Pipeline déclenché' });
   }
 
   if (action === 'update_config' && config) {
@@ -28,5 +37,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, config: getCronConfig() });
   }
 
-  return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+  return NextResponse.json({ error: 'Action invalide' }, { status: 400 });
 }

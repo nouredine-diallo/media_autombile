@@ -22,7 +22,7 @@ export interface GenerationResponse {
 export async function generate(request: GenerationRequest): Promise<GenerationResponse> {
   const {
     prompt,
-    maxTokens = 2048,
+    maxTokens = 4096,
     temperature = 0.3,
     extraStyleRules,
   } = request;
@@ -49,11 +49,11 @@ LEXIQUE PRÉFÉRÉ:
 - "restomod", "restauration moderne" (pas "rétrofit")
 - "premium", "haut de gamme", "luxe" (pas "cher", "coûteux")
 
-STRUCTURE EN 3 PARAGRAPHES (calibrée):
+STRUCTURE EN 3-4 PARAGRAPHES:
 1. Paragraphe 1: Fait principal + chiffres clés
 2. Paragraphe 2: Détails techniques + caractéristiques
 3. Paragraphe 3: Contexte + marketing + histoire
-4. Conclusion: Question ouverte au lecteur
+4. Conclusion (optionnelle): Question ouverte au lecteur
 
 RÈGLES STRICTES:
 - Tu ne dois JAMAIS inventer de faits qui ne sont pas dans le brief
@@ -61,7 +61,8 @@ RÈGLES STRICTES:
 - Chaque chiffre doit être vérifiable
 - Cite les sources en fin de texte quand pertinent
 - Références historiques encouragées (liens avec l'histoire de la marque)
-- Ne dépasse pas 500 mots
+- Écris un article complet et fluide, sans couper les phrases
+- Termine toujours tes phrases et paragraphes
 ${buildStyleRulesPrompt()}`
         },
         {
@@ -125,16 +126,16 @@ STYLE:
 - Enthousiasme modéré
 - Vocabulaire automobile précis
 
-STRUCTURE EN 3 PARAGRAPHES (calibrée):
+STRUCTURE EN 3-4 PARAGRAPHES:
 1. Paragraphe 1: Fait principal + chiffres clés
 2. Paragraphe 2: Détails techniques + caractéristiques
 3. Paragraphe 3: Contexte + marketing + histoire
-4. Conclusion: Question ouverte au lecteur
+4. Conclusion (optionnelle): Question ouverte au lecteur
 
 RÈGLES:
 - Attaque factuelle : le fait principal en premier
-- Max 4 phrases par paragraphe
-- Max 25 mots par phrase
+- Max 5 phrases par paragraphe
+- Termine toujours tes phrases — ne coups jamais en plein milieu
 - Cite les sources en fin de texte quand pertinent
 - Références historiques encouragées
 - Chaque chiffre doit être vérifiable

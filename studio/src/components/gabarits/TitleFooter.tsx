@@ -168,7 +168,7 @@ export function TitleFooter({ title, eyebrow, hauteurPhoto }: TitleFooterProps) 
           // Coupures équilibrées, pas justification. Mesuré sur `inspi/3.png`
           // (post Haaland) : les trois lignes du titre commencent toutes à
           // x=60 (±1 px) et leur bord droit est naturellement dentelé — 493,
-          // 562 et 468 px, soit 13,8 % d'écart entre la plus longue et la plus
+          // 562 et 468 px, soit 13,8 % d'entre la plus longue et la plus
           // courte. Ce n'est donc pas un rectangle justifié : c'est un texte
           // aligné à gauche dont les coupures sont choisies pour que les
           // lignes aient des largeurs voisines.
@@ -178,6 +178,12 @@ export function TitleFooter({ title, eyebrow, hauteurPhoto }: TitleFooterProps) 
           // étirerait les espaces inter-mots d'un gras condensé, ce qui abîme
           // la lisibilité — et ne correspond pas à la référence.
           textWrap: "balance",
+          // Empêcher les coupures de mots avec trait d'union ou virgule en fin de ligne
+          // Hyphens contrôlés pour le français : évite les coupures après un "-" ou ","
+          hyphens: "auto",
+          // Préserver les mots composés (ex: "V-8", "GTR") et les noms propres
+          wordBreak: "normal",
+          overflowWrap: "break-word",
         }}
       >
         {title}

@@ -37,3 +37,7 @@ out
 # Models (downloaded at build time)
 studio/models/u2net.onnx
 _agents/
+
+# SSH private keys
+*.key
+*.key:Zone.Identifier

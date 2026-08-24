@@ -114,7 +114,7 @@ export default async function Home() {
           <StatTile
             value={<IconStudio size={22} strokeWidth={1.75} />}
             label="Ouvrir STUDIO"
-            href="http://localhost:3001"
+            href={process.env.STUDIO_URL || "http://localhost:3001"}
             external
             tone="studio"
           />
@@ -257,21 +257,32 @@ export default async function Home() {
                       sans visuel
                     </Badge>
                   )}
-                  <ButtonLink
-                    href={buildStudioLink({
-                      title: item.title,
-                      source: "RADAR",
-                      imageUrl: item.image_url,
-                      contentId: item.content_id || "",
-                      briefHeadline:
-                        item.chapeau?.slice(0, 200) || item.title.slice(0, 200),
-                    })}
-                    external
-                    variant="studio"
-                  >
-                    <IconStudio size={13} strokeWidth={1.75} />
-                    Créer un post
-                  </ButtonLink>
+                  {item.exported_at && item.drive_url ? (
+                    <ButtonLink
+                      href={item.drive_url}
+                      external
+                      variant="primary"
+                    >
+                      <IconCheck size={13} strokeWidth={1.75} />
+                      Ouvrir dans Drive
+                    </ButtonLink>
+                  ) : (
+                    <ButtonLink
+                      href={buildStudioLink({
+                        title: item.title,
+                        source: "RADAR",
+                        imageUrl: item.image_url,
+                        contentId: item.content_id || "",
+                        briefHeadline:
+                          item.chapeau?.slice(0, 200) || item.title.slice(0, 200),
+                      })}
+                      external
+                      variant="studio"
+                    >
+                      <IconStudio size={13} strokeWidth={1.75} />
+                      Créer un post
+                    </ButtonLink>
+                  )}
                 </Row>
               ))}
             </div>

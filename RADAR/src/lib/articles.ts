@@ -59,7 +59,7 @@ export async function generateArticle(eventId: number): Promise<Article | null> 
   // Generate article using LLM — retry once if content is empty
   let response = await generate({
     prompt,
-    maxTokens: 2048,
+    maxTokens: 4096,
     temperature: 0.3,
     extraStyleRules,
   });
@@ -69,7 +69,7 @@ export async function generateArticle(eventId: number): Promise<Article | null> 
     // Model returned empty/buggy content — retry once with slightly higher temperature
     response = await generate({
       prompt,
-      maxTokens: 2048,
+      maxTokens: 4096,
       temperature: 0.5,
       extraStyleRules,
     });

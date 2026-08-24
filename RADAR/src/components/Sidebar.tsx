@@ -102,23 +102,27 @@ export function Sidebar() {
         {...linkProps}
         title={isExpanded ? undefined : item.label}
         aria-current={isActive ? 'page' : undefined}
-        className={`group relative flex h-9 items-center gap-3 rounded-[var(--radius-md)] px-2.5 transition-colors duration-[var(--dur-fast)] ${
+        className={`group relative flex h-9 items-center gap-3 px-2.5 transition-colors duration-[var(--dur-fast)] ${
           isActive
-            ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-            : 'text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]'
+            ? 'text-white'
+            : 'text-[var(--text-secondary)] hover:text-white'
         }`}
       >
-        {/* Repère d'état actif : un filet, pas une lueur */}
+        {/* Repère d'état actif : ligne rouge verticale à gauche */}
         {isActive && (
-          <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r-full bg-[var(--accent)]" />
+          <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[var(--accent)]" />
         )}
-        <Icon size={18} strokeWidth={1.75} className="shrink-0" />
+        <Icon
+          size={18}
+          strokeWidth={1.75}
+          className={`shrink-0 ${isActive ? 'text-[var(--accent)]' : ''}`}
+        />
         {isExpanded && (
           <>
             <span className="t-label truncate">{item.label}</span>
             {external && <IconExternal size={12} strokeWidth={2} className="opacity-50" />}
             {item.shortcut && !external && (
-              <kbd className="font-data ml-auto rounded border border-[var(--border-subtle)] px-1 text-[10px] leading-4 text-[var(--text-faint)]">
+              <kbd className="font-data ml-auto rounded border border-white/10 px-1 text-[10px] leading-4 text-[var(--text-muted)]">
                 {item.shortcut}
               </kbd>
             )}
@@ -134,7 +138,7 @@ export function Sidebar() {
     <aside
       onMouseEnter={() => !isPinned && setIsExpanded(true)}
       onMouseLeave={() => !isPinned && setIsExpanded(false)}
-      className={`chrome-glass fixed left-0 top-0 z-40 flex h-full flex-col border-r transition-[width] duration-[var(--dur)] ease-[var(--ease)] ${
+      className={`fixed left-0 top-0 z-40 flex h-full flex-col border-r border-white/8 bg-[var(--chrome-bg)] transition-[width] duration-[var(--dur)] ease-[var(--ease)] ${
         isExpanded ? 'w-60' : 'w-16'
       }`}
     >
@@ -144,12 +148,12 @@ export function Sidebar() {
           onClick={togglePin}
           aria-label={isPinned ? 'Rétracter la barre latérale' : 'Épingler la barre latérale'}
           title={isPinned ? 'Rétracter la barre  [' : 'Épingler la barre  ['}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] text-[var(--text-muted)] transition-colors duration-[var(--dur-fast)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] text-[var(--text-secondary)] transition-colors duration-[var(--dur-fast)] hover:bg-white/5 hover:text-white"
         >
           <IconPanelToggle size={18} strokeWidth={1.75} />
         </button>
         {isExpanded && (
-          <span className="t-label truncate text-[var(--text-primary)]">Le Média Automobile</span>
+          <span className="t-label truncate text-white">Le Média Automobile</span>
         )}
       </div>
 
@@ -161,15 +165,15 @@ export function Sidebar() {
           </div>
         ))}
 
-        {/* STUDIO : application externe, seul endroit où le violet est permis */}
+        {/* STUDIO : application externe, violet maintenu */}
         <div className="mt-auto flex flex-col gap-0.5 pt-2">
-          <div className="mb-2 h-px bg-[var(--border-subtle)]" />
+          <div className="mb-2 h-px bg-white/8" />
           <Link
             href={STUDIO_ITEM.href}
             target="_blank"
             rel="noopener noreferrer"
             title={isExpanded ? undefined : 'STUDIO'}
-            className="flex h-9 items-center gap-3 rounded-[var(--radius-md)] px-2.5 text-[var(--studio)] transition-colors duration-[var(--dur-fast)] hover:bg-[var(--studio-soft)]"
+            className="flex h-9 items-center gap-3 px-2.5 text-[var(--studio)] transition-colors duration-[var(--dur-fast)] hover:text-[var(--studio)]"
           >
             <IconStudio size={18} strokeWidth={1.75} className="shrink-0" />
             {isExpanded && (
@@ -180,8 +184,8 @@ export function Sidebar() {
             )}
           </Link>
           {isExpanded && (
-            <p className="t-caption px-2.5 pt-2 text-[var(--text-faint)]">
-              <kbd className="font-data rounded border border-[var(--border-subtle)] px-1 text-[10px]">
+            <p className="t-caption px-2.5 pt-2 text-[var(--text-muted)]">
+              <kbd className="font-data rounded border border-white/10 px-1 text-[10px]">
                 [
               </kbd>{' '}
               pour {isPinned ? 'rétracter' : 'épingler'}

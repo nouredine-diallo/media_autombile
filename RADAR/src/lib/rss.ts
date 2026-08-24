@@ -236,6 +236,11 @@ export function updateItemImage(itemId: number, imageUrl: string, source: string
   db.prepare('UPDATE items SET image_url = ?, image_source = ? WHERE id = ?').run(imageUrl, source, itemId);
 }
 
+export function updateItemImagePreflight(itemId: number, verdict: string): void {
+  const db = getDb();
+  db.prepare('UPDATE items SET image_preflight = ? WHERE id = ?').run(verdict, itemId);
+}
+
 export function getItemById(itemId: number): (Item & { feed_name: string }) | null {
   const db = getDb();
   return db.prepare(`

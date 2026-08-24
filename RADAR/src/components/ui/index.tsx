@@ -156,11 +156,11 @@ type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'studio';
 
 const BUTTON_VARIANT: Record<ButtonVariant, string> = {
   primary:
-    'bg-[var(--brand)] text-[var(--accent-contrast)] hover:bg-[var(--brand-hover)] active:bg-[var(--brand-pressed)] border border-transparent',
+    'bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] active:bg-[var(--brand-pressed)] border border-transparent',
   secondary:
     'bg-[var(--surface-hover)] text-[var(--text-primary)] border border-[var(--border-default)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-overlay)]',
   ghost:
-    'bg-transparent text-[var(--text-secondary)] border border-transparent hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]',
+    'bg-transparent text-[var(--text-secondary)] border border-transparent hover:bg-[var(--surface-hover)] hover:text-white',
   danger:
     'bg-[var(--danger-soft)] text-[var(--danger)] border border-[var(--danger-border)] hover:bg-[var(--danger-soft)] hover:border-[var(--danger)]',
   studio:

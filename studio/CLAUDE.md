@@ -522,6 +522,31 @@ L'utilisateur attend une initiative de qualité, pas une exécution minimaliste 
 
 ---
 
+## 6b. Export unifié + Callback RADAR
+
+### Package d'export (image + légende)
+L'export vers Drive dépose un **dossier contenant deux fichiers** :
+1. `post-YYYY-MM-DD-<job8>.png` — le rendu final du gabarit
+2. `post-YYYY-MM-DD-<job8>.txt` — la légende validée (titre sélectionné par l'humain)
+
+La légende est incluse **uniquement si elle n'est pas vide**. L'échec d'upload du .txt est non-fatal (l'image reste disponible).
+
+### Callback silencieux vers RADAR
+Après un export Drive réussi, STUDIO envoie un `POST` à RADAR :
+- Endpoint : `${RADAR_URL}/api/events/${contentId}/exported`
+- Body : `{ driveUrl, driveFileId }`
+- Fire-and-forget : si RADAR est down, l'export continue normalement
+- Timeout 5s, erreurs loggées mais jamais bloquantes
+
+### Données transmises
+Le `contentId` est passé depuis RADAR via le prefill (`?prefill=<base64>`), stocké en state, et envoyé dans le body de l'export API. Il permet à RADAR de retrouver l'article à marquer.
+
+### Variables d'environnement
+- `RADAR_URL` — URL de RADAR pour le callback (défaut : `http://127.0.0.1:3001`)
+- `STUDIO_URL` — URL de STUDIO (utilisé par RADAR pour les liens)
+
+---
+
 ## 7. Séquencement
 
 Suivre l'ordre des étapes du cahier des charges (§7, Étape 0 à 10). Ne pas paralléliser les étapes 1 (premier gabarit bout-en-bout) et 4 (familles de gabarits complètes) — l'étape 1 valide l'architecture "composant unique aperçu+rendu" ; tant qu'elle n'est pas parfaite au pixel près, ne pas construire les gabarits suivants dessus. C'est le cahier des charges qui le dit explicitement (§7, Étape 1) — le respecter à la lettre.

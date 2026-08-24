@@ -21,6 +21,9 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-https://radar.media-labs.is-a.dev/api/auth/google/callback}
+      - STUDIO_URL=${STUDIO_URL:-https://studio.media-labs.is-a.dev}
+      - STUDIO_IMPORT_URL=${STUDIO_IMPORT_URL:-http://studio:3000}
+      - IMPORT_SECRET=${IMPORT_SECRET:-change-me-in-production-use-openssl-rand-base64-32}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000"]
       interval: 30s
@@ -43,6 +46,8 @@ services:
       - AUTH_PASSWORD=${AUTH_PASSWORD:-work}
       - SESSION_SECRET=${SESSION_SECRET:-change-me-in-production-use-openssl-rand-base64-32}
       - GROQ_API_KEY=${GROQ_API_KEY}
+      - RADAR_URL=${RADAR_URL:-http://radar:3000}
+      - IMPORT_SECRET=${IMPORT_SECRET:-change-me-in-production-use-openssl-rand-base64-32}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000"]
       interval: 30s

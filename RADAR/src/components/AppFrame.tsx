@@ -11,13 +11,16 @@ export const PUBLIC_ROUTES = ['/login', '/select-name'];
  * Sur les écrans publics (connexion, choix du nom), la navigation n'a pas
  * lieu d'être affichée — on ne montre pas les rubriques de l'outil à
  * quelqu'un qui n'est pas encore identifié.
+ *
+ * La classe `dashboard-enter` ajoute un fade-in de 200ms pour une transition
+ * harmonieuse entre le login (fond #982124) et le dashboard (fond dark).
  */
 export function AppFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isPublic = PUBLIC_ROUTES.includes(pathname);
 
   return (
-    <div className={`flex min-h-screen flex-col ${isPublic ? '' : 'pl-16'}`}>
+    <div className={`flex min-h-screen flex-col ${isPublic ? '' : 'pl-16 dashboard-enter'}`}>
       {children}
     </div>
   );

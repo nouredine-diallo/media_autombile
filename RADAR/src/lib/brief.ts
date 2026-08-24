@@ -152,29 +152,32 @@ function generateLede(event: Event, items: Item[], facts: Fact[]): string {
     ? `${sources.length} sources` 
     : sources[0];
   
-  return `${event.title}. Cette information, rapportée par ${sourceText}, a été confirmée le ${publishDate}.`;
+  // Utiliser le titre français si disponible
+  const titleFr = event.title_fr || event.title;
+  
+  return `${titleFr}. Cette information, rapportée par ${sourceText}, a été confirmée le ${publishDate}.`;
 }
 
 function generateBody(event: Event, items: Item[], facts: Fact[]): string {
   const paragraphs: string[] = [];
   
-  // First paragraph: main facts
-  if (facts.length > 0) {
-    const mainFacts = facts.slice(0, 3).map(f => f.text).join('. ');
-    paragraphs.push(mainFacts + '.');
-  }
-  
-  // Second paragraph: context from items
   const summaries = items
     .filter(i => i.summary && i.summary.length > 20)
     .map(i => i.summary)
     .slice(0, 2);
   
+  // Premier paragraphe : faits principaux (en français)
+  if (facts.length > 0) {
+    const mainFacts = facts.slice(0, 3).map(f => f.text).join('. ');
+    paragraphs.push(mainFacts + '.');
+  }
+  
+  // Deuxième paragraphe : contexte des sources
   if (summaries.length > 0) {
     paragraphs.push(summaries.join(' '));
   }
   
-  // Third paragraph: additional details
+  // Troisième paragraphe : détails supplémentaires
   if (facts.length > 3) {
     const additionalFacts = facts.slice(3, 6).map(f => f.text).join('. ');
     paragraphs.push(additionalFacts + '.');

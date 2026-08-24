@@ -102,11 +102,20 @@ export function PipelineStatusIndicator() {
   const handleTrigger = async () => {
     setTriggering(true);
     try {
-      await fetch('/api/cron', {
+      const res = await fetch('/api/cron', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'run' }),
       });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        // Pipeline déjà en cours ou erreur
+        console.error('Erreur:', data.message);
+      }
+      
+      // Attendre 2 secondes puis rafraîchir le statut
       setTimeout(fetchStatus, 2000);
     } finally {
       setTriggering(false);

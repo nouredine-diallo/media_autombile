@@ -2,12 +2,13 @@ import "server-only";
 
 export interface TitleGenerationResult {
   titles: string[];
+  surtitres: string[];
   provider: string;
 }
 
 export interface TitleProvider {
   name: string;
-  generate(theme: string): Promise<string[]>;
+  generate(theme: string): Promise<{ titles: string[]; surtitres: string[] }>;
 }
 
 export const MIN_LEN = 30;
@@ -36,7 +37,7 @@ function buildSystemPrompt(): string {
     "Tu écris des titres courts pour les posts Instagram du média Le Média Automobile.",
     "Voici 5 exemples réels déjà publiés, pour calibrer le ton (direct, factuel ou léger selon le sujet, jamais putaclic mensonger) :",
     ...STYLE_EXAMPLES.map((t, i) => `${i + 1}. ${t}`),
-    `Réponds UNIQUEMENT en JSON valide : {"titres": ["titre1", "titre2", "titre3"]} — exactement 3 titres, chacun entre ${MIN_LEN} et ${MAX_LEN} caractères, dans le même esprit que les exemples.`,
+    `Réponds UNIQUEMENT en JSON valide : {"titres": ["titre1", "titre2", "titre3"], "surtitres": ["surtitre1", "surtitre2", "surtitre3"]} — exactement 3 titres (30–${MAX_LEN} caractères) et 3 surtitres (8–30 caractères, courts et percutants comme "Breaking", "Exclu", "Essai", "Comparatif", "Rétro", "Concept", "Prix", "Alerte").`,
   ].join("\n");
 }
 
@@ -53,7 +54,7 @@ function buildSystemPrompt(): string {
  */
 const groqProvider: TitleProvider = {
   name: "groq",
-  async generate(theme: string): Promise<string[]> {
+  async generate(theme: string): Promise<{ titles: string[]; surtitres: string[] }> {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
       throw new TitleGenerationError("GROQ_API_KEY manquant côté serveur");
@@ -103,7 +104,17 @@ const groqProvider: TitleProvider = {
       );
     }
 
-    return titles as string[];
+    const surtitres = (parsed as { surtitres?: unknown }).surtitres;
+    const surtitreList = Array.isArray(surtitres)
+      ? surtitres.filter((s): s is string => typeof s === "string" && s.length >= 4 && s.length <= 30)
+      : [];
+
+    // Compléter les surtitres manquants avec des placeholders vides
+    while (surtitreList.length < titles.length) {
+      surtitreList.push("");
+    }
+
+    return { titles: titles as string[], surtitres: surtitreList.slice(0, titles.length) };
   },
 };
 
@@ -125,8 +136,8 @@ export async function generateTitles(theme: string): Promise<TitleGenerationResu
   const errors: string[] = [];
   for (const provider of PROVIDERS) {
     try {
-      const titles = await provider.generate(trimmed);
-      return { titles, provider: provider.name };
+      const result = await provider.generate(trimmed);
+      return { titles: result.titles, surtitres: result.surtitres, provider: provider.name };
     } catch (err) {
       errors.push(`${provider.name}: ${err instanceof Error ? err.message : String(err)}`);
     }

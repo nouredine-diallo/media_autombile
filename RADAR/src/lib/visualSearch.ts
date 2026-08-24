@@ -1,12 +1,16 @@
 import { chromium, type Browser } from 'playwright';
 import { getDb } from './db';
-import { getItemsWithoutImages, updateItemImage, getItemById } from './rss';
+import { getItemsWithoutImages, updateItemImage, updateItemImagePreflight, getItemById } from './rss';
 import path from 'path';
 import fs from 'fs';
 
 const VISUAL_SEARCH_DIR = path.join(process.cwd(), 'visual-cache');
 const MIN_IMAGE_WIDTH = 400;
 const MIN_IMAGE_HEIGHT = 300;
+// URL interne (conteneur → conteneur) pour l'import d'images — distincte de
+// STUDIO_URL qui, elle, alimente les liens cliqués dans le navigateur.
+const STUDIO_IMPORT_URL = process.env.STUDIO_IMPORT_URL || process.env.STUDIO_URL || 'http://127.0.0.1:3002';
+const IMPORT_SECRET = process.env.IMPORT_SECRET || '';
 
 let browserInstance: Browser | null = null;
 
@@ -292,12 +296,59 @@ export async function downloadImage(imageUrl: string): Promise<string | null> {
 }
 
 /**
+ * Preflight: send an image URL to STUDIO's import endpoint for gabarit
+ * compatibility check. Returns the verdict or null on failure.
+ *
+ * This is fire-and-forget: failures are logged but never block the pipeline.
+ */
+export async function preflightImage(imageUrl: string): Promise<{
+  verdict: 'ok' | 'marginal' | 'bad';
+  bestGabarits: string[];
+  subjectWidth: number;
+  fitsSubject: boolean;
+} | null> {
+  if (!IMPORT_SECRET) {
+    console.log('  Preflight skipped: IMPORT_SECRET not set');
+    return null;
+  }
+
+  try {
+    const res = await fetch(`${STUDIO_IMPORT_URL}/api/images/import`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-import-secret': IMPORT_SECRET,
+      },
+      body: JSON.stringify({ url: imageUrl }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!res.ok) {
+      console.error(`  Preflight failed (${res.status}): ${await res.text().catch(() => '?')}`);
+      return null;
+    }
+
+    const data = await res.json();
+    return {
+      verdict: data.verdict,
+      bestGabarits: data.bestGabarits,
+      subjectWidth: data.subjectWidth,
+      fitsSubject: data.fitsSubject,
+    };
+  } catch (err) {
+    console.error('  Preflight error:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/**
  * Main function: find images for items that don't have any
  * Called after RSS ingestion
  */
-export async function findImagesForItems(): Promise<{ processed: number; found: number }> {
+export async function findImagesForItems(): Promise<{ processed: number; found: number; preflied: number }> {
   const items = getItemsWithoutImages();
   let found = 0;
+  let preflied = 0;
 
   console.log(`Visual search: ${items.length} items without images`);
 
@@ -311,13 +362,58 @@ export async function findImagesForItems(): Promise<{ processed: number; found: 
         updateItemImage(item.id, best.url, best.source);
         found++;
         console.log(`  Found image for "${item.title.slice(0, 60)}..." [${best.source}]`);
+
+        // Preflight: check gabarit compatibility asynchronously (non-blocking)
+        preflightImage(best.url).then((verdict) => {
+          if (verdict) {
+            updateItemImagePreflight(item.id, JSON.stringify(verdict));
+            preflied++;
+            console.log(`  Preflight ${verdict.verdict} for "${item.title.slice(0, 40)}..." [${verdict.bestGabarits.join(',')}]`);
+          }
+        }).catch(() => {});
       }
     } catch (error) {
       console.error(`  Error scraping ${item.url}:`, error);
     }
   }
 
-  return { processed: items.length, found };
+  return { processed: items.length, found, preflied };
+}
+
+/**
+ * Preflight items that have images but no preflight verdict yet.
+ * Called as step 5 in the cron pipeline.
+ */
+export async function preflightItemsWithoutVerdict(): Promise<{ checked: number; ok: number; marginal: number; bad: number }> {
+  const db = getDb();
+  const items = db.prepare(`
+    SELECT i.id, i.image_url, i.title
+    FROM items i
+    WHERE i.image_url IS NOT NULL
+      AND (i.image_rejected IS NULL OR i.image_rejected = 0)
+      AND i.image_preflight IS NULL
+    ORDER BY i.id DESC
+    LIMIT 20
+  `).all() as { id: number; image_url: string; title: string }[];
+
+  let checked = 0, ok = 0, marginal = 0, bad = 0;
+
+  if (items.length === 0) return { checked: 0, ok: 0, marginal: 0, bad: 0 };
+  console.log(`Preflight: ${items.length} images without verdict`);
+
+  for (const item of items) {
+    const verdict = await preflightImage(item.image_url);
+    if (verdict) {
+      updateItemImagePreflight(item.id, JSON.stringify(verdict));
+      checked++;
+      if (verdict.verdict === 'ok') ok++;
+      else if (verdict.verdict === 'marginal') marginal++;
+      else bad++;
+    }
+  }
+
+  console.log(`Preflight done: ${checked} checked — ${ok} ok, ${marginal} marginal, ${bad} bad`);
+  return { checked, ok, marginal, bad };
 }
 
 /**
@@ -383,6 +479,40 @@ export function getImagesForEvents(eventIds: number[]): Map<number, string | nul
   }
 
   return result;
+}
+
+/**
+ * Clean up old files in the visual-cache directory (files older than maxAgeMs).
+ * Called by the cron pipeline to prevent unbounded disk growth.
+ */
+export function cleanupVisualCache(maxAgeMs = 72 * 60 * 60 * 1000): { removed: number; kept: number } {
+  if (!fs.existsSync(VISUAL_SEARCH_DIR)) return { removed: 0, kept: 0 };
+
+  const now = Date.now();
+  let removed = 0;
+  let kept = 0;
+
+  try {
+    const files = fs.readdirSync(VISUAL_SEARCH_DIR);
+    for (const file of files) {
+      const filepath = path.join(VISUAL_SEARCH_DIR, file);
+      try {
+        const stat = fs.statSync(filepath);
+        if (stat.isFile() && now - stat.mtimeMs > maxAgeMs) {
+          fs.unlinkSync(filepath);
+          removed++;
+        } else {
+          kept++;
+        }
+      } catch {
+        kept++;
+      }
+    }
+  } catch {
+    // Directory read failure — non-fatal
+  }
+
+  return { removed, kept };
 }
 
 /**

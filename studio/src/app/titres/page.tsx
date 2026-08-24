@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
+import { decodePrefill } from "@/lib/prefill";
 import { GABARITS, GABARIT_HEIGHT, GABARIT_WIDTH } from "@/components/gabarits/registry";
 import { MontageDirect, type BulleCible } from "@/components/MontageDirect";
 import { GABARIT_2A_BULLE } from "@/components/gabarits/Gabarit2A";
@@ -89,10 +90,12 @@ interface Verdict {
 export default function TitresPage() {
   const [theme, setTheme] = useState("");
   const [titles, setTitles] = useState<string[]>([]);
+  const [surtitres, setSurtitres] = useState<string[]>([]);
   const [provider, setProvider] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [selectedSurtitre, setSelectedSurtitre] = useState<string | null>(null);
   const [selectedGabarit, setSelectedGabarit] = useState("3a");
   /** Vrai tant que l'opérateur n'a pas choisi lui-même : l'outil peut décider. */
   const [gabaritAuto, setGabaritAuto] = useState(true);
@@ -106,9 +109,50 @@ export default function TitresPage() {
    */
   const [reglages, setReglages] = useState<Record<string, string>>({});
   const [exporting, setExporting] = useState(false);
+  /** content_id passé depuis RADAR via le prefill — requis pour le callback après export. */
+  const [contentId, setContentId] = useState<string | null>(null);
 
   const fileInput = useRef<HTMLInputElement>(null);
   const router = useRouter();
+
+  /* ── Prefill depuis RADAR : auto-remplit le thème et uploade l'image ── */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("prefill");
+    if (!raw) return;
+    const data = decodePrefill(raw);
+    if (!data) return;
+
+    // Remplir le thème avec le titre
+    if (data.t) setTheme(data.t);
+
+    // Retenir le content_id pour le callback RADAR après export
+    if (data.c) setContentId(data.c);
+
+    // Si une image est fournie, la télécharger et l'uploader automatiquement
+    if (data.i && data.i !== "empty") {
+      setStatus("loading");
+      setErrorMessage(null);
+      fetch(data.i)
+        .then((r) => r.blob())
+        .then((blob) => {
+          const ext = data.i.split(".").pop()?.split("?")[0] || "jpg";
+          const file = new File([blob], `radar-image.${ext}`, {
+            type: blob.type || "image/jpeg",
+          });
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          uploadFiles(dt.files);
+        })
+        .catch(() => {
+          setErrorMessage("Impossible de télécharger l'image depuis RADAR.");
+          setStatus("idle");
+        });
+    }
+
+    // Nettoyer l'URL pour ne pas re-déclencher au refresh
+    window.history.replaceState({}, "", "/titres");
+  }, []);
 
   /* ── Découpes (3e couche + débordement) ── */
   async function detourer(cibles: UploadedImage[]) {
@@ -199,6 +243,7 @@ export default function TitresPage() {
     setStatus("loading");
     setErrorMessage(null);
     setSelectedIndex(null);
+    setSelectedSurtitre(null);
     try {
       const res = await fetch("/api/titles/generate", {
         method: "POST",
@@ -208,7 +253,11 @@ export default function TitresPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
       setTitles(data.titles);
+      setSurtitres(data.surtitres ?? []);
       setProvider(data.provider);
+      // Auto-sélectionner le premier surtitre valide pour gabarit 1B
+      const firstSurtitre = (data.surtitres as string[] | undefined ?? []).find((s: string) => s.length > 0);
+      if (firstSurtitre) setSelectedSurtitre(firstSurtitre);
       // Pré-sélection du premier titre : l'export devient disponible tout de
       // suite. Changer de titre reste un clic, pas une obligation.
       setSelectedIndex(data.titles.length > 0 ? 0 : null);
@@ -296,6 +345,12 @@ export default function TitresPage() {
       if (titleField) values.title = titles[selectedIndex];
     }
 
+    // Surtitre sélectionné (gabarit 1B)
+    if (selectedSurtitre) {
+      const eyebrowField = def.fields.find((f) => f.key === "eyebrow");
+      if (eyebrowField) values.eyebrow = selectedSurtitre;
+    }
+
     // Les réglages manuels passent en dernier : une valeur vide efface la
     // surcharge et rend la main à l'automatique.
     for (const [k, v] of Object.entries(reglages)) {
@@ -343,7 +398,11 @@ export default function TitresPage() {
       const res = await fetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gabaritId: selectedGabarit, fieldValues: buildPreviewValues() }),
+        body: JSON.stringify({
+          gabaritId: selectedGabarit,
+          fieldValues: buildPreviewValues(),
+          contentId,
+        }),
       });
       const data = await res.json().catch(() => ({ error: "Échec inconnu" }));
       if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
@@ -554,6 +613,34 @@ export default function TitresPage() {
                   </button>
                 );
               })}
+
+              {/* Surtitres générés (gabarit 1B) */}
+              {surtitres.some((s) => s.length > 0) && (
+                <div className="flex flex-col gap-2">
+                  <h2 className="text-sm font-semibold text-zinc-800">
+                    Surtitre
+                    <span className="ml-1 text-[10px] font-normal text-zinc-400">
+                      (optionnel, gabarit 1B)
+                    </span>
+                  </h2>
+                  <div className="flex flex-wrap gap-2">
+                    {surtitres.map((s, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setSelectedSurtitre(selectedSurtitre === s ? null : s)}
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                          selectedSurtitre === s
+                            ? "border-zinc-900 bg-zinc-900 text-white"
+                            : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

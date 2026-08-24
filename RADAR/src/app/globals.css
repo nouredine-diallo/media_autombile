@@ -15,23 +15,27 @@
    ========================================================================== */
 
 :root {
-  /* --- Surfaces (opaques, faible chroma) --- */
-  --surface-base: #0A0F1A;      /* fond de page */
-  --surface-sunken: #070B13;    /* puits : champs, zones inertes */
-  --surface-raised: #121A28;    /* cartes, lignes de liste */
-  --surface-hover: #182130;     /* survol d'une surface */
-  --surface-overlay: #1A2434;   /* popovers, menus, toasts */
+  /* --- Surfaces (unifiées, sombres, confort longue session) --- */
+  --surface-base: #0F1219;      /* fond de page —唯一的 fond */
+  --surface-sunken: #0B0E14;    /* puits : champs, zones inertes */
+  --surface-raised: #141820;    /* cartes, lignes de liste */
+  --surface-hover: #1A1F28;     /* survol d'une surface */
+  --surface-overlay: #1E2330;   /* popovers, menus, toasts */
+
+  /* --- Chrome (header, sidebar) — même fond que le contenu --- */
+  --chrome-bg: #0F1219;         /* identique au fond pour unité */
+  --chrome-border: rgba(255, 255, 255, 0.08); /* bordure de séparation */
 
   /* --- Bordures : filet fin, jamais un trait plein trop clair --- */
   --border-subtle: rgba(148, 163, 184, 0.12);
   --border-default: rgba(148, 163, 184, 0.18);
   --border-strong: rgba(148, 163, 184, 0.30);
 
-  /* --- Texte : contrastes vérifiés sur --surface-raised --- */
-  --text-primary: #F1F5F9;      /* ~15.5:1 */
-  --text-secondary: #A8B6CA;    /* ~8.4:1  — corps de texte secondaire */
-  --text-muted: #7E8CA0;        /* ~5.2:1  — métadonnées, seuil AA respecté */
-  --text-faint: #5C6879;        /* décoratif / grandes tailles uniquement */
+  /* --- Texte : hiérarchie claire, contraste vérifié --- */
+  --text-primary: #FFFFFF;      /* titres uniquement — blanc pur */
+  --text-secondary: #94A3B8;    /* textes secondaires — gris bleuté doux */
+  --text-muted: #64748B;        /* métadonnées, seuil AA respecté */
+  --text-faint: #475569;        /* décoratif / grandes tailles uniquement */
 
   /* --- Accent unique : la couleur de MARQUE ---------------------------------
      Mesurée sur le logo réel : #8B1D1D (rouge brique profond, désaturé).
@@ -43,16 +47,17 @@
        d'où un palier éclairci de la même teinte (OKLCH L 0,65 · h 26°)
        qui remonte à 5,05:1 sur une carte.
      ------------------------------------------------------------------------ */
-  --brand: #8B1D1D;             /* aplat : boutons principaux, marque */
-  --brand-hover: #A32724;
-  --brand-pressed: #6F1717;
+  /* --- Accent: rouge vif pour actions et onglet actif --- */
+  --brand: #E62020;             /* rouge vif — boutons principaux, accent actif */
+  --brand-hover: #FF3333;
+  --brand-pressed: #CC1A1A;
 
-  --accent: #DA675E;            /* encre : liens, icônes, onglet actif (5,05:1) */
-  --accent-hover: #E47067;
-  --accent-pressed: #C1514A;
-  --accent-soft: rgba(218, 103, 94, 0.12);
-  --accent-border: rgba(218, 103, 94, 0.34);
-  --accent-contrast: #FFFFFF;   /* sur --brand : 9,17:1 */
+  --accent: #E62020;            /* rouge vif — liens, icônes, onglet actif */
+  --accent-hover: #FF3333;
+  --accent-pressed: #CC1A1A;
+  --accent-soft: rgba(230, 32, 32, 0.12);
+  --accent-border: rgba(230, 32, 32, 0.34);
+  --accent-contrast: #FFFFFF;   /* sur --brand : contraste élevé */
 
   /* --- Sémantique d'état (jamais utilisée comme décor) -----------------------
      La marque occupant désormais le rouge, les états s'en écartent en TEINTE :
@@ -83,10 +88,10 @@
   --studio-soft: rgba(167, 139, 250, 0.12);
   --studio-border: rgba(167, 139, 250, 0.32);
 
-  /* --- Rayons --- */
+  /* --- Rayons (cohérent login → dashboard) --- */
   --radius-sm: 6px;
   --radius-md: 10px;
-  --radius-lg: 14px;
+  --radius-lg: 16px;            /* 16px comme le login glass card */
   --radius-full: 9999px;
 
   /* --- Élévation : ombres douces et larges, jamais de néon --- */
@@ -176,15 +181,10 @@ body {
 }
 
 /* CHROME UNIQUEMENT — barre latérale, en-tête, toasts, modales.
-   Interdit sur les listes, tableaux et colonnes de contenu. */
+   Fond unifié sombre + bordure de séparation. Pas de glass effect. */
 .chrome-glass {
-  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
-  backdrop-filter: blur(14px) saturate(150%);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
-  border-color: var(--border-subtle);
-}
-@supports not (backdrop-filter: blur(1px)) {
-  .chrome-glass { background: var(--surface-raised); }
+  background: var(--chrome-bg);
+  border-color: var(--chrome-border);
 }
 
 /* ---------------------------------------------------------------------------
@@ -255,6 +255,42 @@ svg {
 /* ---------------------------------------------------------------------------
    Accessibilité — respecter le réglage système
    ------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+   Barre de marque — fond sombre unifié + bordure de séparation
+   ------------------------------------------------------------------------- */
+.brand-bar {
+  background: var(--chrome-bg);
+  border-bottom: 1px solid var(--chrome-border);
+}
+
+/* Logo dans la barre de marque */
+.brand-logo {
+  height: 28px;
+  width: auto;
+  opacity: 0.95;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.brand-logo:hover {
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   Transition login → dashboard — fade-in 200ms
+   ------------------------------------------------------------------------- */
+.dashboard-enter {
+  animation: dashboardFadeIn 200ms var(--ease) forwards;
+}
+@keyframes dashboardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

@@ -276,6 +276,14 @@ function initializeDb(db: Database.Database) {
     db.exec("ALTER TABLE articles ADD COLUMN provenance TEXT DEFAULT 'assisté'");
   }
 
+  // Migration: add exported_at + drive_url to articles (callback STUDIO→RADAR)
+  if (!articleColumns2.some(col => col.name === 'exported_at')) {
+    db.exec("ALTER TABLE articles ADD COLUMN exported_at TEXT");
+  }
+  if (!articleColumns2.some(col => col.name === 'drive_url')) {
+    db.exec("ALTER TABLE articles ADD COLUMN drive_url TEXT");
+  }
+
   // Migration: add image_url to items for Mission 2 (visual search pipeline)
   const itemColumns = db.prepare("PRAGMA table_info(items)").all() as { name: string }[];
   if (!itemColumns.some(col => col.name === 'image_url')) {
@@ -307,6 +315,11 @@ function initializeDb(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_pipeline_runs_type ON pipeline_runs(run_type);
     CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started ON pipeline_runs(started_at);
   `);
+
+  // Migration: add image_preflight to items (preflight STUDIO — gabarit compatibility verdict)
+  if (!itemColumns.some(col => col.name === 'image_preflight')) {
+    db.exec("ALTER TABLE items ADD COLUMN image_preflight TEXT");
+  }
 }
 
 export interface Feed {
@@ -333,6 +346,7 @@ export interface Item {
   feed_name?: string;
   image_url?: string | null;
   image_source?: string | null;
+  image_preflight?: string | null;
 }
 
 export interface PipelineRun {
@@ -442,6 +456,7 @@ export function getDashboardAgenda() {
   // 🟢 Prêt : articles validés, prêts pour STUDIO
   const ready = db.prepare(`
     SELECT a.id, a.title, a.content_id, a.validated_at, a.chapeau,
+      a.exported_at, a.drive_url,
       (SELECT i.image_url FROM items i
        JOIN event_items ei ON ei.item_id = i.id
        WHERE ei.event_id = a.event_id AND i.image_url IS NOT NULL
@@ -457,7 +472,7 @@ export function getDashboardAgenda() {
     FROM articles a
     WHERE a.status = 'validated'
     ORDER BY a.validated_at DESC
-  `).all() as { id: number; title: string; content_id: string | null; validated_at: string | null; chapeau: string | null; image_url: string | null }[];
+  `).all() as { id: number; title: string; content_id: string | null; validated_at: string | null; chapeau: string | null; image_url: string | null; exported_at: string | null; drive_url: string | null }[];
 
   // 🤝 Partenaires : rapports à envoyer
   const partnerTasks = db.prepare(`

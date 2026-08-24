@@ -161,19 +161,19 @@ function computeCompositeScore(items: Item[]): number {
   const now = Date.now();
   let score = 0;
   
-  // 1. Density: number of sources covering the event (0-40 points)
+  // 1. Density: number of sources covering the event (0-35 points)
   const sourceCount = items.length;
-  score += Math.min(sourceCount * 10, 40);
+  score += Math.min(sourceCount * 8, 35);
   
-  // 2. Velocity: items published in last 24h (0-25 points)
+  // 2. Velocity: items published in last 24h (0-20 points)
   const recentItems = items.filter(item => {
     if (!item.published_at) return false;
     const pubDate = new Date(item.published_at).getTime();
     return (now - pubDate) < 24 * 60 * 60 * 1000;
   });
-  score += Math.min(recentItems.length * 8, 25);
+  score += Math.min(recentItems.length * 5, 20);
   
-  // 3. Freshness: most recent item age (0-20 points)
+  // 3. Freshness: most recent item age (0-15 points)
   const mostRecent = items.reduce((latest, item) => {
     if (!item.published_at) return latest;
     const pubDate = new Date(item.published_at).getTime();
@@ -182,22 +182,54 @@ function computeCompositeScore(items: Item[]): number {
   
   if (mostRecent > 0) {
     const hoursOld = (now - mostRecent) / (60 * 60 * 1000);
-    if (hoursOld < 1) score += 20;
-    else if (hoursOld < 6) score += 15;
-    else if (hoursOld < 24) score += 10;
-    else if (hoursOld < 72) score += 5;
+    if (hoursOld < 1) score += 15;
+    else if (hoursOld < 6) score += 12;
+    else if (hoursOld < 24) score += 8;
+    else if (hoursOld < 72) score += 4;
   }
   
-  // 4. Brand weight: known automotive brands get bonus (0-15 points)
-  const brandKeywords = [
-    'peugeot', 'citroën', 'ds', 'renault', 'toyota', 'volkswagen', 'vw', 'bmw',
-    'mercedes', 'audi', 'ford', 'stellantis', 'hyundai', 'kia', 'tesla', 'volvo',
-    'honda', 'nissan', 'opel', 'fiat', 'jeep', 'maserati', 'alfa romeo',
-  ];
+  // 4. Brand prestige: luxury/supercar/exclusive brands get higher bonus (0-20 points)
+  const brandKeywords: { [key: string]: number } = {
+    // Mass market (1 point each)
+    'peugeot': 1, 'citroën': 1, 'ds': 1, 'renault': 1, 'toyota': 1, 'volkswagen': 1,
+    'vw': 1, 'ford': 1, 'stellantis': 1, 'hyundai': 1, 'kia': 1, 'volvo': 1,
+    'honda': 1, 'nissan': 1, 'opel': 1, 'fiat': 1, 'jeep': 1, 'skoda': 1,
+    'seat': 1, 'cupra': 1, 'suzuki': 1, 'mazda': 1, 'subaru': 1, 'mitsubishi': 1,
+    // Premium (2 points each)
+    'bmw': 2, 'mercedes': 2, 'audi': 2, 'lexus': 2, 'acura': 2, 'infiniti': 2,
+    'genesis': 2, 'porsche': 2, 'tesla': 2,
+    // Luxury (3 points each)
+    'maserati': 3, 'alfa romeo': 3, 'bentley': 3, 'rolls-royce': 3, 'aston martin': 3,
+    'mclaren': 3, 'ferrari': 3, 'lamborghini': 3, 'bugatti': 3, 'pagani': 3,
+    'koenigsegg': 3, 'rimac': 3, 'pininfarina': 3,
+    // Electric startups (2 points each)
+    'rivian': 2, 'lucid': 2, 'nio': 2, 'xpeng': 2, 'byd': 2, 'polestar': 2,
+    'lotus': 2,
+  };
   
   const combinedText = items.map(i => `${i.title} ${i.summary || ''}`).join(' ').toLowerCase();
-  const brandMatches = brandKeywords.filter(brand => combinedText.includes(brand));
-  score += Math.min(brandMatches.length * 5, 15);
+  let brandScore = 0;
+  for (const [brand, weight] of Object.entries(brandKeywords)) {
+    if (combinedText.includes(brand)) {
+      brandScore += weight;
+    }
+  }
+  score += Math.min(brandScore, 20);
+  
+  // 5. Interest keywords: unusual/exclusive/rare content gets bonus (0-15 points)
+  const interestKeywords = [
+    'exclusive', 'first look', 'unveiled', 'debut', 'world premiere', 'prototype',
+    'concept', 'one-off', 'limited edition', 'hypercar', 'supercar', 'electric',
+    'autonomous', 'record', 'fastest', 'most powerful', 'most expensive',
+    'rare', 'classic', 'vintage', 'heritage', 'anniversary',
+  ];
+  
+  const interestMatches = interestKeywords.filter(kw => combinedText.includes(kw));
+  score += Math.min(interestMatches.length * 3, 15);
+  
+  // 6. Source diversity: multiple different feed sources = more interesting (0-10 points)
+  const uniqueFeeds = new Set(items.map(i => i.feed_id));
+  score += Math.min(uniqueFeeds.size * 3, 10);
   
   return Math.min(score, 100);
 }
