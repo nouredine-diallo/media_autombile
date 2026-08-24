@@ -20,14 +20,7 @@ RUN npm ci
 RUN npx playwright install --with-deps chromium
 
 # ── Download embeddings model at build time ──
-RUN node -e "
-const { pipeline } = require('@xenova/transformers');
-(async () => {
-  console.log('Downloading Xenova/multilingual-e5-small (~500MB)...');
-  await pipeline('feature-extraction', 'Xenova/multilingual-e5-small');
-  console.log('Model cached.');
-})().catch(e => { console.error(e); process.exit(1); });
-"
+RUN node -e "const{pipeline}=require('@xenova/transformers');(async()=>{console.log('Downloading Xenova/multilingual-e5-small (~500MB)...');await pipeline('feature-extraction','Xenova/multilingual-e5-small');console.log('Model cached.');})().catch(e=>{console.error(e);process.exit(1);})"
 
 # ── Build Next.js app ──
 COPY . .
