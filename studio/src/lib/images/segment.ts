@@ -1,5 +1,4 @@
 import "server-only";
-import * as ort from "onnxruntime-node";
 import sharp from "sharp";
 
 export class SegmentationUnavailableError extends Error {}
@@ -16,11 +15,15 @@ const SEGMENT_TIMEOUT_MS = 30_000;
 const MEAN = [0.485, 0.456, 0.406];
 const STD = [0.229, 0.224, 0.225];
 
-let sessionPromise: Promise<ort.InferenceSession> | null = null;
+let ort: any = null;
+let sessionPromise: Promise<any> | null = null;
 
-function loadSession(): Promise<ort.InferenceSession> {
+async function loadSession(): Promise<any> {
+  if (!ort) {
+    ort = await import("onnxruntime-node");
+  }
   if (!sessionPromise) {
-    sessionPromise = ort.InferenceSession.create(MODEL_PATH).catch((err) => {
+    sessionPromise = ort.InferenceSession.create(MODEL_PATH).catch((err: any) => {
       sessionPromise = null;
       throw new SegmentationUnavailableError(
         `Modèle de détourage introuvable ou invalide (${MODEL_PATH}) : ${err instanceof Error ? err.message : String(err)}`,

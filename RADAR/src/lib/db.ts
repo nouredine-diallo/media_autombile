@@ -1,12 +1,12 @@
-import Database from 'better-sqlite3';
 import path from 'path';
 
 const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'radar.db');
 
-let db: Database.Database | null = null;
+let db: any = null;
 
-export function getDb(): Database.Database {
+export function getDb(): any {
   if (!db) {
+    const Database = require('better-sqlite3');
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
@@ -15,7 +15,7 @@ export function getDb(): Database.Database {
   return db;
 }
 
-function initializeDb(db: Database.Database) {
+function initializeDb(db: any) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS feeds (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,15 +1,16 @@
-import { pipeline, env } from '@xenova/transformers';
-
-// Local models only - no remote fetching after initial download
-env.allowLocalModels = true;
-env.useBrowserCache = false;
-
+let transformers: any = null;
 let extractor: any = null;
 
 async function getExtractor() {
   if (!extractor) {
+    if (!transformers) {
+      transformers = await import('@xenova/transformers');
+      // Local models only - no remote fetching after initial download
+      transformers.env.allowLocalModels = true;
+      transformers.env.useBrowserCache = false;
+    }
     console.log('Loading embedding model (first run downloads ~500MB)...');
-    extractor = await pipeline('feature-extraction', 'Xenova/multilingual-e5-small');
+    extractor = await transformers.pipeline('feature-extraction', 'Xenova/multilingual-e5-small');
     console.log('Embedding model loaded.');
   }
   return extractor;
