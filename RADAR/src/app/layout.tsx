@@ -7,14 +7,10 @@ import { Sidebar } from "@/components/Sidebar";
 import { ToastProvider } from "@/components/Toast";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { DegradedModeBanner } from "@/components/DegradedModeBanner";
-import { initCron } from "@/lib/startup";
 import { UsernameSync } from "@/components/UsernameSync";
 import { EngineSignature } from "@/components/EngineSignature";
 import { ConsoleSignature } from "@/components/ConsoleSignature";
 import { AppFrame } from "@/components/AppFrame";
-
-// Initialize cron on server start
-initCron();
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
