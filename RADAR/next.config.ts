@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
     workerThreads: false,
     cpus: 1,
   },
+  serverExternalPackages: ['better-sqlite3', '@xenova/transformers', 'jose', 'node-cron'],
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
 };
