@@ -69,5 +69,5 @@ export function buildStudioLink(params: {
     c: params.contentId,
     b: params.briefHeadline,
   });
-  return `/studio?prefill=${encoded}`;
+  return `http://89.168.53.133:3002?prefill=${encoded}`;
 }
