@@ -114,7 +114,7 @@ export default async function Home() {
           <StatTile
             value={<IconStudio size={22} strokeWidth={1.75} />}
             label="Ouvrir STUDIO"
-            href={process.env.STUDIO_URL || "http://localhost:3001"}
+            href={process.env.STUDIO_URL || "http://89.168.53.133:3002"}
             external
             tone="studio"
           />
