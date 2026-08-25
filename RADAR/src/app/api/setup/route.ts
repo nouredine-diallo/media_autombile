@@ -2,13 +2,21 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
 const INITIAL_FEEDS = [
-  // Toyota - RSS natif (fonctionne)
+  // ── Internationaux (RSS natifs, pas de scraping) ──
+  { name: 'Autocar UK', url: 'https://www.autocar.co.uk/car-news/rss', priority: 1, requiresScraping: false },
+  { name: 'Carscoops', url: 'https://www.carscoops.com/feed/', priority: 1, requiresScraping: false },
+  { name: 'Motor1', url: 'https://www.motor1.com/rss/news/', priority: 1, requiresScraping: false },
+  { name: 'CarBuzz', url: 'https://www.carbuzz.com/feed', priority: 1, requiresScraping: false },
+  { name: 'InsideEVs', url: 'https://insideevs.com/rss/news/all/', priority: 1, requiresScraping: false },
+  { name: 'The Drive', url: 'https://www.thedrive.com/feed', priority: 2, requiresScraping: false },
+  { name: 'Green Car Reports', url: 'https://www.greencarreports.com/rss/news', priority: 2, requiresScraping: false },
+  { name: 'Top Speed', url: 'https://www.topspeed.com/feed/', priority: 2, requiresScraping: false },
+  { name: 'Motor Authority', url: 'https://www.motorauthority.com/feed', priority: 2, requiresScraping: false },
+  { name: 'Motor Trend', url: 'https://www.motortrend.com/feed/', priority: 2, requiresScraping: false },
+
+  // ── Constructeurs (RSS natifs) ──
   { name: 'Toyota Global', url: 'https://global.toyota/export/en/allnews_rss.xml', priority: 1, requiresScraping: false },
-  
-  // Stellantis - RSS natifs (nécessitent Playwright - bloqués par CDN)
-  { name: 'Stellantis Corporate', url: 'https://www.media.stellantis.com/me-en/corporate/rss', priority: 1, requiresScraping: true },
-  { name: 'Peugeot France', url: 'https://www.media.stellantis.com/fr-fr/peugeot/rss', priority: 1, requiresScraping: true },
-  { name: 'Citroën France', url: 'https://www.media.stellantis.com/fr-fr/citroen/rss', priority: 1, requiresScraping: true },
+  { name: 'BMW Press', url: 'https://www.press.bmwgroup.com/global/rss', priority: 2, requiresScraping: false },
 ];
 
 export async function POST() {
