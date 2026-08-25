@@ -69,6 +69,5 @@ export function buildStudioLink(params: {
     c: params.contentId,
     b: params.briefHeadline,
   });
-  const studioBase = process.env.STUDIO_URL || "http://89.168.53.133:3002";
-  return `${studioBase}?prefill=${encoded}`;
+  return `/studio?prefill=${encoded}`;
 }

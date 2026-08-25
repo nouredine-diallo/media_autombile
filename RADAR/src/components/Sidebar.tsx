@@ -45,7 +45,7 @@ const NAV_GROUPS: NavItem[][] = [
 ];
 
 const STUDIO_ITEM: NavItem = {
-  href: 'http://89.168.53.133:3002',
+  href: '/studio',
   icon: IconStudio,
   label: 'STUDIO',
 };
