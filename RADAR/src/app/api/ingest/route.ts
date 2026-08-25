@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getFeeds, fetchFeed, storeItems, updateFeedLastFetched } from '@/lib/rss';
-import { findImagesForItems } from '@/lib/visualSearch';
 import { startPipelineRun, completePipelineRun } from '@/lib/db';
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms))]);
+}
 
 export async function POST() {
   const runId = startPipelineRun('full');
@@ -11,7 +14,7 @@ export async function POST() {
 
   for (const feed of feeds) {
     try {
-      const items = await fetchFeed(feed);
+      const items = await withTimeout(fetchFeed(feed), 12000);
       const { stored, duplicates } = storeItems(feed.id, items);
       updateFeedLastFetched(feed.id);
       results.push({ feed: feed.name, stored, duplicates });
@@ -26,38 +29,29 @@ export async function POST() {
     }
   }
 
-  // Step 2: Auto-trigger visual search for new items
-  let imagesFound = 0;
-  try {
-    const imageResult = await findImagesForItems();
-    imagesFound = imageResult.found;
-  } catch (error) {
-    console.error('Visual search failed after ingest:', error);
-  }
-
-  // Step 3: Embedding + clustering + scoring (NEW — was missing)
+  // Step 2: Embedding + clustering + scoring (optional — skip if model unavailable)
   let eventsCreated = 0;
   try {
     const { embedUnprocessedItems, clusterItemsIntoEvents, calculateScores } = await import('@/lib/scoring');
-    const embedded = await embedUnprocessedItems();
+    const embedded = await withTimeout(embedUnprocessedItems(), 60000);
     eventsCreated = await clusterItemsIntoEvents();
     calculateScores();
     console.log(`[INGEST] Embedded: ${embedded}, Events: ${eventsCreated}`);
   } catch (error) {
-    console.error('[INGEST] Scoring/clustering error:', error);
+    console.error('[INGEST] Scoring/clustering skipped:', error instanceof Error ? error.message : error);
   }
 
   completePipelineRun(runId, 'completed', {
     items_ingested: totalStored,
     events_created: eventsCreated,
-    images_found: imagesFound,
+    images_found: 0,
   });
 
   return NextResponse.json({
     success: true,
     fetchedAt: new Date().toISOString(),
     results,
-    imagesFound,
+    imagesFound: 0,
     eventsCreated,
   });
 }

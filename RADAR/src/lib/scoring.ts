@@ -34,6 +34,7 @@ export async function embedUnprocessedItems(): Promise<number> {
     
     try {
       const embedding = await getEmbedding(text);
+      if (!embedding) continue;
       db.prepare('UPDATE items SET embedding = ? WHERE id = ?').run(serializeEmbedding(embedding), item.id);
       embedded++;
     } catch (error) {

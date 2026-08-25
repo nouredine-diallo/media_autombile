@@ -1,25 +1,36 @@
 let transformers: any = null;
 let extractor: any = null;
+let modelFailed = false;
 
-async function getExtractor() {
-  if (!extractor) {
+async function getExtractor(): Promise<any> {
+  if (modelFailed) return null;
+  if (extractor) return extractor;
+  try {
     if (!transformers) {
       transformers = await import('@xenova/transformers');
-      // Local models only - no remote fetching after initial download
       transformers.env.allowLocalModels = true;
       transformers.env.useBrowserCache = false;
     }
     console.log('Loading embedding model (first run downloads ~500MB)...');
     extractor = await transformers.pipeline('feature-extraction', 'Xenova/multilingual-e5-small');
     console.log('Embedding model loaded.');
+    return extractor;
+  } catch (error) {
+    modelFailed = true;
+    console.error('[EMBEDDINGS] Model unavailable, embeddings will be skipped:', error instanceof Error ? error.message : error);
+    return null;
   }
-  return extractor;
 }
 
-export async function getEmbedding(text: string): Promise<number[]> {
+export async function getEmbedding(text: string): Promise<number[] | null> {
   const ext = await getExtractor();
-  const output = await ext(text, { pooling: 'cls', normalize: true });
-  return Array.from(output.data) as number[];
+  if (!ext) return null;
+  try {
+    const output = await ext(text, { pooling: 'cls', normalize: true });
+    return Array.from(output.data) as number[];
+  } catch {
+    return null;
+  }
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {
