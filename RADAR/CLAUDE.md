@@ -147,6 +147,16 @@ Suivre l'ordre des étapes du cahier des charges (§8, Étape 0 à 8). Ne pas sa
 
 **Étape 0 (non codable) :** le rédacteur en chef écrit le guide de style provisoire et identifie les sources RSS. C'est le vrai chantier bloquant, et il ne dépend d'aucune ligne de code.
 
+### Sources RSS — Configurer impérativement
+
+Les sources RSS sont définies dans `RADAR/src/app/api/setup/route.ts` (constante `INITIAL_FEEDS`). **Elles doivent être adaptées au projet** et ne jamais être laissées par défaut.
+
+**Règles :**
+- Utiliser uniquement des flux RSS **natifs** (pas de scraping Playwright) — le scraping ne fonctionne pas de façon fiable sur ARM/VM.
+- Les flux Stellantis (Peugeot, Citroën, etc.) nécessitent Playwright et sont **bloqués par CDN** → ne pas les inclure.
+- Chaque flux doit être vérifié manuellement (`curl -s URL | head -20`) avant ajout.
+- La base de données est initialisée via `POST /api/setup` — après ajout de nouveaux feeds, supprimer `radar.db` et relancer pour repartir à zéro.
+
 **Principe de non-blocage :** le développement démarre avec un guide provisoire écrit à la main. Le guide est un fichier remplaçable, pas une dépendance bloquante. Les légendes Instagram viennent améliorer un système déjà fonctionnel, pas déclencher sa construction.
 
 ---
