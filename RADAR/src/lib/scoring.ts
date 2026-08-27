@@ -238,6 +238,7 @@ function computeCompositeScore(items: Item[]): number {
 export interface EventWithItems extends Event {
   items: Item[];
   feed_names: string[];
+  tags: string[];
 }
 
 export function getEventsWithItems(limit: number = 50): EventWithItems[] {
@@ -245,18 +246,35 @@ export function getEventsWithItems(limit: number = 50): EventWithItems[] {
   const events = db.prepare(
     'SELECT * FROM events ORDER BY score DESC, last_updated_at DESC LIMIT ?'
   ).all(limit) as Event[];
-  
+
+  // Tags de tous les événements en un seul aller-retour, plutôt qu'un par
+  // événement côté client (c'était 50 requêtes HTTP séquentielles sur la
+  // page Veille — le vrai coût n'était pas la BDD mais le nombre d'allers-
+  // retours réseau).
+  const eventIds = events.map(e => e.id);
+  const tagsByEvent: Record<number, string[]> = {};
+  if (eventIds.length > 0) {
+    const placeholders = eventIds.map(() => '?').join(',');
+    const tagRows = db.prepare(
+      `SELECT event_id, tag FROM event_tags WHERE event_id IN (${placeholders}) ORDER BY tag`
+    ).all(...eventIds) as { event_id: number; tag: string }[];
+    for (const row of tagRows) {
+      (tagsByEvent[row.event_id] ??= []).push(row.tag);
+    }
+  }
+
   return events.map(event => {
     const items = db.prepare(
       'SELECT i.*, f.name as feed_name FROM items i JOIN event_items ei ON i.id = ei.item_id JOIN feeds f ON i.feed_id = f.id WHERE ei.event_id = ?'
     ).all(event.id) as (Item & { feed_name: string })[];
-    
+
     const feedNames = [...new Set(items.map(i => i.feed_name))];
-    
+
     return {
       ...event,
       items,
       feed_names: feedNames,
+      tags: tagsByEvent[event.id] || [],
     };
   });
 }

@@ -1,6 +1,6 @@
 import cron, { type ScheduledTask } from 'node-cron';
 import { getFeeds, fetchFeed, storeItems, updateFeedLastFetched } from './rss';
-import { startPipelineRun, completePipelineRun, getDb } from './db';
+import { startPipelineRun, completePipelineRun, cleanupStaleRuns, getDb } from './db';
 import { runCacheCleanup } from './cacheCleanup';
 
 interface CronConfig {
@@ -48,6 +48,7 @@ async function runPipeline(): Promise<void> {
     console.log(`[CRON] Ingested ${totalStored} new items`);
 
     let eventsCreated = 0;
+    let scoringError: string | undefined;
     try {
       const { embedUnprocessedItems, clusterItemsIntoEvents, calculateScores } = await import('./scoring');
       const embedded = await withTimeout(embedUnprocessedItems(), 60000);
@@ -55,7 +56,13 @@ async function runPipeline(): Promise<void> {
       calculateScores();
       console.log(`[CRON] Embedded: ${embedded}, Events: ${eventsCreated}`);
     } catch (error) {
-      console.error('[CRON] Scoring skipped:', error instanceof Error ? error.message : error);
+      // Ne pas se contenter du console.error : un échec ici laissait
+      // `events.score` bloqué à 0 pour tous les événements, sans qu'aucun
+      // état visible ne le signale (RADAR/CLAUDE.md §6, "aucune dégradation
+      // silencieuse") — remonté dans `pipeline_runs.error`, déjà lu par
+      // PipelineStatus.tsx, plutôt que perdu dans les logs serveur.
+      scoringError = error instanceof Error ? error.message : String(error);
+      console.error('[CRON] Scoring skipped:', scoringError);
     }
 
     try {
@@ -65,9 +72,20 @@ async function runPipeline(): Promise<void> {
       console.error('[CRON] Cache cleanup error:', error);
     }
 
+    try {
+      const { runMorningAutoGeneration } = await import('./autoGenerate');
+      await runMorningAutoGeneration(runId);
+    } catch (error) {
+      // Ne bloque jamais le reste du pipeline — la génération auto est un
+      // bonus, pas une étape critique (chantier 3 du plan écosystème).
+      console.error('[CRON] Auto-génération matinale échouée:', error);
+    }
+
     completePipelineRun(runId, 'completed', {
       items_ingested: totalStored,
+      events_created: eventsCreated,
       images_found: 0,
+      error: scoringError,
     });
 
     console.log(`[CRON] Pipeline completed at ${new Date().toISOString()}`);
@@ -115,6 +133,15 @@ export function saveCronConfig(config: Partial<CronConfig>): void {
 }
 
 export function startCron(): void {
+  // Un process précédent peut être mort en plein cycle (crash, redémarrage) —
+  // sa ligne pipeline_runs reste alors bloquée à 'running' pour toujours,
+  // jamais 'completed' ni 'failed'. Nettoyé au démarrage pour ne jamais
+  // laisser un état invisible s'accumuler (RADAR/CLAUDE.md §6).
+  const cleaned = cleanupStaleRuns();
+  if (cleaned > 0) {
+    console.log(`[CRON] ${cleaned} run(s) bloqué(s) marqué(s) échoué(s) au démarrage`);
+  }
+
   const config = getCronConfig();
   if (!config.enabled) {
     console.log('[CRON] Disabled');

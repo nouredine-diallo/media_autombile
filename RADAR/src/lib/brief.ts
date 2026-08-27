@@ -1,4 +1,5 @@
 import { getDb, Item, Event } from './db';
+import { generateCarouselParagraphs } from './llm';
 
 export interface Fact {
   text: string;
@@ -250,4 +251,58 @@ export function getBrief(eventId: number): Brief | null {
     angle_suggestion: row.angle_suggestion,
     generated_at: row.generated_at,
   };
+}
+
+/**
+ * TODO: seuil provisoire (RADAR/CLAUDE.md §4.3 — jamais un seuil métier définitif
+ * sans données réelles). Mesuré sur la distribution réelle de `events.score` au
+ * 2026-08-27 (565 événements, une fois le bug de scoring silencieux corrigé —
+ * voir plan §"chantier 3") : min 11, médiane 17, p25 28, top 10% 50, top 5 80.
+ * 40 se situe nettement au-dessus de la médiane (donc ne développe pas un
+ * événement banal en plusieurs slides) sans exiger le niveau des 2 auto-générés
+ * du matin (~74+, réservé au tout meilleur du jour) — à recalibrer une fois des
+ * retours éditoriaux réels disponibles sur ce qui "mérite" plusieurs slides.
+ */
+export const DEV_SLIDE_PERTINENCE_THRESHOLD = 40;
+
+export interface BriefSlides {
+  /** Paragraphes courts (1-3) générés par LLM pour les slides 1B — jamais le brief brut. */
+  dev: string[];
+  /** false si l'événement n'a pas atteint le seuil de pertinence — le carrousel reste hook + CTA. */
+  pertinent: boolean;
+}
+
+/**
+ * Retourne les slides de développement (gabarit 1B) d'un carrousel, mais
+ * seulement si l'événement est assez pertinent pour mériter d'être développé
+ * — pas uniquement s'il y a du texte à disposition. Sous le seuil, retourne
+ * `{ dev: [], pertinent: false }` sans jamais appeler le LLM (coût nul).
+ *
+ * Décision 2026-08-27 : `brief.body` n'est pas un texte de post (concaténation
+ * déterministe de faits/résumés, voir `generateBody()`, jamais réécrite par
+ * un LLM) — l'afficher tel quel sur un carrousel afficherait du texte de
+ * brief brut, dense. Le texte réellement montré vient de
+ * `generateCarouselParagraphs()` (1 appel LLM, court par construction — voir
+ * `lib/llm.ts`), mis en cache dans `briefs.carousel_text` pour qu'une
+ * relecture de la même actu ne repaie jamais un second appel.
+ */
+export async function getCarouselSlides(eventId: number): Promise<BriefSlides | null> {
+  const db = getDb();
+
+  const event = db.prepare('SELECT score FROM events WHERE id = ?').get(eventId) as { score: number } | undefined;
+  const brief = getBrief(eventId);
+  if (!event || !brief) return null;
+
+  const pertinent = event.score >= DEV_SLIDE_PERTINENCE_THRESHOLD;
+  if (!pertinent) return { dev: [], pertinent: false };
+
+  const cached = db.prepare('SELECT carousel_text FROM briefs WHERE event_id = ?').get(eventId) as { carousel_text: string | null } | undefined;
+  if (cached?.carousel_text) {
+    return { dev: JSON.parse(cached.carousel_text), pertinent: true };
+  }
+
+  const dev = await generateCarouselParagraphs(brief);
+  db.prepare('UPDATE briefs SET carousel_text = ? WHERE event_id = ?').run(JSON.stringify(dev), eventId);
+
+  return { dev, pertinent: true };
 }

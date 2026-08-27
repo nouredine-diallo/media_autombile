@@ -14,7 +14,7 @@ export default function LoginPage() {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        background: "#982124",
+        background: "var(--brand)",
         padding: "1.5rem",
       }}
     >
@@ -38,7 +38,7 @@ export default function LoginPage() {
           borderRadius: 16,
           padding: "2.5rem 2rem",
           background:
-            "linear-gradient(135deg, rgba(206,37,38,0.85) 0%, rgba(140,26,28,0.92) 100%)",
+            "linear-gradient(135deg, rgba(202,62,62,0.85) 0%, rgba(139,29,29,0.92) 100%)",
           backdropFilter: "blur(24px)",
           WebkitBackdropFilter: "blur(24px)",
           border: "1px solid rgba(255,255,255,0.15)",
@@ -127,7 +127,7 @@ export default function LoginPage() {
               borderRadius: 8,
               border: "none",
               background: "rgba(255,255,255,0.95)",
-              color: "#8C1A1C",
+              color: "var(--brand)",
               fontSize: "0.875rem",
               fontWeight: 600,
               cursor: pending ? "not-allowed" : "pointer",

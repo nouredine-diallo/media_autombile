@@ -95,3 +95,52 @@ export function tailleTitre(titre: string): number {
 }
 export const TITLE_LINE_HEIGHT = 1.0;
 export const TITLE_LETTER_SPACING = "-0.03em";
+
+/**
+ * Réglages typographiques du paragraphe (gabarit 1B).
+ *
+ * Le paragraphe est un bloc de lecture : police plus petite, graisse medium
+ * (500) au lieu de bold (700), interlignage plus aéré (1.4) pour la
+ * lisibilité. Pas de crénage condensé — le texte doit être confortable
+ * à lire, pas percutant comme un titre.
+ *
+ * Le corps s'adapte à la longueur du texte pour que le bloc reste dans la
+ * zone noire (min-height 40% du canevas = 544 px, logo ~120 px en bas,
+ * soit ~424 px disponibles pour le texte).
+ */
+export const PARAGRAPH_FONT_SIZE_MAX = 48;
+export const PARAGRAPH_FONT_SIZE_MIN = 38;
+export const PARAGRAPH_LINE_HEIGHT = 1.4;
+export const PARAGRAPH_LETTER_SPACING = "0em";
+
+/**
+ * Corps du paragraphe adapté à sa longueur.
+ *
+ * À 48 px, une ligne tient ~33 caractères (Roboto 500, plus étroit que 700).
+ * Constante de chasse : 48 × 33 ≈ 1584. Le bloc texte ne doit pas dépasser
+ * ~424 px (zone noire 40% − logo − padding).
+ */
+export function tailleParagraphe(texte: string): number {
+  const n = texte.replace(/\*\*/g, "").trim().length;
+  if (n === 0) return PARAGRAPH_FONT_SIZE_MAX;
+  const CONSTANTE_CHASSE = 1584;
+  const HAUTEUR_MAX = 424;
+  for (let corps = PARAGRAPH_FONT_SIZE_MAX; corps >= PARAGRAPH_FONT_SIZE_MIN; corps -= 1) {
+    const parLigne = CONSTANTE_CHASSE / corps;
+    const lignes = Math.ceil(n / parLigne);
+    const hauteur = lignes * corps * PARAGRAPH_LINE_HEIGHT;
+    if (hauteur <= HAUTEUR_MAX) return corps;
+  }
+  return PARAGRAPH_FONT_SIZE_MIN;
+}
+
+/**
+ * Seuil de bascule d'alignement pour le paragraphe 1B.
+ *
+ * En dessous de ce nombre de caractères, le texte est centré (effet titre).
+ * Au-dessus, il passe à gauche (effet paragraphe/légende).
+ * Mesuré sur les posts réels : un paragraphe court (Forza) reste centré,
+ * un paragraphe dense (Parking, Maserati) doit être à gauche pour être
+ * lisible — une ligne centrée de 8+ est illisible.
+ */
+export const PARAGRAPH_ALIGN_THRESHOLD = 80;

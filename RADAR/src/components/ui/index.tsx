@@ -223,23 +223,39 @@ export function StatTile({
   href,
   external,
   tone = 'neutral',
+  primary = false,
 }: {
   value: ReactNode;
   label: string;
   href?: string;
   external?: boolean;
   tone?: Tone;
+  /**
+   * Différencie visuellement LA métrique du jour (fond teinté + chiffre plus
+   * grand) — au plus une par rangée. Sans ça, 3 tuiles de poids identique
+   * forment "the single most recognizable AI-generated dashboard shape"
+   * (grille de cartes égales, l'œil ne sait pas où se poser) — corrigé
+   * 2026-08-27 en suivant les repères mesurables d'ui-craft (educlopez/ui-craft,
+   * dashboard.md "Metric Card Hierarchy" : la primaire prend un fond teinté à
+   * la couleur de son propre ton sémantique — jamais la couleur de marque, cf.
+   * le commentaire `Tone` ci-dessus — et un chiffre nettement plus grand,
+   * ≥1.5× selon layout.md "Measurable Ratios").
+   */
+  primary?: boolean;
 }) {
   const body = (
     <>
-      <div className={`font-data text-[22px] font-semibold leading-none ${TONE_TEXT[tone]}`}>
+      <div
+        className={`font-data font-semibold leading-none ${TONE_TEXT[tone]} ${primary ? 'text-[34px]' : 'text-[22px]'}`}
+      >
         {value}
       </div>
       <div className="t-caption mt-1.5 text-[var(--text-muted)]">{label}</div>
     </>
   );
-  const cls =
-    'block rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-4 py-3.5 transition-colors duration-[var(--dur)] hover:border-[var(--border-default)] hover:bg-[var(--surface-hover)]';
+  const cls = primary
+    ? `block rounded-[var(--radius-lg)] border px-4 py-3.5 transition-colors duration-[var(--dur)] ${TONE_SOFT_BG[tone]} ${TONE_BORDER[tone]}`
+    : 'block rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-4 py-3.5 transition-colors duration-[var(--dur)] hover:border-[var(--border-default)] hover:bg-[var(--surface-hover)]';
 
   if (!href) return <div className={cls}>{body}</div>;
   if (external)

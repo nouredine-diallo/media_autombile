@@ -1,8 +1,9 @@
 import { getDb, Event } from './db';
 import { getBrief, Brief } from './brief';
-import { generate, buildArticlePrompt } from './llm';
+import { generateChained, generateArticleSmart } from './llm';
 import { getActiveStyleRulesForPrompt, recordStyleRuleUsage, formatStyleRulesForPrompt } from './styleRules';
 import { getDegradedModeStatus } from './killswitch';
+import { verifyArticleAgainstBrief, VerificationResult } from './verification';
 
 export interface Article {
   id: number;
@@ -30,7 +31,7 @@ export class DegradedModeError extends Error {
   }
 }
 
-export async function generateArticle(eventId: number): Promise<Article | null> {
+export async function generateArticle(eventId: number, provenance: string = 'assisté'): Promise<Article | null> {
   const db = getDb();
 
   // Kill-switch (Étape 3.3) : si le rédacteur en chef a rejeté plusieurs
@@ -50,29 +51,32 @@ export async function generateArticle(eventId: number): Promise<Article | null> 
   }
 
   // Build prompt from brief
-  const prompt = buildArticlePrompt(brief);
+  const briefData = {
+    headline: brief.headline,
+    lede: brief.lede || '',
+    body: brief.body || '',
+    facts: brief.facts || [],
+    angle_suggestion: brief.angle_suggestion || '',
+  };
 
-  // "Prompt as Data" (Étape 3.2) : règles ajoutées par la rédaction en chef via /style-guide
+  // "Prompt as Data" (Étape 3.2) : règles ajoutées par la rédacteur en chef via /style-guide
   const styleRules = getActiveStyleRulesForPrompt();
   const extraStyleRules = formatStyleRulesForPrompt(styleRules);
 
-  // Generate article using LLM — retry once if content is empty
-  let response = await generate({
-    prompt,
-    maxTokens: 4096,
-    temperature: 0.3,
-    extraStyleRules,
-  });
+  // Pipeline intelligent : détection de type → few-shot → génération chaînée
+  // Essaie d'abord la chaîne (2 passes, meilleure qualité), fallback sur 1 passe
+  let response;
+  try {
+    response = await generateChained(briefData, extraStyleRules || undefined);
+  } catch {
+    // Fallback : génération directe (1 passe, plus rapide)
+    response = await generateArticleSmart(briefData, extraStyleRules || undefined);
+  }
 
   let parsed = parseGeneratedArticle(response.content);
   if (parsed.wordCount < 10 && response.content.length < 100) {
-    // Model returned empty/buggy content — retry once with slightly higher temperature
-    response = await generate({
-      prompt,
-      maxTokens: 4096,
-      temperature: 0.5,
-      extraStyleRules,
-    });
+    // Model returned empty/buggy content — retry once with direct generation
+    response = await generateArticleSmart(briefData, extraStyleRules || undefined);
     parsed = parseGeneratedArticle(response.content);
   }
 
@@ -89,7 +93,7 @@ export async function generateArticle(eventId: number): Promise<Article | null> 
   const contentId = `LMA-ART-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const result = db.prepare(`
     INSERT INTO articles (content_id, event_id, brief_id, title, chapeau, content, meta_description, word_count, status, provenance)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'assisté')
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)
   `).run(
     contentId,
     eventId,
@@ -98,10 +102,39 @@ export async function generateArticle(eventId: number): Promise<Article | null> 
     parsed.chapeau,
     parsed.content,
     parsed.metaDescription,
-    parsed.wordCount
+    parsed.wordCount,
+    provenance
   );
 
   return db.prepare('SELECT * FROM articles WHERE id = ?').get(result.lastInsertRowid) as Article;
+}
+
+/**
+ * Génère un article puis exécute immédiatement le contrôle numérique
+ * (`verifyArticleAgainstBrief`) et l'enregistre — auparavant dupliqué entre
+ * `POST /api/generate` et le chantier de génération automatique du matin.
+ * Une seule fonction, un seul chemin, réutilisée par les deux (§chantier 3
+ * du plan écosystème 2026-08-27).
+ */
+export async function generateAndVerifyArticle(
+  eventId: number,
+  provenance: string = 'assisté',
+): Promise<{ article: Article; verification: VerificationResult } | null> {
+  const article = await generateArticle(eventId, provenance);
+  if (!article) return null;
+
+  const brief = getBrief(eventId);
+  if (!brief) return { article, verification: { numbersVerified: [], numbersMissing: [], numbersAdded: [], confidenceScore: 0, issues: [] } };
+
+  const verification = verifyArticleAgainstBrief(brief, article.content, article.title);
+  const db = getDb();
+  db.prepare(`UPDATE articles SET verification_score = ?, verification_issues = ? WHERE id = ?`)
+    .run(verification.confidenceScore, JSON.stringify(verification.issues), article.id);
+
+  return {
+    article: { ...article, verification_score: verification.confidenceScore, verification_issues: JSON.stringify(verification.issues) },
+    verification,
+  };
 }
 
 /**

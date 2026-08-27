@@ -24,7 +24,7 @@ export interface CalendarEventWithType extends CalendarEvent {
 }
 
 // Event type colors and labels
-const EVENT_TYPES: Record<string, { label: string; color: string }> = {
+export const EVENT_TYPES: Record<string, { label: string; color: string }> = {
   deadline_article: { label: 'Deadline article', color: '#ef4444' },
   publication_instagram: { label: 'Publication Instagram', color: '#8b5cf6' },
   envoi_rapport: { label: 'Envoi rapport', color: '#3b82f6' },

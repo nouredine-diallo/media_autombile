@@ -42,6 +42,13 @@ export function FactHighlighter({ content, articleKey, onContentChange, onCheckl
     });
   };
 
+  /** Macro-action : coche toutes les données sensibles en 1 clic. */
+  const checkAll = () => {
+    const allIndices = new Set<number>();
+    for (let i = 0; i < sensitiveCount; i++) allIndices.add(i);
+    setChecked(allIndices);
+  };
+
   const handleCorrect = (idx: number, oldText: string, start: number, end: number) => {
     const corrected = window.prompt('Corriger cette valeur :', oldText);
     if (corrected === null || corrected === oldText) return;
@@ -50,6 +57,8 @@ export function FactHighlighter({ content, articleKey, onContentChange, onCheckl
     // La valeur vient d'être vérifiée par le rédacteur lui-même.
     setChecked(prev => new Set(prev).add(idx));
   };
+
+  const hasUnchecked = sensitiveCount > 0 && checked.size < sensitiveCount;
 
   let sensitiveIndex = -1;
 
@@ -78,6 +87,15 @@ export function FactHighlighter({ content, articleKey, onContentChange, onCheckl
           </mark>
         );
       })}
+      {hasUnchecked && (
+        <button
+          type="button"
+          onClick={checkAll}
+          className="ml-2 inline-flex items-center gap-1 rounded border border-[var(--border-default)] bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]"
+        >
+          Tout confirmer ({sensitiveCount - checked.size})
+        </button>
+      )}
     </>
   );
 }

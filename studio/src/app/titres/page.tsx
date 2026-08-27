@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowRight,
@@ -91,11 +90,13 @@ export default function TitresPage() {
   const [theme, setTheme] = useState("");
   const [titles, setTitles] = useState<string[]>([]);
   const [surtitres, setSurtitres] = useState<string[]>([]);
+  const [paragraphs, setParagraphs] = useState<string[]>([]);
   const [provider, setProvider] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [selectedSurtitre, setSelectedSurtitre] = useState<string | null>(null);
+  const [selectedParagraph, setSelectedParagraph] = useState<number | null>(null);
   const [selectedGabarit, setSelectedGabarit] = useState("3a");
   /** Vrai tant que l'opérateur n'a pas choisi lui-même : l'outil peut décider. */
   const [gabaritAuto, setGabaritAuto] = useState(true);
@@ -111,11 +112,14 @@ export default function TitresPage() {
   const [exporting, setExporting] = useState(false);
   /** content_id passé depuis RADAR via le prefill — requis pour le callback après export. */
   const [contentId, setContentId] = useState<string | null>(null);
+  /** Contexte source depuis le prefill RADAR : nom du flux + chapeau de l'article. */
+  const [sourceContext, setSourceContext] = useState<{ source: string; headline: string } | null>(null);
+  /** État de l'export inline — évite la navigation vers /export/{jobId}. */
+  const [exportJob, setExportJob] = useState<{ jobId: string; status: string; driveUrl?: string; hasDownload?: boolean } | null>(null);
 
   const fileInput = useRef<HTMLInputElement>(null);
-  const router = useRouter();
 
-  /* ── Prefill depuis RADAR : auto-remplit le thème et uploade l'image ── */
+  /* ── Prefill depuis RADAR : auto-remplit le thème, uploade l'image, génère les titres ── */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const raw = params.get("prefill");
@@ -128,6 +132,11 @@ export default function TitresPage() {
 
     // Retenir le content_id pour le callback RADAR après export
     if (data.c) setContentId(data.c);
+
+    // Afficher le contexte source (nom du flux + chapeau)
+    if (data.s || data.b) {
+      setSourceContext({ source: data.s, headline: data.b });
+    }
 
     // Si une image est fournie, la télécharger et l'uploader automatiquement
     if (data.i && data.i !== "empty") {
@@ -146,6 +155,36 @@ export default function TitresPage() {
         })
         .catch(() => {
           setErrorMessage("Impossible de télécharger l'image depuis RADAR.");
+          setStatus("idle");
+        });
+    }
+
+    // Auto-générer les titres si on a un thème (élimine 1 clic)
+    if (data.t && data.t.trim().length > 0) {
+      setStatus("loading");
+      fetch("/api/titles/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme: data.t }),
+      })
+        .then((r) => r.json())
+        .then((gen) => {
+          if (gen.titles) {
+            setTitles(gen.titles);
+            setSurtitres(gen.surtitres ?? []);
+            setParagraphs(gen.paragraphs ?? []);
+            setProvider(gen.provider);
+            setSelectedIndex(gen.titles.length > 0 ? 0 : null);
+            if (gen.paragraphs && gen.paragraphs.length > 0) {
+              setSelectedParagraph(0);
+            }
+            const firstSurtitre = (gen.surtitres ?? []).find((s: string) => s.length > 0);
+            if (firstSurtitre) setSelectedSurtitre(firstSurtitre);
+          }
+          setStatus("idle");
+        })
+        .catch(() => {
+          // L'utilisateur peut réessayer manuellement via le bouton
           setStatus("idle");
         });
     }
@@ -244,6 +283,7 @@ export default function TitresPage() {
     setErrorMessage(null);
     setSelectedIndex(null);
     setSelectedSurtitre(null);
+    setSelectedParagraph(null);
     try {
       const res = await fetch("/api/titles/generate", {
         method: "POST",
@@ -254,10 +294,15 @@ export default function TitresPage() {
       if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
       setTitles(data.titles);
       setSurtitres(data.surtitres ?? []);
+      setParagraphs(data.paragraphs ?? []);
       setProvider(data.provider);
       // Auto-sélectionner le premier surtitre valide pour gabarit 1B
       const firstSurtitre = (data.surtitres as string[] | undefined ?? []).find((s: string) => s.length > 0);
       if (firstSurtitre) setSelectedSurtitre(firstSurtitre);
+      // Auto-sélectionner le premier paragraphe pour gabarit 1B
+      if (data.paragraphs && data.paragraphs.length > 0) {
+        setSelectedParagraph(0);
+      }
       // Pré-sélection du premier titre : l'export devient disponible tout de
       // suite. Changer de titre reste un clic, pas une obligation.
       setSelectedIndex(data.titles.length > 0 ? 0 : null);
@@ -345,7 +390,13 @@ export default function TitresPage() {
       if (titleField) values.title = titles[selectedIndex];
     }
 
-    // Surtitre sélectionné (gabarit 1B)
+    // Paragraphe sélectionné (gabarit 1B)
+    if (selectedParagraph !== null && paragraphs[selectedParagraph]) {
+      const paragraphField = def.fields.find((f) => f.key === "paragraph");
+      if (paragraphField) values.paragraph = paragraphs[selectedParagraph];
+    }
+
+    // Surtitre sélectionné (ancien gabarit 1B, gardé pour compatibilité)
     if (selectedSurtitre) {
       const eyebrowField = def.fields.find((f) => f.key === "eyebrow");
       if (eyebrowField) values.eyebrow = selectedSurtitre;
@@ -390,10 +441,11 @@ export default function TitresPage() {
     return () => { annule = true; };
   }, [fondId, fondPret, selectedGabarit, gabaritAuto]);
 
-  /* ── Export direct, sans passer par l'éditeur ── */
+  /* ── Export direct avec polling inline (pas de navigation) ── */
   async function handleExport() {
     setExporting(true);
     setErrorMessage(null);
+    setExportJob(null);
     try {
       const res = await fetch("/api/export", {
         method: "POST",
@@ -406,11 +458,36 @@ export default function TitresPage() {
       });
       const data = await res.json().catch(() => ({ error: "Échec inconnu" }));
       if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
-      router.push(`/export/${data.jobId}`);
+      // Polling inline au lieu de naviguer vers /export/{jobId}
+      const jobId = data.jobId as string;
+      setExportJob({ jobId, status: "pending" });
+      setExporting(false);
+      pollExport(jobId);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Erreur inconnue");
       setExporting(false);
     }
+  }
+
+  /* ── Polling de l'export — même logique que ExportConfirmationClient ── */
+  function pollExport(jobId: string) {
+    let cancelled = false;
+    async function loop() {
+      if (cancelled) return;
+      try {
+        const r = await fetch(`/api/export/${jobId}`);
+        if (!r.ok) return;
+        const j = await r.json();
+        setExportJob({ jobId, status: j.status, driveUrl: j.driveUrl, hasDownload: j.hasDownload });
+        if (j.status !== "done" && j.status !== "error") {
+          setTimeout(loop, 800);
+        }
+      } catch {
+        // Erreur réseau — on arrête le polling silencieusement
+      }
+    }
+    loop();
+    return () => { cancelled = true; };
   }
 
   const previewValues = buildPreviewValues();
@@ -427,7 +504,10 @@ export default function TitresPage() {
   }));
   const gabaritDef = GABARITS[selectedGabarit];
   const PreviewComponent = gabaritDef?.Component;
-  const selectedTitle = selectedIndex !== null ? titles[selectedIndex] : null;
+  const isGabarit1B = selectedGabarit === "1b";
+  const selectedTitle = isGabarit1B
+    ? (selectedParagraph !== null ? paragraphs[selectedParagraph] : null)
+    : (selectedIndex !== null ? titles[selectedIndex] : null);
 
   // Nombre d'images requises pour le gabarit sélectionné
   const requiredImages = gabaritDef
@@ -453,6 +533,20 @@ export default function TitresPage() {
             <p className="text-sm text-zinc-500">
               Uploadez vos images, choisissez un gabarit, générez le titre.
             </p>
+            {sourceContext && (sourceContext.source || sourceContext.headline) && (
+              <div className="mt-1.5 flex items-center gap-2 text-xs text-zinc-500">
+                {sourceContext.source && (
+                  <span className="rounded-md bg-zinc-100 px-2 py-0.5 font-medium text-zinc-600">
+                    {sourceContext.source}
+                  </span>
+                )}
+                {sourceContext.headline && (
+                  <span className="truncate max-w-xs">
+                    {sourceContext.headline}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -503,9 +597,13 @@ export default function TitresPage() {
                 e.target.value = "";
               }}
             />
-            {images.length > 0 && (
+            {images.length > 0 ? (
               <p className="text-xs text-zinc-400">
                 {images.length}/{requiredImages} images pour {gabaritDef?.label}
+              </p>
+            ) : (
+              <p className="text-xs text-zinc-400">
+                De 1 à 3 photos. La première devient le fond, les suivantes remplissent les bulles.
               </p>
             )}
           </div>
@@ -521,7 +619,7 @@ export default function TitresPage() {
                   onClick={() => { setGabaritAuto(false); setNoteAuto(null); setReglages({}); setSelectedGabarit(g.id); }}
                   className={`rounded-lg border px-3 py-2 text-left text-xs font-medium transition-all ${
                     selectedGabarit === g.id
-                      ? "border-zinc-900 bg-zinc-900 text-white"
+                      ? "border-brand bg-brand text-white"
                       : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
                   }`}
                 >
@@ -541,17 +639,21 @@ export default function TitresPage() {
               value={theme}
               onChange={(e) => setTheme(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
-              placeholder="Mercedes SL 60 AMG, Renault 5 E-Tech…"
+              placeholder="Le sujet de votre actualité — ex. Renault 5 E-Tech, Formule 1, rappel Tesla…"
               className="w-full rounded-xl border-2 border-zinc-300 bg-white px-4 py-3 text-sm font-medium text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-600 focus:outline-none"
             />
             <button
               type="button"
               onClick={handleGenerate}
               disabled={status === "loading" || theme.trim().length === 0}
-              className="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-zinc-700 disabled:opacity-50"
+              className="rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-hover active:bg-brand-pressed disabled:opacity-50"
             >
               {status === "loading" ? "Génération…" : "Générer 3 titres"}
             </button>
+            <p className="text-xs text-zinc-400">
+              Génère titres, surtitres et paragraphes dans le ton du Média.
+              Choisissez-en un, modifiez-le si besoin, puis exportez.
+            </p>
           </div>
 
           {errorMessage && (
@@ -564,82 +666,119 @@ export default function TitresPage() {
           {titles.length > 0 && (
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-zinc-800">Titres</h2>
+                <h2 className="text-sm font-semibold text-zinc-800">
+                  {isGabarit1B ? "Paragraphes" : "Titres"}
+                </h2>
                 {provider && (
                   <span className="text-[10px] text-zinc-400">via {provider}</span>
                 )}
               </div>
-              {titles.map((t, i) => {
-                const len = t.length;
-                const outOfRange = len < MIN_LEN || len > MAX_LEN;
-                return (
+
+              {/* Mode gabarit 1B : afficher les paragraphes */}
+              {isGabarit1B ? (
+                paragraphs.map((p, i) => (
                   <button
                     key={i}
                     type="button"
-                    onClick={() => setSelectedIndex(i)}
+                    onClick={() => setSelectedParagraph(i)}
                     className={`w-full rounded-xl border-2 p-3 text-left transition-all ${
-                      selectedIndex === i
-                        ? "border-zinc-900 bg-zinc-900 text-white"
+                      selectedParagraph === i
+                        ? "border-brand bg-brand text-white"
                         : "border-zinc-200 bg-white hover:border-zinc-400"
                     }`}
                   >
-                    <textarea
-                      value={t}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        updateTitle(i, e.target.value);
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedIndex(i);
-                      }}
-                      rows={2}
-                      className={`w-full resize-none bg-transparent text-sm outline-none ${
-                        selectedIndex === i ? "text-white" : "text-zinc-900"
-                      }`}
-                    />
                     <p
-                      className={`mt-1 text-[10px] ${
-                        outOfRange
-                          ? "text-red-400"
-                          : selectedIndex === i
-                            ? "text-zinc-400"
-                            : "text-zinc-400"
+                      className={`whitespace-pre-wrap text-sm ${
+                        selectedParagraph === i ? "text-white" : "text-zinc-900"
                       }`}
                     >
-                      {len} car.{" "}
-                      {outOfRange && `(recommandé ${MIN_LEN}–${MAX_LEN})`}
+                      {p}
+                    </p>
+                    <p
+                      className={`mt-1 text-[10px] ${
+                        selectedParagraph === i ? "text-zinc-400" : "text-zinc-400"
+                      }`}
+                    >
+                      {p.replace(/\*\*/g, "").length} car. · 25-60 mots recommandés
                     </p>
                   </button>
-                );
-              })}
-
-              {/* Surtitres générés (gabarit 1B) */}
-              {surtitres.some((s) => s.length > 0) && (
-                <div className="flex flex-col gap-2">
-                  <h2 className="text-sm font-semibold text-zinc-800">
-                    Surtitre
-                    <span className="ml-1 text-[10px] font-normal text-zinc-400">
-                      (optionnel, gabarit 1B)
-                    </span>
-                  </h2>
-                  <div className="flex flex-wrap gap-2">
-                    {surtitres.map((s, i) => (
+                ))
+              ) : (
+                /* Mode gabarits autres : afficher les titres + surtitres */
+                <>
+                  {titles.map((t, i) => {
+                    const len = t.length;
+                    const outOfRange = len < MIN_LEN || len > MAX_LEN;
+                    return (
                       <button
                         key={i}
                         type="button"
-                        onClick={() => setSelectedSurtitre(selectedSurtitre === s ? null : s)}
-                        className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
-                          selectedSurtitre === s
-                            ? "border-zinc-900 bg-zinc-900 text-white"
-                            : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
+                        onClick={() => setSelectedIndex(i)}
+                        className={`w-full rounded-xl border-2 p-3 text-left transition-all ${
+                          selectedIndex === i
+                            ? "border-brand bg-brand text-white"
+                            : "border-zinc-200 bg-white hover:border-zinc-400"
                         }`}
                       >
-                        {s}
+                        <textarea
+                          value={t}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            updateTitle(i, e.target.value);
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedIndex(i);
+                          }}
+                          rows={2}
+                          className={`w-full resize-none bg-transparent text-sm outline-none ${
+                            selectedIndex === i ? "text-white" : "text-zinc-900"
+                          }`}
+                        />
+                        <p
+                          className={`mt-1 text-[10px] ${
+                            outOfRange
+                              ? "text-red-400"
+                              : selectedIndex === i
+                                ? "text-zinc-400"
+                                : "text-zinc-400"
+                          }`}
+                        >
+                          {len} car.{" "}
+                          {outOfRange && `(recommandé ${MIN_LEN}–${MAX_LEN})`}
+                        </p>
                       </button>
-                    ))}
-                  </div>
-                </div>
+                    );
+                  })}
+
+                  {/* Surtitres générés */}
+                  {surtitres.some((s) => s.length > 0) && (
+                    <div className="flex flex-col gap-2">
+                      <h2 className="text-sm font-semibold text-zinc-800">
+                        Surtitre
+                        <span className="ml-1 text-[10px] font-normal text-zinc-400">
+                          (optionnel)
+                        </span>
+                      </h2>
+                      <div className="flex flex-wrap gap-2">
+                        {surtitres.map((s, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => setSelectedSurtitre(selectedSurtitre === s ? null : s)}
+                            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                              selectedSurtitre === s
+                                ? "border-brand bg-brand text-white"
+                                : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-400"
+                            }`}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -680,14 +819,14 @@ export default function TitresPage() {
             </div>
           )}
 
-          {/* ── Sortie : export direct, ajustement optionnel ── */}
-          {selectedTitle && (
+          {/* ── Sortie : export inline ── */}
+          {selectedTitle && !exportJob && (
             <div className="flex flex-col gap-2">
               <button
                 type="button"
                 onClick={handleExport}
                 disabled={exporting}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-zinc-900 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-zinc-700 disabled:opacity-60"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-hover active:bg-brand-pressed disabled:opacity-60"
               >
                 {exporting ? (
                   <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -707,6 +846,59 @@ export default function TitresPage() {
               <p className="text-center text-xs text-zinc-400">
                 L&apos;aperçu ci-contre est le rendu final. L&apos;ajustement est optionnel.
               </p>
+            </div>
+          )}
+
+          {/* ── Export inline : statut + lien Drive ── */}
+          {exportJob && (
+            <div className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4">
+              <div className="flex items-center gap-2">
+                {exportJob.status !== "done" && exportJob.status !== "error" && (
+                  <Loader2 className="size-4 animate-spin text-zinc-400" aria-hidden />
+                )}
+                {exportJob.status === "done" && (
+                  <CheckCircle2 className="size-4 text-brand" aria-hidden />
+                )}
+                {exportJob.status === "error" && (
+                  <AlertTriangle className="size-4 text-red-500" aria-hidden />
+                )}
+                <span className="text-sm font-medium text-zinc-700">
+                  {exportJob.status === "pending" && "Préparation…"}
+                  {exportJob.status === "rendering" && "Rendu Playwright…"}
+                  {exportJob.status === "uploading" && "Upload vers Drive…"}
+                  {exportJob.status === "done" && "Terminé !"}
+                  {exportJob.status === "error" && "Erreur d'export"}
+                </span>
+              </div>
+              {exportJob.status === "done" && (
+                <div className="flex flex-col gap-2">
+                  {exportJob.driveUrl && (
+                    <a
+                      href={exportJob.driveUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-lg bg-brand px-4 py-2 text-center text-sm font-medium text-white transition-colors hover:bg-brand-hover"
+                    >
+                      Ouvrir dans Google Drive
+                    </a>
+                  )}
+                  {exportJob.hasDownload && (
+                    <a
+                      href={`/api/export/${exportJob.jobId}/download`}
+                      className="rounded-lg border border-zinc-200 px-4 py-2 text-center text-sm font-medium text-zinc-600 hover:bg-zinc-50"
+                    >
+                      Télécharger le PNG
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setExportJob(null)}
+                    className="text-xs text-zinc-400 hover:text-zinc-600"
+                  >
+                    Créer un autre post
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </section>

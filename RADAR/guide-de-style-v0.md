@@ -1,116 +1,98 @@
-# Guide de style — RADAR — Version 0 (provisoire)
+# Guide de style — RADAR — Version 1 (basé sur 8 posts réels)
 
-**Statut :** Template à compléter avec le rédacteur en chef.
-**Dernière mise à jour :** 2026-08-18
+**Statut :** Première version calibrée sur du vrai contenu LMA.
+**Source :** 8 posts réels de @lemediaautomobile (studio/inspi/TEXTPOST.txt)
+**Dernière mise à jour :** 2026-08-26
 **Prochaine révision prévue :** Après les 4-6 premières semaines de production réelle.
 
 ---
 
-## Couche 1 — La voix (dérivée des légendes Instagram, semi-automatique)
-
-> ⚠️ Cette section sera enrichie lorsque les légendes Instagram seront fournies.
-> En attendant, un minimum de Guidelines est défini ci-dessous pour permettre le développement.
+## Couche 1 — La voix (extraite des 8 posts réels)
 
 ### 1.1 Lexique préféré / évité
 
 | Catégorie | Préféré | Évité |
 |---|---|---|
 | Véhicule | voiture, modèle, gamme | véhicule (trop technique) |
-| Motorisation | motorisation,/version | motorisation (trop technique) |
-| Lancement | dévoile, présente, lancé | sort, publie |
+| Motorisation | bloc, architecture, transmission | — |
+| Annonces | dévoile, présente, lance, introduit | sort, publie |
 | Prix | à partir de, tarif de | coût de, prix de revient |
 | Performances | 0 à 100, puissance, couple | accélération, rendement |
-
-> **TODO :** Compléter avec le lexique réel du Média Automobile tel qu'utilisé dans les légendes.
+| Design | premium, haut de gamme, luxe | cher, coûteux |
+| Sport | drift, glisse, restomod | dérive contrôlée, rétrofit |
 
 ### 1.2 Profil de registre
 
-| Paramètre | Valeur provisoire | À valider |
+| Paramètre | Valeur | Source |
 |---|---|---|
-| Tutoiement ou vouvoiement | `TODO` | Vouvoiement probable (standard média français) |
-| Niveau d'enthousiasme | `TODO` | Modéré à enthousiaste (style presse auto) |
-| Humour | `TODO` | Rare, subtil si présent |
-| Anglais technique toléré | `TODO` | Oui pour termes établis (facelift, restylage, etc.) |
+| Tutoiement ou vouvoiement | **Tutoiement** | Confirmé sur les 8 posts : "Tu veux suivre..." |
+| Niveau d'enthousiasme | Modéré à complice | Jamais sensationnaliste, jamais froid |
+| Humour | Rare, subtil si présent | Post 5 (Buick) = exception, ton complice |
+| Anglais technique toléré | Oui pour termes établis | facelift, restylage, drift, restomod |
 
-### 1.3 Tournures récurrentes (à enrichir avec les légendes)
+### 1.3 Tournures récurrentes
 
-- "Le constructeur [marque] dévoile..."
-- "La nouveauté [modèle]..."
-- "Selon [source officielle]..."
+- "Seulement X mois après..." (constat temporel)
+- "C'est officiel :..." (annonce confirmée)
+- "Interrogé par [source], [nom] affirme que..." (citation journalistique)
+- "Leur méthode ne nécessitait aucun..." (mise en contexte surprise)
+- "POURQUOI... ? On vous explique." (accroche question + promesse)
+- "Elle porte un [objet] à [prix] qui..." (accroche chiffrée)
 
-> **TODO :** Extraire les tournures récurrentes des légendes Instagram une fois fournies.
+### 1.4 Structure des titres
+
+| Type | Longueur | Style | Exemple |
+|---|---|---|---|
+| Annonce | 30-60 car. | Phrase complète, factuel | "Max Verstappen prolonge avec Red Bull jusqu'en 2030" |
+| Curiosité | 40-90 car. | Phrase intrigante ou question | "Dans cette publicité, ces parents offrent une voiture à celle qui acceptera de sortir avec leur fils" |
+| Chiffré | 50-95 car. | Accroche + chiffre | "Elle porte un collier à 320 000 € qui cache tous les circuits de Formule 1" |
 
 ---
 
-## Couche 2 — La structure (écrite à la main par le rédacteur en chef)
+## Couche 2 — La structure (des 8 posts réels)
 
-> ⚠️ **CETTE SECTION DOIT ÊTRE COMPLÉTÉE PAR LE RÉDACTEUR EN CHEF.**
-> "Personne ne peut extraire d'un texte de 50 mots comment structurer un article de 500."
-> Le développement peut démarrer avec des valeurs provisoires, mais la qualité dépend de ces décisions.
+### 2.1 Longueur des contenus
 
-### 2.1 Longueur cible d'un article
-
-| Type d'article | Longueur cible | Plage acceptable |
+| Type de contenu | Longueur observée | Plage |
 |---|---|---|
-| Annonce de modèle | `TODO` mots | `TODO` — `TODO` mots |
-| Comparatif | `TODO` mots | `TODO` — `TODO` mots |
-| Actualité marché | `TODO` mots | `TODO` — `TODO` mots |
-| Embargo / fuite | `TODO` mots | `TODO` — `TODO` mots |
+| Titre (slide 1) | 8-18 mots | 30-95 caractères |
+| Paragraphe (slide 2+) | 25-60 mots | 1-2 phrases |
+| Description longue | 80-200 mots | 3-6 phrases |
 
-> **TODO :** Le rédacteur en chef définit la longueur cible pour chaque type d'article.
+### 2.2 Structure des paragraphes (slides)
 
-### 2.2 Ouverture de l'article
+**Pattern observé : 1 idée par slide, phrases courtes (15-25 mots)**
 
-| Option | Description | Choix |
-|---|---|---|
-| Attaque factuelle | Le premier paragraphe donne le fait principal directement | `TODO` |
-| Mise en contexte | Le premier paragraphe pose le contexte avant le fait | `TODO` |
-| Autre | `TODO` | `TODO` |
+- Slide 1 (accroche) : le fait principal ou l'accroche intrigante
+- Slide 2 (détail) : une pièce du récit, un chiffre, un témoignage
+- Slide 3 (contexte) : ce qu'il faut retenir, la chute, la conclusion
+- Slide 4 (CTA) : toujours le même — "Tu veux suivre toute l'actu automobile ?"
 
-> **TODO :** Le rédacteur en chef choisit le type d'ouverture privilégié.
+### 2.3 Structure des descriptions longues
 
-### 2.3 Structure du corps
+**Pattern observé : Contexte + nuance + "ce qu'il faut retenir"**
 
-| Élément | Présence | Position |
-|---|---|---|
-| Chapô (résumé en 2-3 lignes) | `TODO` (oui/non) | `TODO` |
-| Sous-titres (H2/H3) | `TODO` (oui/non) | `TODO` |
-| Encadré résumé (boîte à part) | `TODO` (oui/non) | `TODO` |
-| Liste à puces (caractéristiques) | `TODO` (oui/non) | `TODO` |
+1. Première phrase = résumé du fait (souvent identique au titre)
+2. Deuxième phrase = contexte ou détails supplémentaires
+3. Troisième phrase = nuance, counterpoint, "à noter toutefois"
+4. Dernière phrase = ce qu'il faut retenir ou conclusion
 
-> **TODO :** Le rédacteur en chef décide de la présence de chaque élément.
+### 2.4 Style des chiffres
 
-### 2.4 Intégration des citations officielles
+**Règle : toujours contextualisés, jamais seuls**
 
-| Option | Description | Choix |
-|---|---|---|
-| Guillemets dans le texte | "Citation" selon le porte-parole | `TODO` |
-| Bloc détaché (mise en forme spéciale) | Citation en encadré ou en italique | `TODO` |
-| Les deux selon le contexte | `TODO` | `TODO` |
+- ✅ "302 645 joueurs simultanés, soit une baisse de 88 %"
+- ✅ "estimée à 3 000 €, devra être intégralement remboursée"
+- ✅ "plus de 800 millions de fans dans le monde"
+- ❌ "302 645 joueurs" (sans contexte)
+- ❌ "3 000 €" (sans backup)
 
-> **TODO :** Le rédacteur en chef choisit la convention.
+### 2.5 Appels à l'action (CTA)
 
-### 2.5 Conclusion
+**Toujours le même sur les 8 posts :**
+"Tu veux suivre toute l'actu automobile ? Alors abonne-toi dès maintenant à Le Média Automobile !"
 
-| Option | Description | Choix |
-|---|---|---|
-| Ouverte (question ouverte au lecteur) | "Et vous, qu'en pensez-vous ?" | `TODO` |
-| Tranchée (affirmation forte) | "Voilà ce qu'il faut retenir." | `TODO` |
-| Invite à réagir (CTA) | "Dites-nous en commentaire..." | `TODO` |
-| Neutre (fin du fait) | Simple fin d'information | `TODO` |
-
-> **TODO :** Le rédacteur en chef choisit le ton de la conclusion.
-
-### 2.6 Règles spéciales
-
-| Règle | Description | Valeur |
-|---|---|---|
-| Nombre de paragraphes max | Limite pour éviter les articles trop longs | `TODO` |
-| Phrase max par paragraphe | Lisibilité | `TODO` |
-| mots max par phrase | Lisibilité | `TODO` |
-| Taux de mots techniques | Ne pas surcharger | `TODO` |
-
-> **TODO :** Le rédacteur en chef définit les limites.
+Ne pas varier le CTA — c'est un élément de charte, pas de créativité.
 
 ---
 
@@ -132,6 +114,7 @@
 | Date | Version | Changement | Raison |
 |---|---|---|---|
 | 2026-08-18 | v0 | Création du template | Démarrage du projet |
+| 2026-08-26 | v1 | Rempli avec 8 posts réels | Calibration sur le vrai contenu LMA |
 
 ---
 
@@ -145,5 +128,6 @@ Voir le fichier `sources-rss.md` dans le même dossier.
 
 - Le guide de style est un **fichier externe, remplaçable, jamais codé en dur**.
 - Chaque article généré doit être relu plus attentivement que la normale tant que le guide n'est pas stabilisé.
-- Les légendes Instagram viendront enrichir la couche 1 (voix) sans repartir de zéro.
+- Les 8 posts réels servent de **few-shot dynamique** dans `content-engine.ts` — pas besoin de les copier dans chaque prompt.
 - Le guide est versionné comme du code (dans le même dépôt Git).
+- **Attention : le tutoiement est confirmé** — l'ancien prompt disait "vouvoiement", c'est une erreur. Les 8 posts disent tous "Tu veux suivre...".

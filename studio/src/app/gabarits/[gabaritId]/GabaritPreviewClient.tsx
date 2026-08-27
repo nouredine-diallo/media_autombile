@@ -162,7 +162,7 @@ export function GabaritPreviewClient({ gabaritId }: { gabaritId: string }) {
                 }
                 className={`h-14 w-11 overflow-hidden rounded-lg border-2 transition-all ${
                   value === img.croppedUrl
-                    ? "border-zinc-900 ring-2 ring-zinc-900/20"
+                    ? "border-brand ring-2 ring-brand/20"
                     : "border-zinc-200 hover:border-zinc-400"
                 }`}
               >
@@ -263,7 +263,7 @@ export function GabaritPreviewClient({ gabaritId }: { gabaritId: string }) {
           <button
             onClick={handleExport}
             disabled={status === "loading"}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-zinc-900 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-zinc-700 disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-hover active:bg-brand-pressed disabled:opacity-50"
           >
             {status === "loading" ? (
               <>

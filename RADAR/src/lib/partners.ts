@@ -8,6 +8,9 @@ export interface Partner {
   campaign_end: string | null;
   deliverables: string | null;
   notes: string | null;
+  /** Cible structurée, à côté de `deliverables` (texte libre conservé pour le contexte). */
+  target_count?: number | null;
+  target_format?: 'slide_unique' | 'carrousel' | null;
   created_at: string;
 }
 
@@ -50,10 +53,13 @@ export interface PartnerReport {
 export function createPartner(data: Omit<Partner, 'id' | 'created_at'>): Partner {
   const db = getDb();
   const result = db.prepare(`
-    INSERT INTO partners (name, brand, campaign_start, campaign_end, deliverables, notes)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(data.name, data.brand, data.campaign_start, data.campaign_end, data.deliverables, data.notes);
-  
+    INSERT INTO partners (name, brand, campaign_start, campaign_end, deliverables, notes, target_count, target_format)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    data.name, data.brand, data.campaign_start, data.campaign_end, data.deliverables, data.notes,
+    data.target_count ?? null, data.target_format ?? null,
+  );
+
   return db.prepare('SELECT * FROM partners WHERE id = ?').get(result.lastInsertRowid) as Partner;
 }
 
@@ -71,6 +77,8 @@ export function updatePartner(id: number, data: Partial<Omit<Partner, 'id' | 'cr
   if (data.campaign_end !== undefined) { updates.push('campaign_end = ?'); values.push(data.campaign_end); }
   if (data.deliverables !== undefined) { updates.push('deliverables = ?'); values.push(data.deliverables); }
   if (data.notes !== undefined) { updates.push('notes = ?'); values.push(data.notes); }
+  if (data.target_count !== undefined) { updates.push('target_count = ?'); values.push(data.target_count); }
+  if (data.target_format !== undefined) { updates.push('target_format = ?'); values.push(data.target_format); }
 
   if (updates.length === 0) return existing;
 

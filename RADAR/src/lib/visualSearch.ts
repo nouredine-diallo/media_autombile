@@ -1,6 +1,6 @@
 import { chromium, type Browser } from 'playwright';
 import { getDb } from './db';
-import { getItemsWithoutImages, updateItemImage, updateItemImagePreflight, getItemById } from './rss';
+import { getItemsWithoutImages, updateItemImage, updateItemImagePreflight, getItemById, storeItemImages } from './rss';
 import path from 'path';
 import fs from 'fs';
 
@@ -360,6 +360,7 @@ export async function findImagesForItems(): Promise<{ processed: number; found: 
       if (images.length > 0) {
         const best = images[0];
         updateItemImage(item.id, best.url, best.source);
+        storeItemImages(item.id, images);
         found++;
         console.log(`  Found image for "${item.title.slice(0, 60)}..." [${best.source}]`);
 
@@ -554,6 +555,7 @@ export async function reSearchImageForItem(
     if (alternatives.length > 0) {
       const best = alternatives[0];
       updateItemImage(itemId, best.url, best.source);
+      storeItemImages(itemId, alternatives);
       return { newImage: best.url, newSource: best.source };
     }
 

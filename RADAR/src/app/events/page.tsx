@@ -27,6 +27,8 @@ interface Event {
   last_updated_at: string;
   urgent_until: string | null;
   assigned_to: string | null;
+  tags: string[];
+  feed_names?: string[];
 }
 
 export default function EventsPage() {
@@ -43,24 +45,14 @@ export default function EventsPage() {
     try {
       const response = await fetch('/api/events');
       const data = await response.json();
-      setEvents(data.events || []);
+      const fetchedEvents: Event[] = data.events || [];
+      setEvents(fetchedEvents);
 
-      // Fetch tags for all events
-      const tagsPromises = (data.events || []).map(async (e: Event) => {
-        try {
-          const res = await fetch(`/api/events/tags?event_id=${e.id}`);
-          if (res.ok) {
-            const d = await res.json();
-            return { id: e.id, tags: d.tags || [] };
-          }
-        } catch {}
-        return { id: e.id, tags: [] };
-      });
-
-      const tagsResults = await Promise.all(tagsPromises);
+      // Les tags viennent déjà avec la liste (une seule requête, plus de
+      // N appels /api/events/tags côté client).
       const newTagsMap: Record<number, string[]> = {};
-      for (const r of tagsResults) {
-        newTagsMap[r.id] = r.tags;
+      for (const e of fetchedEvents) {
+        newTagsMap[e.id] = e.tags || [];
       }
       setTagsMap(newTagsMap);
     } catch {
@@ -200,29 +192,37 @@ export default function EventsPage() {
                           {event.title_fr || event.title}
                         </h2>
                       </div>
-
-                      {(event.summary_fr || event.summary) && (
-                        <p className="t-caption mt-0.5 line-clamp-1 text-[var(--text-secondary)]">
-                          {event.summary_fr || event.summary}
-                        </p>
-                      )}
                     </div>
 
                     <div className="flex shrink-0 items-center gap-2">
+                      {(() => {
+                        // Repli sur les deux formes renvoyées par l'API (tableau via
+                        // getEventsWithItems, chaîne via GROUP_CONCAT sur le chemin filtré
+                        // par assigned_to) — un seul affichage, quelle que soit la forme.
+                        const names = Array.isArray(event.feed_names)
+                          ? event.feed_names
+                          : String(event.feed_names ?? '').split(',').filter(Boolean);
+                        if (names.length === 0) return null;
+                        return (
+                          <span
+                            className="t-caption max-w-[9rem] truncate text-[var(--text-muted)]"
+                            title={names.join(', ')}
+                          >
+                            {names[0]}{names.length > 1 ? ` +${names.length - 1}` : ''}
+                          </span>
+                        );
+                      })()}
                       <Badge tone={scoreTone(event.score)}>
                         <span className="font-data">{event.score}</span>
                       </Badge>
-                      <span className="font-data t-caption hidden text-[var(--text-muted)] sm:inline">
-                        {event.source_count} source{event.source_count > 1 ? 's' : ''}
-                      </span>
                       <button
                         onClick={(e) => handleForceUrgent(event.id, e)}
                         title={isUrgent ? "Retirer l'urgence" : "Forcer l'urgence (24 h)"}
                         aria-label={isUrgent ? "Retirer l'urgence" : "Forcer l'urgence (24 h)"}
-                        className={`flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] transition-colors duration-[var(--dur-fast)] ${
+                        className={`flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] transition-colors duration-[var(--dur-fast)] focus-visible:opacity-100 ${
                           isUrgent
                             ? 'text-[var(--warn)] hover:bg-[var(--warn-soft)]'
-                            : 'text-[var(--text-faint)] hover:bg-[var(--surface-hover)] hover:text-[var(--warn)]'
+                            : 'text-[var(--text-faint)] opacity-0 hover:bg-[var(--surface-hover)] hover:text-[var(--warn)] group-hover:opacity-100'
                         }`}
                       >
                         <IconUrgent size={14} strokeWidth={2} />
@@ -265,10 +265,10 @@ export default function EventsPage() {
                       <button
                         onClick={(e) => handleAssign(event.id, e)}
                         title={event.assigned_to ? 'Se désassigner' : 'Prendre en charge'}
-                        className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] px-2 text-[11px] font-medium transition-colors duration-[var(--dur-fast)] ${
+                        className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] px-2 text-[11px] font-medium transition-colors duration-[var(--dur-fast)] focus-visible:opacity-100 ${
                           event.assigned_to
                             ? 'text-[var(--accent)] hover:bg-[var(--accent-soft)]'
-                            : 'text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]'
+                            : 'text-[var(--text-muted)] opacity-0 hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] group-hover:opacity-100'
                         }`}
                       >
                         {event.assigned_to ? (

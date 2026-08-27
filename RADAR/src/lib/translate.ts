@@ -1,4 +1,4 @@
-import { generate } from './llm';
+import { generate, VOICE_REGISTER } from './llm';
 
 /**
  * Translate an event title and summary from English to French.
@@ -6,7 +6,8 @@ import { generate } from './llm';
  */
 export async function translateToFrench(
   title: string,
-  summary: string | null
+  summary: string | null,
+  retriesLeft: number = 2,
 ): Promise<{ titleFr: string; summaryFr: string }> {
   // If already mostly French, skip translation
   if (isMostlyFrench(title)) {
@@ -21,7 +22,7 @@ RÈGLES :
 - Conserve les termes techniques anglais courants en automobile (restylage, facelift, drift)
 - Le titre doit être accrocheur et concis (max 120 caractères)
 - Le résumé doit être factuel et complet
-- Vouvoiement
+- ${VOICE_REGISTER}
 
 TITRE EN ANGLAIS :
 ${title}
@@ -48,19 +49,27 @@ RÉSUMÉ: [résumé en français]`;
     const summaryFr = summaryMatch?.[1]?.trim() || summary || '';
 
     // If title wasn't translated (still same as input), retry once
-    if (titleFr === title && !isMostlyFrench(title)) {
-      return translateToFrench(title, summary);
+    if (titleFr === title && !isMostlyFrench(title) && retriesLeft > 0) {
+      return translateToFrench(title, summary, retriesLeft - 1);
     }
 
     return { titleFr, summaryFr };
   } catch (error: unknown) {
-    // Retry on rate limit
-    if (error instanceof Error && error.message.includes('429')) {
-      console.log('  Rate limited, waiting 10s and retrying...');
+    // Retry on rate limit — plafonné (2 tentatives par défaut), pas de boucle
+    // infinie. Découvert le 2026-08-27 : un quota Groq épuisé faisait retenter
+    // TOUTES les 10s indéfiniment (aucun compteur), bloquant tout le pipeline
+    // — un événement non traduit gardait déjà son titre anglais en repli
+    // (ligne ci-dessous), donc rien ne justifiait de ne jamais y arriver.
+    if (error instanceof Error && error.message.includes('429') && retriesLeft > 0) {
+      console.log(`  Rate limited, waiting 10s and retrying... (${retriesLeft} tentative(s) restante(s))`);
       await new Promise(r => setTimeout(r, 10000));
-      return translateToFrench(title, summary);
+      return translateToFrench(title, summary, retriesLeft - 1);
     }
-    console.error('Translation error:', error);
+    if (error instanceof Error && error.message.includes('429')) {
+      console.warn('  Quota LLM épuisé après plusieurs tentatives — titre gardé en anglais, pas bloquant.');
+    } else {
+      console.error('Translation error:', error);
+    }
     return { titleFr: title, summaryFr: summary ?? '' };
   }
 }

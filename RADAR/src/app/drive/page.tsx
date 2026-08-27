@@ -495,7 +495,7 @@ function DrivePageInner() {
                         {isImageType(file.mime_type) && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleSelectForArticle(file); }}
-                            className="px-2 py-1 bg-[var(--studio)] text-white rounded text-xs hover:bg-[var(--studio)]"
+                            className="px-2 py-1 bg-[var(--brand)] text-white rounded text-xs hover:bg-[var(--brand-hover)]"
                             title="Copier l'URL pour un article"
                           >
                             Utiliser

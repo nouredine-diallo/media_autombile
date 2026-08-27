@@ -10,6 +10,14 @@ export function getDb(): any {
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
+    // Sans ça, deux écritures concurrentes (2 utilisateurs qui valident un
+    // article à la même milliseconde) déclenchent SQLITE_BUSY immédiatement
+    // — une erreur visible pour l'un des deux — plutôt que d'attendre
+    // quelques millisecondes que l'autre écriture libère le verrou. WAL
+    // autorise déjà plusieurs lecteurs pendant une écriture ; ce réglage
+    // couvre le seul cas qui restait : deux écritures qui se chevauchent
+    // (§ étape 2 "robustesse à 5 utilisateurs", 2026-08-27).
+    db.pragma('busy_timeout = 5000');
     initializeDb(db);
   }
   return db;
@@ -23,6 +31,7 @@ function initializeDb(db: any) {
       url TEXT NOT NULL UNIQUE,
       priority INTEGER DEFAULT 1,
       requires_scraping INTEGER DEFAULT 0,
+      enabled INTEGER DEFAULT 1,
       last_fetched_at TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
@@ -216,6 +225,12 @@ function initializeDb(db: any) {
     CREATE INDEX IF NOT EXISTS idx_drive_files_parent ON drive_files(parent_id);
   `);
 
+  // Migration: add enabled to feeds if missing
+  const feedColumns = db.prepare("PRAGMA table_info(feeds)").all() as { name: string }[];
+  if (!feedColumns.some(col => col.name === 'enabled')) {
+    db.exec("ALTER TABLE feeds ADD COLUMN enabled INTEGER DEFAULT 1");
+  }
+
   // Migration: add is_cloud to drive_files if missing
   const driveColumns = db.prepare("PRAGMA table_info(drive_files)").all() as { name: string }[];
   if (!driveColumns.some(col => col.name === 'is_cloud')) {
@@ -284,6 +299,25 @@ function initializeDb(db: any) {
     db.exec("ALTER TABLE articles ADD COLUMN drive_url TEXT");
   }
 
+  // Migration: cible structurée pour les partenaires (§chantier 5 du plan
+  // écosystème) — vient à côté de `deliverables` (texte libre conservé pour
+  // le contexte), pas à sa place. `target_format` reprend les deux formats
+  // déjà en usage ("slide unique" confirmé par l'utilisateur, "carrousel").
+  const partnerColumns = db.prepare("PRAGMA table_info(partners)").all() as { name: string }[];
+  if (!partnerColumns.some(col => col.name === 'target_count')) {
+    db.exec("ALTER TABLE partners ADD COLUMN target_count INTEGER");
+  }
+  if (!partnerColumns.some(col => col.name === 'target_format')) {
+    db.exec("ALTER TABLE partners ADD COLUMN target_format TEXT CHECK(target_format IN ('slide_unique', 'carrousel') OR target_format IS NULL)");
+  }
+
+  // Migration: carousel_slides — trace du texte final d'un export carrousel
+  // (JSON, un texte par slide dans l'ordre), pour le retrouver sans dépendre
+  // de Drive (§2.7 du plan écosystème). NULL pour un export single-image.
+  if (!articleColumns2.some(col => col.name === 'carousel_slides')) {
+    db.exec("ALTER TABLE articles ADD COLUMN carousel_slides TEXT");
+  }
+
   // Migration: add image_url to items for Mission 2 (visual search pipeline)
   const itemColumns = db.prepare("PRAGMA table_info(items)").all() as { name: string }[];
   if (!itemColumns.some(col => col.name === 'image_url')) {
@@ -320,6 +354,45 @@ function initializeDb(db: any) {
   if (!itemColumns.some(col => col.name === 'image_preflight')) {
     db.exec("ALTER TABLE items ADD COLUMN image_preflight TEXT");
   }
+
+  // Migration: carousel_text sur briefs — texte court généré par LLM pour les
+  // slides de développement du carrousel (1 à 3 paragraphes), mis en cache
+  // pour ne jamais re-payer un appel LLM à chaque lecture de la même actu
+  // (voir lib/brief.ts, getCarouselSlides/generateCarouselText).
+  const briefColumns = db.prepare("PRAGMA table_info(briefs)").all() as { name: string }[];
+  if (!briefColumns.some(col => col.name === 'carousel_text')) {
+    db.exec("ALTER TABLE briefs ADD COLUMN carousel_text TEXT");
+  }
+
+  // Migration: compteurs de la génération automatique du matin (chantier 3),
+  // pour rendre visible côté dashboard ce qui tourne déjà en arrière-plan
+  // sans trace lisible ailleurs qu'en console.log (§ session 2026-08-27,
+  // priorité P1 : "rendre visible ce qui tourne déjà").
+  const pipelineRunColumns = db.prepare("PRAGMA table_info(pipeline_runs)").all() as { name: string }[];
+  if (!pipelineRunColumns.some(col => col.name === 'auto_gen_attempted')) {
+    db.exec("ALTER TABLE pipeline_runs ADD COLUMN auto_gen_attempted INTEGER DEFAULT 0");
+  }
+  if (!pipelineRunColumns.some(col => col.name === 'auto_gen_passed')) {
+    db.exec("ALTER TABLE pipeline_runs ADD COLUMN auto_gen_passed INTEGER DEFAULT 0");
+  }
+
+  // Migration: item_images — toutes les images candidates trouvées par scrapeArticleImages(),
+  // pas seulement la meilleure. Additif : items.image_url/image_source restent alimentés en
+  // parallèle (rang 0) pour ne rien changer au chemin de lecture actuel (chantier carrousel,
+  // voir docs/superpowers/plans/2026-08-26-ecosystem-editorial-v2.md §6, étape A).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS item_images (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      url TEXT NOT NULL,
+      source TEXT,
+      rank INTEGER NOT NULL DEFAULT 0,
+      width INTEGER,
+      height INTEGER,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_item_images_item ON item_images(item_id, rank);
+  `);
 }
 
 export interface Feed {
@@ -328,6 +401,7 @@ export interface Feed {
   url: string;
   priority: number;
   requires_scraping: number;
+  enabled: number;
   last_fetched_at: string | null;
   created_at: string;
 }
@@ -417,6 +491,29 @@ export function completePipelineRun(
   );
 }
 
+/**
+ * Marque comme échoué tout run resté bloqué à `running` — jamais atteint ni
+ * par le chemin succès ni par le chemin échec de `runPipeline()`, signe que
+ * le process Node est mort en plein cycle (crash, redémarrage) plutôt qu'une
+ * exception proprement remontée. Découvert le 2026-08-27 : 6 runs consécutifs
+ * bloqués ainsi sur 3 jours dans cet environnement, expliquant `events.score`
+ * resté à 0 partout (le cycle qui calcule les scores n'était jamais atteint).
+ * Seuil de 30 min : un cycle normal dure des secondes à quelques minutes
+ * (RADAR/CLAUDE.md §11), largement en dessous — TODO seuil provisoire si un
+ * jour un cycle légitime dure plus longtemps (gros volume de flux).
+ */
+export function cleanupStaleRuns(): number {
+  const db = getDb();
+  const result = db.prepare(`
+    UPDATE pipeline_runs
+    SET status = 'failed',
+        error = 'Processus interrompu avant la fin (crash ou redémarrage serveur) — jamais atteint le chemin succès ni échec',
+        completed_at = datetime('now')
+    WHERE status = 'running' AND started_at < datetime('now', '-30 minutes')
+  `).run();
+  return result.changes;
+}
+
 export function getPipelineStatus(): { lastRun: PipelineRun | null; recentRuns: PipelineRun[] } {
   const db = getDb();
   const lastRun = db.prepare(
@@ -482,6 +579,33 @@ export function getDashboardAgenda() {
     ORDER BY p.campaign_end ASC
   `).all() as { id: number; name: string; brand: string | null; campaign_end: string | null }[];
 
+  // 📅 Échéances calendrier : les 7 prochains jours (deadlines, publications, campagnes)
+  const calendarUpcoming = db.prepare(`
+    SELECT id, title, event_type, start_date, color
+    FROM calendar_events
+    WHERE start_date >= date('now') AND start_date <= date('now', '+7 days')
+    ORDER BY start_date ASC
+    LIMIT 5
+  `).all() as { id: number; title: string; event_type: string; start_date: string; color: string }[];
+
+  // 🤖 Génération automatique du matin (chantier 3) — rendre visible ce qui
+  // tourne déjà en arrière-plan (§ session 2026-08-27, priorité P1). Les
+  // brouillons qui passent le contrôle qualité n'apparaissent nulle part
+  // ailleurs sur ce dashboard : "En production" n'affiche que les événements
+  // SANS article, "Articles validés" exige status='validated' — un brouillon
+  // 'draft' généré ce matin serait invisible sans cette section dédiée.
+  const today = new Date().toISOString().slice(0, 10);
+  const autoGenRun = db.prepare(
+    `SELECT auto_gen_attempted, auto_gen_passed FROM pipeline_runs WHERE date(started_at) = ? AND auto_gen_attempted > 0 ORDER BY id DESC LIMIT 1`
+  ).get(today) as { auto_gen_attempted: number; auto_gen_passed: number } | undefined;
+  const morningDrafts = autoGenRun ? db.prepare(
+    `SELECT id, event_id, title, content_id FROM articles WHERE provenance = 'généré' AND date(generated_at) = ? ORDER BY generated_at DESC`
+  ).all(today) as { id: number; event_id: number; title: string; content_id: string | null }[] : [];
+
+  // ✍️ Corrections : même seuil que /corrections (§ analyse des patterns) — pas dupliqué, juste relu ici
+  const CORRECTIONS_GUIDE_THRESHOLD = 30;
+  const totalCorrections = db.prepare("SELECT COUNT(*) as count FROM corrections").get() as { count: number };
+
   // Compteurs
   const totalDrafts = db.prepare("SELECT COUNT(*) as count FROM articles WHERE status = 'draft'").get() as { count: number };
   const totalValidated = db.prepare("SELECT COUNT(*) as count FROM articles WHERE status = 'validated'").get() as { count: number };
@@ -497,6 +621,14 @@ export function getDashboardAgenda() {
     hiddenInProgressCount,
     ready,
     partnerTasks,
+    calendarUpcoming,
+    morningAutoGen: autoGenRun ? {
+      attempted: autoGenRun.auto_gen_attempted,
+      passed: autoGenRun.auto_gen_passed,
+      drafts: morningDrafts,
+    } : null,
+    correctionsCount: totalCorrections.count,
+    correctionsThreshold: CORRECTIONS_GUIDE_THRESHOLD,
     counters: {
       drafts: totalDrafts.count,
       validated: totalValidated.count,

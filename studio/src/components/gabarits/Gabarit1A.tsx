@@ -62,6 +62,13 @@ export interface Gabarit1AProps {
   imageUrl: string;
   /** Titre affiché en gras, 1 à 3 lignes selon la longueur. */
   title: string;
+  /**
+   * Ligne courte optionnelle au-dessus du titre (le "surtitre"). Absent par
+   * défaut : 1A reste pixel-identique à sa version sans surtitre — c'est ce
+   * même composant, avec ce prop rempli, qui sert de gabarit 1C dans le
+   * registre (`registry.tsx`), pour ne pas dupliquer Gabarit1A.
+   */
+  eyebrow?: string;
   /** Hauteur de la zone photo, variable d'une image à l'autre (voir `hauteurZonePhoto`). */
   photoHeight?: string;
   /** Cadrage de la photo de fond : `"zoom,dx,dy"`. */
@@ -89,7 +96,7 @@ function lireHauteurPhoto(valeur: string | undefined): number {
   return Number.isFinite(n) && n > 0 && n <= GABARIT_1A_HEIGHT ? n : GABARIT_PHOTO_HEIGHT;
 }
 
-export default function Gabarit1A({ imageUrl, title, photoHeight, imageCadre }: Gabarit1AProps) {
+export default function Gabarit1A({ imageUrl, title, eyebrow, photoHeight, imageCadre }: Gabarit1AProps) {
   const hauteurPhoto = lireHauteurPhoto(photoHeight);
   const cf = lireCadre(imageCadre);
   const transformFond = `translate(${cf.dx}%, ${cf.dy}%) scale(${cf.zoom})`;
@@ -106,7 +113,7 @@ export default function Gabarit1A({ imageUrl, title, photoHeight, imageCadre }: 
         className="absolute inset-x-0 top-0 w-full object-cover"
         style={{ height: hauteurPhoto, transform: transformFond }}
       />
-      <TitleFooter title={title} hauteurPhoto={hauteurPhoto} />
+      <TitleFooter title={title} eyebrow={eyebrow} hauteurPhoto={hauteurPhoto} />
     </div>
   );
 }

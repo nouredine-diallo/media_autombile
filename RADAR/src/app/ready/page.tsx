@@ -3,6 +3,7 @@ import { buildStudioLink } from "@/lib/studio-prefill";
 import { PageHeader } from "@/components/PageHeader";
 import { Badge, ButtonLink, EmptyState, Thumb } from "@/components/ui";
 import { PlanifierButton } from "@/components/PlanifierButton";
+import { AssociatePartnerButton } from "@/components/AssociatePartnerButton";
 import {
   IconArrowRight,
   IconCheck,
@@ -22,13 +23,19 @@ interface Article {
   word_count: number;
   status: string;
   generated_at: string;
-  event_title: string;
+  event_title: string | null;
   image_url: string | null;
+  exported_at: string | null;
+  drive_url: string | null;
 }
 
 export default function ReadyForInstagram() {
   const db = getDb();
 
+  // LEFT JOIN, pas INNER : le nettoyage de cache peut supprimer l'événement
+  // source sans toucher à l'article validé — il doit rester visible ici quand
+  // même (sinon cette page dit "aucun article" pendant que le Dashboard en
+  // compte plusieurs, les deux vues doivent toujours raconter la même chose).
   const articles = db.prepare(`
     SELECT a.*, e.title as event_title,
       (SELECT i.image_url FROM items i
@@ -44,7 +51,7 @@ export default function ReadyForInstagram() {
          END
        LIMIT 1) as image_url
     FROM articles a
-    JOIN events e ON a.event_id = e.id
+    LEFT JOIN events e ON a.event_id = e.id
     WHERE a.status = 'validated'
     ORDER BY a.validated_at DESC
   `).all() as Article[];
@@ -52,10 +59,10 @@ export default function ReadyForInstagram() {
   return (
     <div className="min-h-screen">
       <PageHeader
-        title="Prêts à publier"
+        title="Articles validés"
         subtitle={`${articles.length} article${articles.length > 1 ? "s" : ""} validé${
           articles.length > 1 ? "s" : ""
-        }`}
+        } — historique cumulatif, y compris les articles déjà exportés`}
         back={{ href: "/", label: "Accueil" }}
       />
 
@@ -89,12 +96,6 @@ export default function ReadyForInstagram() {
 
                 <div className="min-w-0 flex-1">
                   <div className="mb-1.5 flex flex-wrap items-center gap-2">
-                    <Badge tone="success" icon={IconCheck}>
-                      Validé
-                    </Badge>
-                    <span className="font-data t-caption text-[var(--text-muted)]">
-                      {article.word_count} mots
-                    </span>
                     {article.image_url ? (
                       <Badge tone="neutral" icon={IconImage}>
                         Visuel trouvé
@@ -102,6 +103,11 @@ export default function ReadyForInstagram() {
                     ) : (
                       <Badge tone="warn" icon={IconImageOff}>
                         Sans visuel
+                      </Badge>
+                    )}
+                    {article.exported_at && (
+                      <Badge tone="success" icon={IconCheck}>
+                        Exporté
                       </Badge>
                     )}
                   </div>
@@ -115,28 +121,38 @@ export default function ReadyForInstagram() {
                     </p>
                   )}
                   <p className="t-caption mt-2 truncate text-[var(--text-muted)]">
-                    Événement : {article.event_title}
+                    Événement : {article.event_title || "archivé"}
                   </p>
                 </div>
 
                 <div className="flex shrink-0 items-start gap-2">
+                  {article.content_id && (
+                    <AssociatePartnerButton contentId={article.content_id} />
+                  )}
                   <PlanifierButton articleId={article.id} />
-                  <ButtonLink
-                    href={buildStudioLink({
-                      title: article.title,
-                      source: article.event_title.slice(0, 50),
-                      imageUrl: article.image_url,
-                      contentId: article.content_id || "",
-                      briefHeadline:
-                        article.chapeau?.slice(0, 200) || article.title.slice(0, 200),
-                    })}
-                    external
-                    variant="studio"
-                    size="md"
-                  >
-                    <IconStudio size={14} strokeWidth={1.75} />
-                    Créer un post
-                  </ButtonLink>
+                  {article.exported_at && article.drive_url ? (
+                    <ButtonLink href={article.drive_url} external variant="secondary" size="md">
+                      <IconCheck size={14} strokeWidth={1.75} />
+                      Ouvrir dans Drive
+                    </ButtonLink>
+                  ) : (
+                    <ButtonLink
+                      href={buildStudioLink({
+                        title: article.title,
+                        source: (article.event_title || "RADAR").slice(0, 50),
+                        imageUrl: article.image_url,
+                        contentId: article.content_id || "",
+                        briefHeadline:
+                          article.chapeau?.slice(0, 200) || article.title.slice(0, 200),
+                      })}
+                      external
+                      variant="studio"
+                      size="md"
+                    >
+                      <IconStudio size={14} strokeWidth={1.75} />
+                      Créer un post
+                    </ButtonLink>
+                  )}
                 </div>
               </article>
             ))}

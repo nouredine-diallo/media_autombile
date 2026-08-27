@@ -63,12 +63,12 @@ export async function POST(request: Request) {
     }
 
     // Create partner
-    const { name, brand, campaign_start, campaign_end, deliverables, notes } = body;
+    const { name, brand, campaign_start, campaign_end, deliverables, notes, target_count, target_format } = body;
     if (!name) {
       return NextResponse.json({ error: 'name required' }, { status: 400 });
     }
 
-    const partner = createPartner({ name, brand, campaign_start, campaign_end, deliverables, notes });
+    const partner = createPartner({ name, brand, campaign_start, campaign_end, deliverables, notes, target_count, target_format });
     return NextResponse.json({ success: true, partner });
   } catch (error) {
     console.error('Error:', error);

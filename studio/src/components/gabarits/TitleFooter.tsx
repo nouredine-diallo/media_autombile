@@ -64,13 +64,13 @@ const toBlock = (canvasPercent: number) =>
  * recoupe au pixel près les valeurs relevées dans le fichier Photoshop du
  * directeur (199 px de large, Y = 1243).
  */
-const LOGO_SRC = "/marque/logo-le-media-automobile.png";
+export const LOGO_SRC = "/marque/logo-le-media-automobile.png";
 // Marge basse du bloc portée de 1,5 % à 3,5 % : à 1,5 %, le bas du logo
 // tombait à 98,7 % de la hauteur au lieu des 96,5 % mesurés sur les deux
 // références — et des 47 px (3,5 %) relevés dans le fichier Photoshop.
-const LOGO_WIDTH = 199;
+export const LOGO_WIDTH = 199;
 /** Ratio du fichier fourni : 835 × 248. */
-const LOGO_HEIGHT = Math.round(199 / (835 / 248));
+export const LOGO_HEIGHT = Math.round(199 / (835 / 248));
 
 /**
  * Points de la courbe d'assombrissement, en [hauteur % du canevas, opacité].

@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import Gabarit1A from "./Gabarit1A";
 import Gabarit1B from "./Gabarit1B";
+import GabaritCTA, { CTA_DEFAUT } from "./GabaritCTA";
 import Gabarit2A from "./Gabarit2A";
 import Gabarit2B from "./Gabarit2B";
 import Gabarit3A from "./Gabarit3A";
@@ -71,21 +72,89 @@ export const GABARITS: Record<string, GabaritDef> = {
       title: "Titre d'exemple pour le gabarit 1A",
     },
   },
-  "1b": {
-    id: "1b",
-    label: "1B — Image + surtitre + titre",
+  // 1C réutilise Gabarit1A tel quel (même composant que "1a"), avec le champ
+  // `eyebrow` rempli — c'est le gabarit "surtitre + image + titre" d'origine
+  // (construit en Étape 4 sous le nom "1B", avant que ce nom soit repris pour
+  // le vrai 1B "image + paragraphe" de specStudio.md). Pas de nouveau fichier
+  // composant : TitleFooter.tsx supportait déjà `eyebrow`, seul le pont entre
+  // 1A et ce prop manquait — voir Gabarit1A.tsx.
+  "1c": {
+    id: "1c",
+    label: "1C — Surtitre + image + titre",
     fields: [
-      { key: "imageUrl", label: "Image de fond", kind: "image" },
-      { key: "eyebrow", label: "Surtitre (optionnel)", kind: "text" },
+      { key: "imageUrl", label: "Image", kind: "image" },
       { key: "imageCadre", label: "Cadrage du fond", kind: "geometry" },
+      { key: "eyebrow", label: "Surtitre", kind: "textarea" },
       { key: "title", label: "Titre", kind: "textarea" },
     ],
-    Component: Gabarit1B,
+    // `data-gabarit="1c"` en enveloppe : Gabarit1A porte en dur son propre
+    // `data-gabarit="1a"` (utilisé par la route d'export Playwright pour
+    // localiser l'élément à capturer) — sans cette enveloppe de mêmes
+    // dimensions, l'export de "1c" chercherait un sélecteur qui n'existe
+    // jamais et expirerait. Le rendu visuel est inchangé (l'enfant remplit
+    // exactement l'enveloppe).
+    Component: (props: Record<string, string>) => (
+      <div data-gabarit="1c" style={{ width: GABARIT_1A_WIDTH, height: GABARIT_1A_HEIGHT }}>
+        <Gabarit1A
+          imageUrl={props.imageUrl ?? ""}
+          title={props.title ?? ""}
+          eyebrow={props.eyebrow || undefined}
+          imageCadre={props.imageCadre}
+        />
+      </div>
+    ),
     defaults: {
       imageUrl: PLACEHOLDER,
-      eyebrow: "Une touche unique pour capter l'attention",
       imageCadre: "",
-      title: "Titre d'exemple pour le gabarit 1B",
+      eyebrow: "Une touche japonaise pour séduire les internautes",
+      title: "Titre d'exemple pour le gabarit 1C",
+    },
+  },
+  "1b": {
+    id: "1b",
+    label: "1B — Image + paragraphe",
+    fields: [
+      { key: "imageUrl", label: "Image de fond", kind: "image" },
+      { key: "imageCadre", label: "Cadrage du fond", kind: "geometry" },
+      { key: "paragraph", label: "Paragraphe ( supporte **gras** )", kind: "textarea" },
+    ],
+    Component: (props: Record<string, string>) => (
+      <Gabarit1B
+        imageUrl={props.imageUrl ?? ""}
+        paragraph={props.paragraph ?? ""}
+        imageCadre={props.imageCadre}
+      />
+    ),
+    defaults: {
+      imageUrl: PLACEHOLDER,
+      imageCadre: "",
+      paragraph:
+        "Forza Horizon 6 perd déjà une grande partie de ses joueurs, seulement trois mois après sa sortie. **302 645 joueurs simultanés**, soit une baisse de 88 % par rapport au pic de launch. Le studio Playground Games affirme travailler sur des mises à jour pour stabiliser la base.",
+    },
+  },
+  // Toujours la dernière slide d'un carrousel (Outro/CTA) — structurellement
+  // différent de 1A/1B/1C (pas de bandeau noir), voir GabaritCTA.tsx pour
+  // les mesures. Composant dédié, pas de réutilisation de Gabarit1A ici :
+  // la mise en page (texte en haut, sans dégradé) n'a rien de commun.
+  cta: {
+    id: "cta",
+    label: "CTA — Fin de carrousel",
+    fields: [
+      { key: "imageUrl", label: "Image d'ambiance", kind: "image" },
+      { key: "imageCadre", label: "Cadrage du fond", kind: "geometry" },
+      { key: "message", label: "Message (préchargé, éditable)", kind: "textarea" },
+    ],
+    Component: (props: Record<string, string>) => (
+      <GabaritCTA
+        imageUrl={props.imageUrl ?? ""}
+        message={props.message}
+        imageCadre={props.imageCadre}
+      />
+    ),
+    defaults: {
+      imageUrl: PLACEHOLDER,
+      imageCadre: "",
+      message: CTA_DEFAUT,
     },
   },
   "2a": {

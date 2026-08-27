@@ -5,8 +5,9 @@ import { ViewToggle } from "@/components/ViewToggle";
 import { PipelineStatusIndicator } from "@/components/PipelineStatus";
 import { DriveStatusBadge } from "@/components/DriveStatusBadge";
 import { PageHeader } from "@/components/PageHeader";
-import { buildStudioLink } from "@/lib/studio-prefill";
+import { buildStudioLink, getStudioUrl } from "@/lib/studio-prefill";
 import { getEventTitleFr } from "@/lib/eventDisplay";
+import { EVENT_TYPES } from "@/lib/calendar";
 import {
   Badge,
   ButtonLink,
@@ -18,16 +19,30 @@ import {
 import {
   IconAlert,
   IconArrowRight,
+  IconCalendar,
   IconCheck,
   IconClock,
+  IconGenerate,
   IconImageOff,
   IconInbox,
-  IconPartners,
   IconPenLine,
   IconStudio,
   IconUrgent,
   IconUser,
+  IconWarning,
 } from "@/components/icons";
+
+/** "aujourd'hui" / "demain" / date courte — plus lisible qu'une date brute en coup d'œil. */
+function relativeDayLabel(dateStr: string): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(dateStr + "T00:00:00");
+  const diffDays = Math.round((target.getTime() - today.getTime()) / 86400000);
+
+  if (diffDays === 0) return "aujourd'hui";
+  if (diffDays === 1) return "demain";
+  return target.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
 
 /** Ligne de liste : une hauteur, un alignement, partout la même. */
 function Row({
@@ -68,8 +83,16 @@ export default async function Home() {
     hiddenInProgressCount,
     ready,
     partnerTasks,
+    calendarUpcoming,
+    morningAutoGen,
+    correctionsCount,
+    correctionsThreshold,
     counters,
   } = getDashboardAgenda();
+
+  const correctionsThresholdReached = correctionsCount >= correctionsThreshold;
+  const hasEcheances =
+    calendarUpcoming.length > 0 || correctionsThresholdReached || partnerTasks.length > 0;
 
   const today = new Date().toLocaleDateString("fr-FR", {
     weekday: "long",
@@ -81,19 +104,32 @@ export default async function Home() {
     urgent.length === 0 &&
     inProgress.length === 0 &&
     ready.length === 0 &&
-    partnerTasks.length === 0;
+    !hasEcheances;
 
   return (
     <div className="min-h-screen">
       <PageHeader
         title="Aujourd'hui"
         subtitle={today}
-        actions={<ViewToggle />}
+        actions={
+          <>
+            <ButtonLink
+              href={getStudioUrl()}
+              external
+              variant="studio"
+              title="Post sans actualité liée — non traçable, non associable à un partenaire. Pour un post lié à une actualité, passe par sa fiche événement."
+            >
+              <IconStudio size={13} strokeWidth={1.75} />
+              Ouvrir STUDIO (sans lien)
+            </ButtonLink>
+            <ViewToggle />
+          </>
+        }
       />
 
       <main className="mx-auto max-w-5xl px-6 py-6">
         {/* Coup d'œil en 30 secondes — la Direction s'arrête ici */}
-        <div className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        <div className="mb-5 grid grid-cols-3 gap-2.5">
           <StatTile
             value={counters.totalEvents}
             label="Événements suivis"
@@ -110,13 +146,7 @@ export default async function Home() {
             label="Validés"
             href="/ready"
             tone={counters.validated > 0 ? "success" : "neutral"}
-          />
-          <StatTile
-            value={<IconStudio size={22} strokeWidth={1.75} />}
-            label="Ouvrir STUDIO"
-            href="http://89.168.53.133:3002"
-            external
-            tone="studio"
+            primary={counters.validated > 0}
           />
         </div>
 
@@ -126,6 +156,43 @@ export default async function Home() {
           </div>
           <DriveStatusBadge />
         </div>
+
+        {/* Brouillons du matin — rend visible ce que le cron produit déjà en
+            arrière-plan (chantier 3). Sans cette section, un brouillon
+            'draft' généré à 8h est invisible : "En production" n'affiche
+            que les événements SANS article, "Articles validés" exige
+            status='validated'. */}
+        {morningAutoGen && (
+          <section className="mb-6">
+            <SectionHeader
+              label="Brouillons du matin"
+              icon={IconGenerate}
+              tone={morningAutoGen.passed > 0 ? "success" : "neutral"}
+              count={morningAutoGen.passed}
+            />
+            <p className="t-caption mb-2.5 -mt-1 text-[var(--text-muted)]">
+              {morningAutoGen.passed}/{morningAutoGen.attempted} ont passé le contrôle qualité automatique ce matin.
+            </p>
+            {morningAutoGen.drafts.length > 0 ? (
+              <div className="space-y-2">
+                {morningAutoGen.drafts.map((draft) => (
+                  <Row key={draft.id} href={`/events/${draft.event_id}`}>
+                    <IconGenerate size={14} strokeWidth={2} className="text-[var(--success)]" />
+                    <span className="t-label min-w-0 flex-1 truncate text-[var(--text-primary)]">
+                      {draft.title}
+                    </span>
+                    <span className="t-caption text-[var(--text-muted)]">à valider</span>
+                    <IconArrowRight size={15} strokeWidth={2} />
+                  </Row>
+                ))}
+              </div>
+            ) : (
+              <p className="t-caption text-[var(--text-muted)]">
+                Aucun des {morningAutoGen.attempted} brouillons n&apos;a passé le contrôle qualité ce matin — retirés automatiquement, rien à valider.
+              </p>
+            )}
+          </section>
+        )}
 
         {nothingToDo && (
           <div className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-raised)]">
@@ -225,11 +292,14 @@ export default async function Home() {
           </section>
         )}
 
-        {/* Prêt à publier */}
+        {/* Articles validés — historique cumulatif, pas une file qui se vide
+            (un article y reste après export, seul son bouton change). Nom
+            aligné sur /ready et la Sidebar pour ne plus laisser croire le
+            contraire (§ session 2026-08-27, priorité P2). */}
         {ready.length > 0 && (
           <section className="mb-6">
             <SectionHeader
-              label="Prêt à publier"
+              label="Articles validés"
               icon={IconCheck}
               tone="success"
               count={counters.readyCount}
@@ -289,13 +359,65 @@ export default async function Home() {
           </section>
         )}
 
-        {/* Partenaires */}
-        {partnerTasks.length > 0 && (
+        {/* Échéances — calendrier, guide de style, partenaires : tout ce qui porte une
+            date ou un seuil, au même endroit. Le Dashboard est censé être "Aujourd'hui",
+            il doit donc voir au-delà de la seule veille éditoriale. */}
+        {hasEcheances && (
           <section className="mb-6">
-            <SectionHeader label="Partenaires" icon={IconPartners} />
+            <SectionHeader
+              label="Échéances"
+              icon={IconCalendar}
+              count={calendarUpcoming.length + partnerTasks.length + (correctionsThresholdReached ? 1 : 0)}
+            />
             <div className="space-y-2">
+              {calendarUpcoming.map((item) => {
+                const typeInfo = EVENT_TYPES[item.event_type] || EVENT_TYPES.autre;
+                return (
+                  <Row key={`cal-${item.id}`} href="/calendrier">
+                    <div className="min-w-0 flex-1">
+                      <span className="t-label block truncate text-[var(--text-primary)]">
+                        {item.title}
+                      </span>
+                      <span
+                        className="t-caption inline-block mt-0.5"
+                        style={{ color: item.color || typeInfo.color }}
+                      >
+                        {typeInfo.label}
+                      </span>
+                    </div>
+                    <span className="font-data t-caption shrink-0 text-[var(--text-muted)]">
+                      {relativeDayLabel(item.start_date)}
+                    </span>
+                    <IconArrowRight
+                      size={15}
+                      strokeWidth={2}
+                      className="text-[var(--text-muted)]"
+                    />
+                  </Row>
+                );
+              })}
+
+              {correctionsThresholdReached && (
+                <Row href="/corrections">
+                  <div className="min-w-0 flex-1">
+                    <span className="t-label flex items-center gap-1.5 text-[var(--warn)]">
+                      <IconWarning size={13} strokeWidth={2} />
+                      Seuil du guide de style atteint
+                    </span>
+                    <span className="t-caption text-[var(--text-muted)]">
+                      {correctionsCount} corrections enregistrées — une révision (v2) est à envisager
+                    </span>
+                  </div>
+                  <IconArrowRight
+                    size={15}
+                    strokeWidth={2}
+                    className="text-[var(--text-muted)]"
+                  />
+                </Row>
+              )}
+
               {partnerTasks.map((item) => (
-                <Row key={item.id} href="/partenaires">
+                <Row key={`partner-${item.id}`} href="/partenaires">
                   <div className="min-w-0 flex-1">
                     <span className="t-label block truncate text-[var(--text-primary)]">
                       {item.name}

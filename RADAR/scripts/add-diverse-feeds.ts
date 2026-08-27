@@ -45,8 +45,9 @@ const DIVERSE_FEEDS: NewFeed[] = [
   { name: 'Speedhunters', url: 'https://speedhunters.com/feed/', priority: 2, category: 'classics' },
 
   // === DESIGN / LIFESTYLE ===
-  { name: 'Designboom Cars', url: 'https://www.designboom.com/feed/', priority: 3, category: 'design' },
-  { name: 'Dezeen Cars', url: 'https://www.dezeen.com/feed/', priority: 3, category: 'design' },
+  // ⚠️ designboom et Dezeen retournent du contenu général (design, architecture, tech)
+  // Ils ont été désactivés via scripts/disable-bad-feeds.ts
+  // Ne pas les ré-ajouter ici.
 ];
 
 function addDiverseFeeds() {

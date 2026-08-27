@@ -17,6 +17,7 @@ export async function POST(
   const body = await request.json().catch(() => null);
 
   const driveUrl = body?.driveUrl as string | undefined;
+  const carouselTexts = body?.carouselTexts as string[] | undefined;
 
   try {
     const db = getDb();
@@ -24,10 +25,11 @@ export async function POST(
       .prepare(
         `UPDATE articles
          SET exported_at = datetime('now'),
-             drive_url = ?
+             drive_url = ?,
+             carousel_slides = ?
          WHERE content_id = ? AND exported_at IS NULL`,
       )
-      .run(driveUrl ?? null, contentId);
+      .run(driveUrl ?? null, carouselTexts ? JSON.stringify(carouselTexts) : null, contentId);
 
     if (result.changes === 0) {
       // Article non trouvé ou déjà exporté — non-fatal

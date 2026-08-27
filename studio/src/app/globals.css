@@ -3,11 +3,22 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* Rouge de marque (mesuré sur le logo réel, moyenne RGB 139/29/29).
+     Source de vérité unique — UI et gabarits doivent passer par ces tokens.
+     --brand         aplat des fonds pleins (boutons, tuiles sélectionnées)
+     --brand-hover   variante intermédiaire, état hover
+     --brand-pressed variante claire, état pressé */
+  --brand: #8b1d1d;
+  --brand-hover: #8f2626;
+  --brand-pressed: #ca3e3e;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-pressed: var(--brand-pressed);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

@@ -8,9 +8,11 @@ Ce fichier est le point d'entrée pour tout agent OpenCode travaillant sur ce pr
 
 | Fichier | Portée | Rôle |
 |---------|--------|------|
+| `ONBOARDING.md` |全局 | **POINT D'ENTRÉE** — état actuel, workflow, fichiers à lire, architecture |
 | `RADAR/CLAUDE.md` | RADAR | Constitution du projet RADAR — interdits, stack, anti-hallucination, qualité |
 | `studio/CLAUDE.md` | STUDIO | Constitution du projet STUDIO — décisions visuelles, gabarits, auth |
 | `CLAUDE_DASHBOARD.md` |全局 | Vue d'ensemble — parcours utilisateur, architecture, statut modules |
+| `TODO.md` |全局 | Toutes les tâches, statuts, blocages, priorités |
 
 **Règle** : en cas de conflit entre ce fichier et un CLAUDE.md, le CLAUDE.md du dossier concerné gagne.
 
@@ -39,6 +41,20 @@ Design guidance pour interfaces frontend. Utilise quand tu touches à l'UI du ST
 - `/impeccable layout` — spacing, rhythm, visual hierarchy
 
 → Toute modification visuelle du STUDIO doit passer par Impeccable avant validation.
+
+### Agency Agents (expertise spécialisée)
+28 agents spécialisés dans `.opencode/agents/`. Chaque agent apporte une perspective de domaine :
+
+| Catégorie | Agents | Quand les activer |
+|-----------|--------|-------------------|
+| **Frontend** | frontend-developer, ui-designer, ux-architect, design-system-builder, brand-guardian, ui-finish-gate-reviewer, accessibility-auditor | Modifications UI/UX du STUDIO ou RADAR |
+| **Backend** | backend-architect, api-platform-engineer, database-optimizer, senior-developer, software-architect | API routes, cron, pipeline, SQLite |
+| **Sécurité** | security-architect, application-security-engineer, data-privacy-officer | Auth, sessions, données embargo |
+| **Testing** | test-automation-engineer, api-tester, performance-benchmarker, reality-checker | Tests, vérification, performance |
+| **DevOps** | devops-automator, git-workflow-master | Déploiement, PM2, nginx, VM |
+| **Docs** | technical-writer, codebase-onboarding-engineer | CLAUDE.md, documentation |
+
+**Comment les activer** : mentionne l'agent dans ta tâche. Ex: "En tant que Frontend Developer, review ce composant" ou "Active Security Architect pour analyser l'auth".
 
 ---
 
@@ -71,56 +87,6 @@ media_autombile/
 ├── opencode.json       ← Config plugins OpenCode
 └── docker-compose.yml  ← Orchestration des deux apps
 ```
-
----
-
-## Protocole de réflexion multi-perspectives (inspiré ChatDev)
-
-Avant toute décision structurante (architecture, ajout de dépendance, changement de pipeline, design visuel majeur), appliquer le protocole **PVRS** — 4 angles d'analyse séquentiels, comme les phases d'un workflow ChatDev :
-
-### Les 4 rôles (un seul agent, 4 modes)
-
-| Rôle | Question clé | Focus |
-|------|-------------|-------|
-| **P**roduct Owner | "Est-ce que ça sert l'utilisateur ?" | Valeur métier, parcours, priorité |
-| **V**érificateur | "Est-ce que ça casse quelque chose ?" | Contraintes CLAUDE.md, stack figée, interdits, régressions |
-| **R**ésolveur | "Quelle est la meilleure approche ?" | Trade-offs, alternatives, complexité réelle |
-| **S**écuritaire | "Qu'est-ce qui peut mal tourner ?" | Coût, dépassement, dépendances, risques, dette technique |
-
-### Déroulement
-
-```
-1. Énoncer la décision à prendre (1 phrase)
-2. P — Product Owner : cette chose ajoute-t-elle de la valeur ? Pour qui ?
-3. V — Vérificateur : vérifier CLAUDE.md, stack, interdits. Y a-t-il un conflit ?
-4. R — Résolveur : proposer 2-3 approches avec trade-offs, recommander une
-5. S — Sécuritaire : risques, coûts, dépendances, dette technique
-6. Synthèse : recommandation finale avec les 4 points de vue
-7. → Présenter à l'humain pour décision (jamais trancher seul)
-```
-
-### Quand appliquer
-
-- Ajout d'une dépendance (même "petite")
-- Changement d'architecture (nouveau service, nouvelle API inter-app)
-- Modification de pipeline (cron, export, callback)
-- Design visuel majeur (nouveau gabarit, changement de layout)
-- Tout choix qui engage le long terme
-
-### Quand NE PAS appliquer
-
-- Bug fix ciblé (un fichier, une ligne)
-- Traduction / texte
-- Refactor pur (sans changement de comportement)
-- Mise à jour de dépendance mineure
-
-### Exemple rapide : "Ajouter un cache Redis"
-
-- **P** : Non prioritaire — le SQLite WAL suffit pour 5-10 users
-- **V** : Violation stack §3 — Redis n'est pas dans la stack figée
-- **R** : Alternative : better-sqlite3 WAL + index (déjà en place)
-- **S** : Redis = 1 dépendance Docker supplémentaire, coût mémoire VM ARM
-- **Décision** : Rejeter. Pas de Redis.
 
 ---
 

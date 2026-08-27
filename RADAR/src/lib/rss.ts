@@ -175,7 +175,7 @@ export function storeItems(feedId: number, items: ParsedItem[]): { stored: numbe
 
 export function getFeeds(): Feed[] {
   const db = getDb();
-  return db.prepare('SELECT * FROM feeds ORDER BY priority').all() as Feed[];
+  return db.prepare('SELECT * FROM feeds WHERE enabled = 1 ORDER BY priority').all() as Feed[];
 }
 
 export function addFeed(name: string, url: string, priority: number = 1, requiresScraping: boolean = false): Feed {
@@ -234,6 +234,39 @@ export function getItemsWithRejectedImages(): (Item & { feed_name: string })[] {
 export function updateItemImage(itemId: number, imageUrl: string, source: string): void {
   const db = getDb();
   db.prepare('UPDATE items SET image_url = ?, image_source = ? WHERE id = ?').run(imageUrl, source, itemId);
+}
+
+/**
+ * Enregistre toutes les images candidates trouvées pour un item (pas
+ * seulement la meilleure, déjà posée sur `items.image_url` par
+ * `updateItemImage`) — nécessaire pour composer un carrousel à plusieurs
+ * visuels. Additif : remplace le contenu précédent de `item_images` pour cet
+ * item (une nouvelle recherche invalide l'ancien classement), ne touche pas
+ * `items.image_url`.
+ */
+export function storeItemImages(
+  itemId: number,
+  images: Array<{ url: string; source: string; width?: number; height?: number }>
+): void {
+  const db = getDb();
+  const del = db.prepare('DELETE FROM item_images WHERE item_id = ?');
+  const insert = db.prepare(
+    'INSERT INTO item_images (item_id, url, source, rank, width, height) VALUES (?, ?, ?, ?, ?, ?)'
+  );
+  const tx = db.transaction((imgs: typeof images) => {
+    del.run(itemId);
+    imgs.forEach((img, rank) => {
+      insert.run(itemId, img.url, img.source, rank, img.width ?? null, img.height ?? null);
+    });
+  });
+  tx(images);
+}
+
+export function getItemImages(itemId: number): Array<{ url: string; source: string; rank: number; width: number | null; height: number | null }> {
+  const db = getDb();
+  return db.prepare(
+    'SELECT url, source, rank, width, height FROM item_images WHERE item_id = ? ORDER BY rank ASC'
+  ).all(itemId) as Array<{ url: string; source: string; rank: number; width: number | null; height: number | null }>;
 }
 
 export function updateItemImagePreflight(itemId: number, verdict: string): void {

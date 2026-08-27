@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { generateArticle, createManualArticle, getArticles, getArticle, updateArticleStatus, DegradedModeError } from '@/lib/articles';
+import { generateAndVerifyArticle, createManualArticle, getArticles, getArticle, updateArticleStatus, DegradedModeError } from '@/lib/articles';
 import { getBrief } from '@/lib/brief';
-import { generateVerificationReport, verifyArticleAgainstBrief } from '@/lib/verification';
+import { generateVerificationReport } from '@/lib/verification';
 import { getDb } from '@/lib/db';
 import { recordDecision, getDegradedModeStatus } from '@/lib/killswitch';
+import { generateArticleDeadlines } from '@/lib/calendar';
 
 export async function POST(request: Request) {
   try {
@@ -25,9 +26,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, article });
     }
 
-    let article;
+    let result;
     try {
-      article = await generateArticle(event_id);
+      result = await generateAndVerifyArticle(event_id);
     } catch (err) {
       if (err instanceof DegradedModeError) {
         return NextResponse.json(
@@ -38,34 +39,16 @@ export async function POST(request: Request) {
       throw err;
     }
 
-    if (!article) {
+    if (!result) {
       return NextResponse.json(
         { error: 'Event not found or brief generation failed' },
         { status: 404 }
       );
     }
-    
-    // Run verification after generation
-    const brief = getBrief(event_id);
-    if (brief) {
-      const verification = verifyArticleAgainstBrief(brief, article.content, article.title);
-      
-      // Store verification results in database
-      const db = getDb();
-      db.prepare(`
-        UPDATE articles 
-        SET verification_score = ?, verification_issues = ?
-        WHERE id = ?
-      `).run(
-        verification.confidenceScore,
-        JSON.stringify(verification.issues),
-        article.id
-      );
-    }
-    
+
     return NextResponse.json({
       success: true,
-      article,
+      article: result.article,
     });
   } catch (error) {
     console.error('Error generating article:', error);
@@ -142,6 +125,12 @@ export async function PATCH(request: Request) {
       updateArticleStatus(id, status);
       if (status === 'validated' || status === 'rejected') {
         recordDecision(id, status);
+      }
+      if (status === 'validated') {
+        // Anticipe le besoin : dès la validation, une échéance de publication
+        // apparaît au calendrier — plus besoin d'aller cliquer "Générer
+        // deadlines" séparément. Idempotent (ne crée rien si déjà fait).
+        generateArticleDeadlines();
       }
     }
     

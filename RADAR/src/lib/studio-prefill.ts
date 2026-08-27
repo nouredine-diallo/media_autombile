@@ -55,6 +55,10 @@ export function decodeStudioUrl(encoded: string): StudioPrefillData | null {
   }
 }
 
+export function getStudioUrl(): string {
+  return process.env.STUDIO_URL || "http://89.168.53.133:3002";
+}
+
 export function buildStudioLink(params: {
   title: string;
   source: string;
@@ -69,5 +73,30 @@ export function buildStudioLink(params: {
     c: params.contentId,
     b: params.briefHeadline,
   });
-  return `http://89.168.53.133:3002?prefill=${encoded}`;
+  return `${getStudioUrl()}/titres?prefill=${encoded}`;
+}
+
+/**
+ * Variante carrousel de `buildStudioLink` — même enveloppe `?prefill=`, route
+ * dédiée `/titres/carrousel` (page STUDIO distincte, voir §6 étape 2.5 du
+ * plan écosystème) plutôt qu'un drapeau sur `/titres` : évite de faire
+ * porter au composant single-image, déjà volumineux et déjà éprouvé, une
+ * branche carrousel qui risquerait de le régresser. Le chemin `/titres`
+ * seul (single-image) reste totalement inchangé.
+ */
+export function buildCarouselStudioLink(params: {
+  title: string;
+  source: string;
+  imageUrl: string | null;
+  contentId: string;
+  briefHeadline: string;
+}): string {
+  const encoded = encodeStudioUrl({
+    t: params.title,
+    s: params.source,
+    i: params.imageUrl || 'empty',
+    c: params.contentId,
+    b: params.briefHeadline,
+  });
+  return `${getStudioUrl()}/titres/carrousel?prefill=${encoded}`;
 }

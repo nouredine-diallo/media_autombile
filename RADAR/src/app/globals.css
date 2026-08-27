@@ -47,16 +47,24 @@
        d'où un palier éclairci de la même teinte (OKLCH L 0,65 · h 26°)
        qui remonte à 5,05:1 sur une carte.
      ------------------------------------------------------------------------ */
-  /* --- Accent: rouge vif pour actions et onglet actif --- */
-  --brand: #E62020;             /* rouge vif — boutons principaux, accent actif */
-  --brand-hover: #FF3333;
-  --brand-pressed: #CC1A1A;
+  /* --- Accent : les 3 rouges de marque confirmés (mesurés/validés le
+     2026-08-27), remplacent l'ancien rouge générique #E62020 qui n'était
+     l'un des trois. Répartition par contraste plutôt qu'au hasard : #CA3E3E
+     (le plus clair des trois) porte le rôle "encre sur fond sombre" que le
+     commentaire ci-dessus décrivait déjà sans l'avoir — c'est lui qui sert
+     de texte/icône dans 24 endroits du code, le brique profond #8B1D1D n'y
+     tiendrait pas la lisibilité mesurée plus haut (2,09:1). #8F2626 et
+     #8B1D1D descendent vers le pressed, où la lisibilité du texte n'est
+     plus en jeu (état bref, aplat). ------------------------------------ */
+  --brand: #CA3E3E;              /* rouge de marque — boutons principaux, accent actif */
+  --brand-hover: #8F2626;
+  --brand-pressed: #8B1D1D;
 
-  --accent: #E62020;            /* rouge vif — liens, icônes, onglet actif */
-  --accent-hover: #FF3333;
-  --accent-pressed: #CC1A1A;
-  --accent-soft: rgba(230, 32, 32, 0.12);
-  --accent-border: rgba(230, 32, 32, 0.34);
+  --accent: #CA3E3E;             /* rouge de marque — liens, icônes, onglet actif */
+  --accent-hover: #8F2626;
+  --accent-pressed: #8B1D1D;
+  --accent-soft: rgba(202, 62, 62, 0.12);
+  --accent-border: rgba(202, 62, 62, 0.34);
   --accent-contrast: #FFFFFF;   /* sur --brand : contraste élevé */
 
   /* --- Sémantique d'état (jamais utilisée comme décor) -----------------------

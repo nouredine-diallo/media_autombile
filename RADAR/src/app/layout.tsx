@@ -11,6 +11,7 @@ import { UsernameSync } from "@/components/UsernameSync";
 import { EngineSignature } from "@/components/EngineSignature";
 import { ConsoleSignature } from "@/components/ConsoleSignature";
 import { AppFrame } from "@/components/AppFrame";
+import { getStudioUrl } from "@/lib/studio-prefill";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,7 +37,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full bg-[var(--surface-base)] text-[var(--text-primary)]">
         <ToastProvider>
           <UsernameSync />
-          <Sidebar />
+          <Sidebar studioUrl={getStudioUrl()} />
           <ConsoleSignature />
           <AppFrame>
             <DegradedModeBanner />

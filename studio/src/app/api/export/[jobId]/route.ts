@@ -42,6 +42,9 @@ export async function GET(
   const response: Record<string, unknown> = {
     ...safeJob,
     hasDownload: job.status === "done" && !!job.pngBuffer,
+    // Présent seulement pour un job carrousel — absent (donc ignoré côté
+    // client existant) pour un job single-image, comportement inchangé.
+    slideCount: job.slides?.length,
   };
 
   return NextResponse.json(response);

@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
+import { PageHeader } from '@/components/PageHeader';
+import { Button } from '@/components/ui';
+import { ConfirmButton } from '@/components/ConfirmButton';
 import { IconPartners, IconPlus, IconRefresh } from '@/components/icons';
 
 interface CalendarEvent {
@@ -185,8 +187,6 @@ export default function CalendarPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Supprimer cet événement ?')) return;
-
     try {
       const response = await fetch(`/api/calendar?id=${id}`, { method: 'DELETE' });
       const data = await response.json();
@@ -221,34 +221,24 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--surface-base)] p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Calendrier</h1>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={handleGenerateDeadlines}
-              className="rounded-lg border border-[var(--border-subtle)] px-3 py-2 text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-raised)]"
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <IconRefresh size={14} strokeWidth={2} />
-                Générer deadlines
-              </span>
-            </button>
-            <button
-              onClick={() => setShowForm(true)}
-              className="rounded-lg bg-[var(--brand)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--brand-hover)] btn-glow-blue"
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <IconPlus size={14} strokeWidth={2.25} />
-                Ajouter
-              </span>
-            </button>
-            <Link href="/" className="text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)]">← Accueil</Link>
-          </div>
-        </div>
-
+    <div className="min-h-screen">
+      <PageHeader
+        title="Calendrier"
+        back={{ href: '/', label: 'Accueil' }}
+        actions={
+          <>
+            <Button onClick={handleGenerateDeadlines} variant="secondary">
+              <IconRefresh size={13} strokeWidth={2} />
+              Générer deadlines
+            </Button>
+            <Button onClick={() => setShowForm(true)} variant="primary">
+              <IconPlus size={13} strokeWidth={2.5} />
+              Ajouter
+            </Button>
+          </>
+        }
+      />
+      <div className="mx-auto max-w-7xl px-6 py-6">
         {/* Week Navigation */}
         <div className="flex items-center justify-between mb-6 bg-[var(--surface-raised)] rounded-xl border border-[var(--border-subtle)] p-4">
           <button
@@ -337,15 +327,14 @@ export default function CalendarPage() {
                     >
                       {event.type_label}
                     </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(event.id);
-                      }}
+                    <ConfirmButton
+                      onConfirm={() => handleDelete(event.id)}
+                      confirmLabel="Oui"
                       className="text-xs text-[var(--text-muted)] hover:text-[var(--danger)]"
+                      confirmClassName="text-xs text-[var(--danger)] font-medium"
                     >
                       ×
-                    </button>
+                    </ConfirmButton>
                   </div>
                 </div>
               ))}

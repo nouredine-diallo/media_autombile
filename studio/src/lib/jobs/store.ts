@@ -2,12 +2,28 @@ import "server-only";
 
 export type ExportJobStatus = "pending" | "rendering" | "uploading" | "done" | "error";
 
-export interface ExportJob {
-  id: string;
+export interface CarouselSlideSpec {
   gabaritId: string;
   fieldValues: Record<string, string>;
+}
+
+export interface CarouselSlideResult {
+  buffer: Buffer;
+  filename: string;
+}
+
+export interface ExportJob {
+  id: string;
+  /** Absent pour un job carrousel — voir `slidesSpec`. */
+  gabaritId?: string;
+  fieldValues?: Record<string, string>;
+  /** Présent seulement pour un job carrousel (§6 du plan écosystème, étape D). */
+  slidesSpec?: CarouselSlideSpec[];
   status: ExportJobStatus;
+  /** Job single-image. */
   pngBuffer?: Buffer;
+  /** Job carrousel, une fois chaque slide rendue. */
+  slides?: CarouselSlideResult[];
   driveUrl?: string;
   driveFileId?: string;
   error?: string;
@@ -36,6 +52,21 @@ export function createJob(
     id,
     gabaritId,
     fieldValues,
+    status: "pending",
+    createdAt: now,
+    updatedAt: now,
+  };
+  jobs.set(id, job);
+  cleanup();
+  return job;
+}
+
+/** Variante carrousel de `createJob` — même stockage, `slidesSpec` au lieu de `gabaritId`/`fieldValues`. */
+export function createCarouselJob(id: string, slidesSpec: CarouselSlideSpec[]): ExportJob {
+  const now = Date.now();
+  const job: ExportJob = {
+    id,
+    slidesSpec,
     status: "pending",
     createdAt: now,
     updatedAt: now,

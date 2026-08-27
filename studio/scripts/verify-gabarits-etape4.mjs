@@ -1,5 +1,6 @@
 // Test de régression visuelle pour les gabarits de l'Étape 4 (1B, 2A, 3A, 3B)
-// + re-vérification de 1A après le refactor TitleFooter partagé.
+// + re-vérification de 1A après le refactor TitleFooter partagé
+// + 1C (2026-08-27, réutilise Gabarit1A) et CTA (2026-08-27, nouveau).
 // Même principe que scripts/verify-gabarit-1a.mjs : aperçu et export doivent
 // être strictement identiques.
 //
@@ -29,6 +30,23 @@ const cases = [
       imageUrl: "/test/placeholder-photo.jpg",
       eyebrow: "Une touche unique pour capter l'attention",
       title: "Essayez de trouver un plus gros flex des années 90",
+    },
+  },
+  {
+    // Réutilise Gabarit1A avec `eyebrow` rempli — voir registry.tsx.
+    id: "1c",
+    fields: {
+      imageUrl: "/test/placeholder-photo.jpg",
+      eyebrow: "3000 € de fraude...",
+      title: "Pendant six mois, cette famille a fraudé les péages avec une technique étonnamment simple",
+    },
+  },
+  {
+    // Toujours la dernière slide d'un carrousel — voir GabaritCTA.tsx.
+    id: "cta",
+    fields: {
+      imageUrl: "/test/placeholder-photo.jpg",
+      message: "Tu veux suivre toute l'actu automobile ? Alors abonne-toi dès maintenant à Le Média Automobile !",
     },
   },
   {

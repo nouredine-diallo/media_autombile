@@ -10,9 +10,9 @@ import {
   IconAlert,
   IconArrowRight,
   IconCheck,
+  IconChevronRight,
   IconClose,
   IconGenerate,
-  IconImage,
   IconImageOff,
   IconPlus,
   IconRefresh,
@@ -22,7 +22,8 @@ import {
 import { useToast } from '@/components/Toast';
 import { FactHighlighter } from '@/components/FactHighlighter';
 import { LockBadge } from '@/components/LockBadge';
-import { buildStudioLink } from '@/lib/studio-prefill';
+import { AssociatePartnerButton } from '@/components/AssociatePartnerButton';
+import { buildStudioLink, buildCarouselStudioLink } from '@/lib/studio-prefill';
 
 function getUsername(): string {
   if (typeof window === 'undefined') return 'unknown';
@@ -126,6 +127,13 @@ export default function EventDetail() {
   const [creatingManual, setCreatingManual] = useState(false);
   const [checklistState, setChecklistState] = useState<{ checked: number; total: number }>({ checked: 0, total: 0 });
   const [lockStatus, setLockStatus] = useState<Record<number, { locked_by: string | null; locked_at: string | null }>>({});
+  /** Force la validation sans cocher chaque fait — macro-action pour les articles de confiance. */
+  const [confirmingOverride, setConfirmingOverride] = useState(false);
+  /** Sources + Brief sont du contexte consulté, pas travaillé — replié par défaut. */
+  const [contextExpanded, setContextExpanded] = useState(false);
+  const [factsExpanded, setFactsExpanded] = useState(false);
+  const [tagsExpanded, setTagsExpanded] = useState(false);
+  const [microCorrectionOpen, setMicroCorrectionOpen] = useState(false);
   const refineInputRef = useRef<HTMLInputElement>(null);
   const { addToast } = useToast();
 
@@ -171,7 +179,14 @@ export default function EventDetail() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
         e.preventDefault();
-        handleRefine();
+        if (!microCorrectionOpen) {
+          // Le panneau est replié par défaut — Ctrl+R le déplie et donne le
+          // focus au lieu de soumettre une correction vide.
+          setMicroCorrectionOpen(true);
+          setTimeout(() => refineInputRef.current?.focus(), 0);
+        } else {
+          handleRefine();
+        }
       }
       if (editingContent !== null && e.key === 'Escape') {
         setEditingContent(null);
@@ -179,7 +194,7 @@ export default function EventDetail() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [refineInstruction, editingContent, selectedArticle]);
+  }, [refineInstruction, editingContent, selectedArticle, microCorrectionOpen]);
 
   useEffect(() => {
     if (selectedArticle?.status === 'validated') {
@@ -654,10 +669,8 @@ export default function EventDetail() {
   }
 
   const columns = [
-    { id: 0, label: 'Sources', key: '1' },
-    { id: 1, label: 'Brief', key: '2' },
-    { id: 2, label: 'Articles', key: '3' },
-    { id: 3, label: 'Revue', key: '4' },
+    { id: 0, label: 'Articles', key: '1' },
+    { id: 1, label: 'Revue', key: '2' },
   ];
 
   return (
@@ -670,7 +683,7 @@ export default function EventDetail() {
             shortcuts={[
               { key: 'f', description: 'Mode focus' },
               { key: 'Escape', description: 'Quitter le focus' },
-              { key: '1-4', description: 'Sélectionner colonne' },
+              { key: '1-2', description: 'Sélectionner colonne' },
               { key: '[', description: 'Rétracter barre latérale' },
             ]}
           />
@@ -689,26 +702,19 @@ export default function EventDetail() {
                 {event.source_count} source{event.source_count > 1 ? 's' : ''}
               </span>
             </Badge>
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center gap-1 rounded-[var(--radius-full)] bg-[var(--surface-hover)] py-0.5 pl-2.5 pr-1 text-[11px] leading-5 text-[var(--text-secondary)]"
+            {(tags.length > 0 || event.feed_names.length > 0) && (
+              <button
+                onClick={() => setTagsExpanded((v) => !v)}
+                className="inline-flex h-6 items-center gap-1 rounded-[var(--radius-full)] bg-[var(--surface-hover)] px-2.5 text-[11px] font-medium text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
               >
-                {tag}
-                <button
-                  onClick={() => handleRemoveTag(tag)}
-                  aria-label={`Retirer le tag ${tag}`}
-                  className="rounded p-0.5 text-[var(--text-faint)] transition-colors hover:text-[var(--danger)]"
-                >
-                  <IconClose size={10} strokeWidth={2.5} />
-                </button>
-              </span>
-            ))}
-            {event.feed_names.map((name, i) => (
-              <Badge key={i} tone="neutral">
-                {name}
-              </Badge>
-            ))}
+                <IconChevronRight
+                  size={10}
+                  strokeWidth={2.5}
+                  className={`transition-transform duration-[var(--dur-fast)] ${tagsExpanded ? 'rotate-90' : ''}`}
+                />
+                {tags.length + event.feed_names.length} tag{tags.length + event.feed_names.length > 1 ? 's' : ''}/flux
+              </button>
+            )}
             <button
               onClick={handleAssignEvent}
               className={`inline-flex h-6 items-center gap-1.5 rounded-[var(--radius-full)] px-2.5 text-[11px] font-medium transition-colors duration-[var(--dur-fast)] ${
@@ -730,6 +736,30 @@ export default function EventDetail() {
               )}
             </button>
           </div>
+          {tagsExpanded && (tags.length > 0 || event.feed_names.length > 0) && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1 rounded-[var(--radius-full)] bg-[var(--surface-hover)] py-0.5 pl-2.5 pr-1 text-[11px] leading-5 text-[var(--text-secondary)]"
+                >
+                  {tag}
+                  <button
+                    onClick={() => handleRemoveTag(tag)}
+                    aria-label={`Retirer le tag ${tag}`}
+                    className="rounded p-0.5 text-[var(--text-faint)] transition-colors hover:text-[var(--danger)]"
+                  >
+                    <IconClose size={10} strokeWidth={2.5} />
+                  </button>
+                </span>
+              ))}
+              {event.feed_names.map((name, i) => (
+                <Badge key={i} tone="neutral">
+                  {name}
+                </Badge>
+              ))}
+            </div>
+          )}
         </div>
 
         {error && (
@@ -758,17 +788,29 @@ export default function EventDetail() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Column 1: Sources */}
-          <div className={`bg-[var(--surface-raised)] border rounded-lg p-4 transition-all ${
-            isFocused && focusedColumn === 0 ? 'border-[var(--accent)] ring-1 ring-[var(--accent-border)]' : 'border-[var(--border-subtle)]'
-          }`}>
-            <div className="mb-3 flex h-7 items-center justify-between">
-              <h2 className="t-title text-[var(--text-primary)]">Sources ({event.items.length})</h2>
-              {isFocused && (
-                <kbd className="px-1.5 py-0.5 bg-[var(--surface-base)] rounded text-[10px] text-[var(--text-secondary)] font-data">1</kbd>
-              )}
-            </div>
+        {/* Contexte : sources + brief — consulté, pas travaillé, replié par défaut */}
+        <div className="mb-6 bg-[var(--surface-raised)] border border-[var(--border-subtle)] rounded-lg">
+          <button
+            type="button"
+            onClick={() => setContextExpanded((v) => !v)}
+            className="flex w-full items-center gap-2 px-4 py-3 text-left"
+          >
+            <IconChevronRight
+              size={14}
+              strokeWidth={2}
+              className={`shrink-0 text-[var(--text-muted)] transition-transform duration-[var(--dur-fast)] ${contextExpanded ? 'rotate-90' : ''}`}
+            />
+            <h2 className="t-title text-[var(--text-primary)]">Contexte</h2>
+            <span className="t-caption text-[var(--text-muted)] truncate">
+              {event.items.length} source{event.items.length > 1 ? 's' : ''} · {brief ? 'brief généré' : 'aucun brief'}
+            </span>
+          </button>
+
+          {contextExpanded && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 px-4 pb-4">
+            {/* Sources */}
+            <div>
+            <h2 className="t-title mb-3 text-[var(--text-primary)]">Sources ({event.items.length})</h2>
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {event.items.map((item) => (
                 <div key={item.id} className="border-b border-[var(--border-subtle)] pb-3 last:border-b-0">
@@ -833,29 +875,16 @@ export default function EventDetail() {
                     {item.published_at && (
                       <span>• {new Date(item.published_at).toLocaleDateString('fr-FR')}</span>
                     )}
-                    {item.image_source && (
-                      <span className="inline-flex items-center gap-1 text-[var(--success)]">
-                        <IconImage size={11} strokeWidth={2} />
-                        {item.image_source}
-                      </span>
-                    )}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+            </div>
 
-          {/* Column 2: Brief */}
-          <div className={`bg-[var(--surface-raised)] border rounded-lg p-4 transition-all ${
-            isFocused && focusedColumn === 1 ? 'border-[var(--accent)] ring-1 ring-[var(--accent-border)]' : 'border-[var(--border-subtle)]'
-          }`}>
+            {/* Brief */}
+            <div>
             <div className="mb-3 flex h-7 items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h2 className="t-title text-[var(--text-primary)]">Brief</h2>
-                {isFocused && (
-                  <kbd className="px-1.5 py-0.5 bg-[var(--surface-base)] rounded text-[10px] text-[var(--text-secondary)] font-data">2</kbd>
-                )}
-              </div>
+              <h2 className="t-title text-[var(--text-primary)]">Brief</h2>
               <Button
                 onClick={brief ? handleGenerateBrief : handleGenerateBriefAndArticle}
                 disabled={generatingBrief || generatingArticle}
@@ -893,24 +922,38 @@ export default function EventDetail() {
 
                 {/* Facts */}
                 <div className="mb-4">
-                  <h4 className="text-xs font-medium text-[var(--text-primary)] mb-2">Faits vérifiables</h4>
-                  <div className="space-y-2">
-                    {brief.facts.slice(0, 5).map((fact, i) => (
-                      <div key={i} className="p-2 bg-[var(--surface-base)] rounded text-xs">
-                        <div className="flex items-start gap-1">
-                          <span className={`px-1 py-0.5 rounded text-xs ${getConfidenceColor(fact.confidence)}`}>
-                            {fact.confidence}
-                          </span>
-                          <div className="flex-1">
-                            <p className="text-[var(--text-secondary)]">{fact.text}</p>
-                            <div className="text-[var(--text-muted)] mt-0.5">
-                              Source: {fact.source_title}
+                  <button
+                    type="button"
+                    onClick={() => setFactsExpanded((v) => !v)}
+                    className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-primary)] mb-2"
+                  >
+                    <IconChevronRight
+                      size={12}
+                      strokeWidth={2}
+                      className={`text-[var(--text-muted)] transition-transform duration-[var(--dur-fast)] ${factsExpanded ? 'rotate-90' : ''}`}
+                    />
+                    Faits vérifiables
+                    <span className="font-data text-[var(--text-muted)]">({brief.facts.length})</span>
+                  </button>
+                  {factsExpanded && (
+                    <div className="space-y-2">
+                      {brief.facts.slice(0, 5).map((fact, i) => (
+                        <div key={i} className="p-2 bg-[var(--surface-base)] rounded text-xs">
+                          <div className="flex items-start gap-1">
+                            <span className={`px-1 py-0.5 rounded text-xs ${getConfidenceColor(fact.confidence)}`}>
+                              {fact.confidence}
+                            </span>
+                            <div className="flex-1">
+                              <p className="text-[var(--text-secondary)]">{fact.text}</p>
+                              <div className="text-[var(--text-muted)] mt-0.5">
+                                Source: {fact.source_title}
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Angle suggestion */}
@@ -927,17 +970,21 @@ export default function EventDetail() {
                 hint="Le brief agrège les faits vérifiables des sources — c'est la seule autorité factuelle de l'article."
               />
             )}
+            </div>
           </div>
+          )}
+        </div>
 
-          {/* Column 3: Articles */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Articles */}
           <div className={`bg-[var(--surface-raised)] border rounded-lg p-4 transition-all ${
-            isFocused && focusedColumn === 2 ? 'border-[var(--accent)] ring-1 ring-[var(--accent-border)]' : 'border-[var(--border-subtle)]'
+            isFocused && focusedColumn === 0 ? 'border-[var(--accent)] ring-1 ring-[var(--accent-border)]' : 'border-[var(--border-subtle)]'
           }`}>
             <div className="mb-3 flex h-7 items-center justify-between">
               <div className="flex items-center gap-2">
                 <h2 className="t-title text-[var(--text-primary)]">Articles</h2>
                 {isFocused && (
-                  <kbd className="px-1.5 py-0.5 bg-[var(--surface-base)] rounded text-[10px] text-[var(--text-secondary)] font-data">3</kbd>
+                  <kbd className="px-1.5 py-0.5 bg-[var(--surface-base)] rounded text-[10px] text-[var(--text-secondary)] font-data">1</kbd>
                 )}
               </div>
               {!degraded ? (
@@ -1013,8 +1060,16 @@ export default function EventDetail() {
                         </span>
                       )}
                       {article.provenance && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-secondary)]" title="Provenance de l'article">
-                          {article.provenance}
+                        <span
+                          className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${
+                            article.provenance === 'généré'
+                              ? 'bg-[var(--success-soft)] text-[var(--success)]'
+                              : 'bg-[var(--surface-hover)] text-[var(--text-secondary)]'
+                          }`}
+                          title={article.provenance === 'généré' ? 'Généré automatiquement ce matin, contrôle qualité déjà passé — reste à valider' : "Provenance de l'article"}
+                        >
+                          {article.provenance === 'généré' && <IconGenerate size={10} strokeWidth={2} />}
+                          {article.provenance === 'généré' ? 'généré auto' : article.provenance}
                         </span>
                       )}
                       {lockStatus[article.id]?.locked_by && (
@@ -1028,14 +1083,20 @@ export default function EventDetail() {
                     </div>
 
                     <h3 className="font-medium text-[var(--text-primary)] text-sm mb-1">{article.title}</h3>
-                    {article.chapeau && (
-                      <p className="text-xs text-[var(--text-secondary)] mb-2 italic">{article.chapeau}</p>
+                    {/* Une fois un article sélectionné, son contenu se lit dans la colonne Revue —
+                        pas besoin de le dupliquer ici. Avant sélection, l'aperçu aide à choisir. */}
+                    {selectedArticle ? null : (
+                      <>
+                        {article.chapeau && (
+                          <p className="text-xs text-[var(--text-secondary)] mb-2 italic">{article.chapeau}</p>
+                        )}
+                        <div className="text-xs text-[var(--text-secondary)] line-clamp-4">
+                          {article.content.split('\n\n').slice(0, 2).map((paragraph, i) => (
+                            <p key={i} className="mb-1">{paragraph}</p>
+                          ))}
+                        </div>
+                      </>
                     )}
-                    <div className="text-xs text-[var(--text-secondary)] line-clamp-4">
-                      {article.content.split('\n\n').slice(0, 2).map((paragraph, i) => (
-                        <p key={i} className="mb-1">{paragraph}</p>
-                      ))}
-                    </div>
                     <div className="text-xs text-[var(--text-muted)] mt-2 font-data">
                       {new Date(article.generated_at).toLocaleString('fr-FR')}
                     </div>
@@ -1055,50 +1116,66 @@ export default function EventDetail() {
 
             {generatingArticle && (
               <div className="text-center py-8">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--studio)]"></div>
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--brand)]"></div>
                 <p className="text-sm text-[var(--text-muted)] mt-2">Génération en cours...</p>
               </div>
             )}
 
-            {/* Micro-correction */}
+            {/* Micro-correction — power-user, repliée par défaut */}
             {selectedArticle && !generatingArticle && (
               <div className="mt-3 border-t border-[var(--border-subtle)] pt-3">
-                <div className="flex gap-2">
-                  <input
-                    ref={refineInputRef}
-                    type="text"
-                    value={refineInstruction}
-                    onChange={(e) => setRefineInstruction(e.target.value)}
-                    placeholder="Ajustement rapide... (Ctrl+R)"
-                    className="flex-1 px-2 py-1.5 border border-[var(--border-subtle)] bg-[var(--surface-base)] rounded text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--studio)] focus:outline-none"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleRefine();
-                    }}
-                  />
+                {!microCorrectionOpen ? (
                   <button
-                    onClick={handleRefine}
-                    disabled={!refineInstruction.trim() || refining}
-                    className="px-3 py-1.5 bg-[var(--studio)] text-white rounded hover:bg-[var(--studio)] disabled:opacity-50 text-xs"
+                    onClick={() => {
+                      setMicroCorrectionOpen(true);
+                      setTimeout(() => refineInputRef.current?.focus(), 0);
+                    }}
+                    className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                   >
-                    {refining ? '...' : 'Ajuster'}
+                    <IconChevronRight size={12} strokeWidth={2} />
+                    Ajustement rapide
+                    <kbd className="px-1 py-0.5 bg-[var(--surface-base)] rounded text-[10px] font-data">Ctrl+R</kbd>
                   </button>
-                </div>
-                <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                  Ctrl+R pour ajuster • ou cliquez sur le texte pour éditer manuellement
-                </p>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <input
+                        ref={refineInputRef}
+                        type="text"
+                        value={refineInstruction}
+                        onChange={(e) => setRefineInstruction(e.target.value)}
+                        placeholder="Ajustement rapide... (Ctrl+R)"
+                        className="flex-1 px-2 py-1.5 border border-[var(--border-subtle)] bg-[var(--surface-base)] rounded text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--brand)] focus:outline-none"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleRefine();
+                        }}
+                      />
+                      <button
+                        onClick={handleRefine}
+                        disabled={!refineInstruction.trim() || refining}
+                        className="px-3 py-1.5 bg-[var(--brand)] text-white rounded hover:bg-[var(--brand-hover)] disabled:opacity-50 text-xs"
+                      >
+                        {refining ? '...' : 'Ajuster'}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                      Ctrl+R pour ajuster • ou cliquez sur le texte pour éditer manuellement
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </div>
 
-          {/* Column 4: Review & Verification */}
+          {/* Revue */}
           <div className={`bg-[var(--surface-raised)] border rounded-lg p-4 transition-all ${
-            isFocused && focusedColumn === 3 ? 'border-[var(--accent)] ring-1 ring-[var(--accent-border)]' : 'border-[var(--border-subtle)]'
+            isFocused && focusedColumn === 1 ? 'border-[var(--accent)] ring-1 ring-[var(--accent-border)]' : 'border-[var(--border-subtle)]'
           }`}>
             <div className="mb-3 flex h-7 items-center justify-between">
               <div className="flex items-center gap-2">
                 <h2 className="t-title text-[var(--text-primary)]">Revue</h2>
                 {isFocused && (
-                  <kbd className="px-1.5 py-0.5 bg-[var(--surface-base)] rounded text-[10px] text-[var(--text-secondary)] font-data">4</kbd>
+                  <kbd className="px-1.5 py-0.5 bg-[var(--surface-base)] rounded text-[10px] text-[var(--text-secondary)] font-data">2</kbd>
                 )}
               </div>
               {selectedArticle && (
@@ -1287,29 +1364,85 @@ export default function EventDetail() {
                       Rejeter
                     </button>
                   </div>
+
+                  {/* Macro-action : Valider directement sans cocher chaque fait.
+                      Visible uniquement quand le score de vérification est suffisant
+                      et que la checklist n'est pas complète. */}
+                  {selectedArticle.status !== 'validated' &&
+                   checklistState.total > 0 &&
+                   checklistState.checked < checklistState.total &&
+                   verification && verification.overallScore >= 80 && (
+                    <div className="mt-2">
+                      {!confirmingOverride ? (
+                        <button
+                          onClick={() => setConfirmingOverride(true)}
+                          className="w-full px-3 py-1.5 border border-[var(--border-default)] bg-[var(--surface-hover)] text-[var(--text-secondary)] rounded text-[11px] font-medium hover:border-[var(--border-strong)] hover:text-[var(--text-primary)] transition-colors"
+                        >
+                          Valider sans vérifier (score {verification.overallScore}%)
+                        </button>
+                      ) : (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setConfirmingOverride(false);
+                              handleUpdateStatus(selectedArticle.id, 'validated');
+                            }}
+                            className="flex-1 px-3 py-1.5 bg-[var(--success)] text-white rounded text-[11px] font-medium hover:opacity-90"
+                          >
+                            Confirmer
+                          </button>
+                          <button
+                            onClick={() => setConfirmingOverride(false)}
+                            className="flex-1 px-3 py-1.5 border border-[var(--border-default)] bg-[var(--surface-hover)] text-[var(--text-secondary)] rounded text-[11px] font-medium hover:border-[var(--border-strong)]"
+                          >
+                            Annuler
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* Create Instagram Post */}
+                {/* Post-validation : barre d'actions unifiée */}
                 {selectedArticle.status === 'validated' && (
                   <div id="studio-link" className="border-t border-[var(--border-subtle)] pt-4 mt-4">
-                    <a
-                      href={buildStudioLink({
-                        title: selectedArticle.title,
-                        source: event?.feed_names?.[0] || '',
-                        imageUrl: event?.items?.find(i => i.image_url)?.image_url || null,
-                        contentId: selectedArticle.content_id || '',
-                        briefHeadline: brief?.headline?.slice(0, 200) || '',
-                      })}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block w-full px-3 py-2 bg-[var(--studio-soft)] text-white rounded hover:border-[var(--studio)] text-xs font-medium text-center glow-violet"
-                    >
-                      Créer un post Instagram →
-                    </a>
+                    <div className="flex gap-2">
+                      <a
+                        href={buildStudioLink({
+                          title: selectedArticle.title,
+                          source: event?.feed_names?.[0] || '',
+                          imageUrl: event?.items?.find(i => i.image_url)?.image_url || null,
+                          contentId: selectedArticle.content_id || '',
+                          briefHeadline: brief?.headline?.slice(0, 200) || '',
+                        })}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 block px-3 py-2 bg-[var(--studio-soft)] text-white rounded hover:border-[var(--studio)] text-xs font-medium text-center glow-violet"
+                      >
+                        Slide unique →
+                      </a>
+                      <a
+                        href={buildCarouselStudioLink({
+                          title: selectedArticle.title,
+                          source: event?.feed_names?.[0] || '',
+                          imageUrl: event?.items?.find(i => i.image_url)?.image_url || null,
+                          contentId: selectedArticle.content_id || '',
+                          briefHeadline: brief?.headline?.slice(0, 200) || '',
+                        })}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 block px-3 py-2 bg-[var(--studio-soft)] text-white rounded hover:border-[var(--studio)] text-xs font-medium text-center glow-violet"
+                      >
+                        Carrousel →
+                      </a>
+                      {selectedArticle.content_id && (
+                        <AssociatePartnerButton contentId={selectedArticle.content_id} />
+                      )}
+                    </div>
                     <p className="text-xs text-[var(--text-muted)] mt-2 text-center">
                       {event?.items?.some(i => i.image_url)
-                        ? 'Ouvre STUDIO avec titre, source et image pré-remplis'
-                        : 'Ouvre STUDIO avec titre et source pré-remplis (image à ajouter manuellement)'}
+                        ? 'Titre, source et image pré-remplis dans STUDIO'
+                        : 'Titre et source pré-remplis (image à ajouter manuellement)'}
                     </p>
                   </div>
                 )}
@@ -1336,6 +1469,7 @@ function CorrectionInterface({ articleId }: { articleId: number }) {
   const [lastCorrection, setLastCorrection] = useState<{ generated: string; corrected: string } | null>(null);
   const [addingToStyleGuide, setAddingToStyleGuide] = useState(false);
   const [addedToStyleGuide, setAddedToStyleGuide] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const { addToast } = useToast();
 
   const handleSubmit = async () => {
@@ -1396,15 +1530,28 @@ function CorrectionInterface({ articleId }: { articleId: number }) {
 
   return (
     <div className="border-t border-[var(--border-subtle)] pt-4 mt-4">
-      <h4 className="font-medium text-[var(--text-primary)] text-sm mb-3">Enregistrer une correction</h4>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-1.5 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+      >
+        <IconChevronRight
+          size={13}
+          strokeWidth={2}
+          className={`transition-transform duration-[var(--dur-fast)] ${expanded ? 'rotate-90' : ''}`}
+        />
+        Enregistrer une correction
+      </button>
 
+      {expanded && (
+      <div className="mt-3">
       {success && lastCorrection && (
         <div className="mb-3 p-2 bg-[var(--success-soft)] text-[var(--success)] rounded text-xs flex items-center justify-between gap-2">
           <span>Correction enregistrée !</span>
           <button
             onClick={handleAddToStyleGuide}
             disabled={addingToStyleGuide || addedToStyleGuide}
-            className="px-2 py-1 bg-[var(--studio)] text-white rounded hover:bg-[var(--studio)] disabled:opacity-50 text-[10px] flex-shrink-0"
+            className="px-2 py-1 bg-[var(--brand)] text-white rounded hover:bg-[var(--brand-hover)] disabled:opacity-50 text-[10px] flex-shrink-0"
           >
             {addedToStyleGuide ? (
               <span className="inline-flex items-center gap-1"><IconCheck size={12} strokeWidth={2.5} />Ajoutée</span>
@@ -1484,6 +1631,8 @@ function CorrectionInterface({ articleId }: { articleId: number }) {
           {submitting ? 'Enregistrement...' : 'Enregistrer la correction'}
         </button>
       </div>
+      </div>
+      )}
     </div>
   );
 }

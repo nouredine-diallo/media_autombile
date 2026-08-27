@@ -10,7 +10,6 @@ import {
   IconVeille,
   IconReady,
   IconCorrections,
-  IconGuide,
   IconStats,
   IconCalendar,
   IconPartners,
@@ -32,25 +31,18 @@ const NAV_GROUPS: NavItem[][] = [
   [
     { href: '/', icon: IconHome, label: 'Accueil' },
     { href: '/events', icon: IconVeille, label: 'Veille', shortcut: 'V' },
-    { href: '/ready', icon: IconReady, label: 'Prêts à publier', shortcut: 'R' },
-    { href: '/corrections', icon: IconCorrections, label: 'Corrections', shortcut: 'C' },
+    { href: '/ready', icon: IconReady, label: 'Articles validés', shortcut: 'R' },
+    { href: '/corrections', icon: IconCorrections, label: 'Voix éditoriale', shortcut: 'C' },
   ],
   [
     { href: '/stats', icon: IconStats, label: 'Stats', shortcut: 'S' },
     { href: '/calendrier', icon: IconCalendar, label: 'Calendrier', shortcut: 'K' },
     { href: '/partenaires', icon: IconPartners, label: 'Partenaires', shortcut: 'P' },
     { href: '/drive', icon: IconDrive, label: 'Drive' },
-    { href: '/style-guide', icon: IconGuide, label: 'Guide de style' },
   ],
 ];
 
-const STUDIO_ITEM: NavItem = {
-  href: 'http://89.168.53.133:3002',
-  icon: IconStudio,
-  label: 'STUDIO',
-};
-
-export function Sidebar() {
+export function Sidebar({ studioUrl }: { studioUrl: string }) {
   const pathname = usePathname();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
@@ -169,7 +161,7 @@ export function Sidebar() {
         <div className="mt-auto flex flex-col gap-0.5 pt-2">
           <div className="mb-2 h-px bg-white/8" />
           <Link
-            href={STUDIO_ITEM.href}
+            href={studioUrl}
             target="_blank"
             rel="noopener noreferrer"
             title={isExpanded ? undefined : 'STUDIO'}
