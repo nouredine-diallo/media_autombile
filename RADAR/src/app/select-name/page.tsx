@@ -2,8 +2,7 @@
 
 import { useActionState } from "react";
 import { selectName } from "@/app/actions/auth";
-
-const TEAM_MEMBERS = ["Daniel", "Test"];
+import { TEAM_MEMBERS } from "@/lib/team";
 
 export default function SelectNamePage() {
   const [error, action, pending] = useActionState(selectName, undefined);

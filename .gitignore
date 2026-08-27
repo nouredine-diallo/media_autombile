@@ -21,6 +21,16 @@ studio/post-*
 *.avif
 !landing/
 
+# Vrais assets de production — jamais bloqués par les règles *.png/*.jpg ci-dessus.
+# Bug trouvé le 2026-08-27 : cette règle trop large empêchait ces fichiers
+# d'être committés depuis le début, donc absents de tout déploiement — logo
+# manquant sur le dashboard RADAR ET sur chaque post exporté par STUDIO
+# (TitleFooter.tsx compose ce fichier sur CHAQUE gabarit).
+!RADAR/public/logo.png
+!studio/public/logo.png
+!studio/public/marque/logo-le-media-automobile.png
+!studio/public/test/fixtures/B_bulle_logo.jpg
+
 # OS files
 .DS_Store
 Thumbs.db

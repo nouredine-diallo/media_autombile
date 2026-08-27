@@ -137,6 +137,18 @@ export async function chatComplete(params: ChatCompleteParams): Promise<ChatComp
     max_tokens: params.maxTokens,
     top_p: 0.9,
     stream: false,
+    /**
+     * Bug trouvé le 2026-08-27 en creusant pourquoi 100% des titres restent
+     * en anglais (local ET prod) : `openai/gpt-oss-120b` est un modèle
+     * "raisonneur" — sans ce réglage, il peut consommer tout son budget de
+     * tokens de sortie en réflexion interne et ne jamais produire de texte
+     * de réponse (reproduit par un appel réel : 20/20 tokens de "reasoning",
+     * 0 caractère de contenu). Déjà documenté et corrigé côté STUDIO
+     * (`titles/router.ts`, studio/CLAUDE.md §1.1) mais jamais appliqué ici —
+     * cause racine de translateToFrench qui retombe sur l'anglais à chaque
+     * appel, pas un problème de quota comme supposé initialement.
+     */
+    reasoning_effort: 'low',
   });
 
   return {
