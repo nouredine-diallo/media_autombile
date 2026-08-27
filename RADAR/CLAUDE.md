@@ -189,7 +189,8 @@ Après un export réussi vers Drive, STUDIO envoie un callback silencieux à RAD
 - Retourne toujours `{ ok: true }` même si l'article n'est pas trouvé (non-fatal)
 
 **Variables d'environnement :**
-- `STUDIO_URL` — URL de STUDIO (utilisé par `buildStudioLink()` et la stat tile du Dashboard)
+- `STUDIO_URL` — URL **publique** de STUDIO (utilisé par `buildStudioLink()` et la stat tile du Dashboard) — ce lien est cliqué depuis le navigateur de l'utilisateur, jamais une adresse locale/loopback (`127.0.0.1`), sinon le lien ne fonctionne que depuis le serveur lui-même. En prod : sous-domaine nip.io routé par nginx (`deploy/start-radar.sh`, `nginx/media-labs.conf`), pas de tunnel éphémère.
+- `STUDIO_IMPORT_URL` — appel **serveur-à-serveur** (import d'images, `src/lib/visualSearch.ts`), reste `http://127.0.0.1:3002` en prod comme en local — jamais exposé au navigateur, jamais soumis à la disponibilité d'un tunnel public.
 - `RADAR_URL` — URL de RADAR (utilisé par STUDIO pour le callback, configuré dans `studio/.env.local`)
 
 **Dashboard :** Les articles exportés affichent "Ouvrir dans Drive" au lieu de "Créer un post". Le lien Drive est cliquable.

@@ -49,6 +49,7 @@ curl -s -o /dev/null -w "STUDIO (port 3002): HTTP %{http_code}\n" http://127.0.0
 curl -s -o /dev/null -w "NGINX  (port 80):  HTTP %{http_code}\n" http://127.0.0.1:80
 echo ""
 echo "=== DONE ==="
-echo "  http://89.168.53.133      → RADAR (via nginx)"
-echo "  http://89.168.53.133:3000 → RADAR (direct)"
-echo "  http://89.168.53.133:3002 → STUDIO"
+echo "  http://89.168.53.133.nip.io/        → RADAR  (via nginx, port 80)"
+echo "  http://studio.89.168.53.133.nip.io/ → STUDIO (via nginx, port 80)"
+echo "  http://89.168.53.133:3000 → RADAR direct (debug uniquement)"
+echo "  http://89.168.53.133:3002 → bloqué par la Security List Oracle Cloud, ne pas utiliser publiquement"
