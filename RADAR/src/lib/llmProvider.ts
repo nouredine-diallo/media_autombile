@@ -44,11 +44,24 @@ function getAnthropicClient(): Anthropic {
  * d'environnement, avec une erreur explicite si elle manque — jamais un
  * secret réel dans le code source (RADAR/CLAUDE.md §6, "aucune dégradation
  * silencieuse").
+ *
+ * Client instancié paresseusement (pas au chargement du module) : trouvé le
+ * 2026-08-27 en déployant en prod — `next build` évalue ce module pour
+ * collecter les données de page même sans jamais appeler `chatComplete()`,
+ * et l'environnement de build (avant que `start-radar.sh` charge `.env`) n'a
+ * pas `GROQ_API_KEY`. Un throw ici cassait le build alors que la clé est
+ * bien présente à l'exécution. Même pattern que `getAnthropicClient()`.
  */
-if (!process.env.GROQ_API_KEY) {
-  throw new Error('GROQ_API_KEY manquante dans .env.local — requise pour lib/llmProvider.ts');
+let groqClient: Groq | null = null;
+function getGroqClient(): Groq {
+  if (groqClient) return groqClient;
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new Error('GROQ_API_KEY manquante — requise pour lib/llmProvider.ts');
+  }
+  groqClient = new Groq({ apiKey });
+  return groqClient;
 }
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 export interface ChatCompleteParams {
   system: string;
@@ -114,7 +127,7 @@ export async function chatComplete(params: ChatCompleteParams): Promise<ChatComp
     return callClaude(params);
   }
 
-  const completion = await groq.chat.completions.create({
+  const completion = await getGroqClient().chat.completions.create({
     messages: [
       { role: 'system', content: params.system },
       { role: 'user', content: params.user },
