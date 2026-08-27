@@ -53,25 +53,67 @@ export async function clusterItemsIntoEvents(): Promise<number> {
   ).all() as (Item & { embedding: string })[];
   
   if (itemsWithEmbeddings.length === 0) return 0;
-  
-  // Clear existing event-item associations and events
-  // Disable FK checks temporarily to allow deleting events that have FK references
+
+  /**
+   * Bug trouvé le 2026-08-28 : ce DELETE était inconditionnel — à CHAQUE
+   * cycle de cron (toutes les 4h), TOUS les events étaient supprimés puis
+   * reconstruits avec de nouveaux IDs, cassant le lien FK de tout article
+   * ou brief déjà rattaché à un event (FK désactivées de force pour
+   * contourner la protection). Confirmé en local : un event créé à 22h
+   * (ID 729) n'existait plus après le cycle de minuit (nouvelle plage
+   * 1118-1514) — le titre_fr traduit avec le correctif reasoning_effort
+   * disparaissait donc aussi à chaque cycle. Zéro article orphelin trouvé
+   * en prod au moment du diagnostic, mais uniquement par chance de timing
+   * — le risque était réel pour le prochain cycle.
+   *
+   * Correctif : les events déjà rattachés à un article ou un brief ne sont
+   * jamais supprimés ni reclusterisés ; seuls les items pas encore couverts
+   * par un event protégé participent au (re)clustering.
+   */
+  const protectedEventIds = (db.prepare(`
+    SELECT id FROM events
+    WHERE id IN (SELECT event_id FROM articles)
+       OR id IN (SELECT event_id FROM briefs)
+  `).all() as { id: number }[]).map(r => r.id);
+
+  const protectedItemIds = new Set<number>(
+    protectedEventIds.length > 0
+      ? (db.prepare(
+          `SELECT item_id FROM event_items WHERE event_id IN (${protectedEventIds.map(() => '?').join(',')})`
+        ).all(...protectedEventIds) as { item_id: number }[]).map(r => r.item_id)
+      : []
+  );
+
+  const clusterableItems = itemsWithEmbeddings.filter(item => !protectedItemIds.has(item.id));
+  if (clusterableItems.length === 0) return 0;
+
+  // Ne supprime que les events NON protégés. FK désactivées le temps du
+  // DELETE (comportement d'origine conservé) — stats_imports n'a en réalité
+  // qu'un content_id texte informel, pas de vraie colonne event_id/FK
+  // (vérifié sur le schéma, RADAR/src/lib/db.ts) : l'erreur "foreign key
+  // mismatch" vue dans les logs vient d'ailleurs, pas de cette table.
   db.pragma('foreign_keys = OFF');
-  db.exec('DELETE FROM event_items');
-  db.exec('DELETE FROM events');
+  if (protectedEventIds.length > 0) {
+    const placeholders = protectedEventIds.map(() => '?').join(',');
+    db.prepare(`DELETE FROM event_items WHERE event_id NOT IN (${placeholders})`).run(...protectedEventIds);
+    db.prepare(`DELETE FROM events WHERE id NOT IN (${placeholders})`).run(...protectedEventIds);
+  } else {
+    db.exec('DELETE FROM event_items');
+    db.exec('DELETE FROM events');
+  }
   db.pragma('foreign_keys = ON');
-  
+
   const events: { title: string; summary: string; itemIds: number[]; score: number }[] = [];
   const assigned = new Set<number>();
-  
-  for (const item of itemsWithEmbeddings) {
+
+  for (const item of clusterableItems) {
     if (assigned.has(item.id)) continue;
     
     const itemEmbedding = deserializeEmbedding(item.embedding);
     const cluster = { title: item.title, summary: item.summary || '', itemIds: [item.id], score: 0 };
     assigned.add(item.id);
     
-    for (const other of itemsWithEmbeddings) {
+    for (const other of clusterableItems) {
       if (assigned.has(other.id)) continue;
       
       const otherEmbedding = deserializeEmbedding(other.embedding);
