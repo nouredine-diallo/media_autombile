@@ -7,9 +7,30 @@ const SIMILARITY_THRESHOLD = 0.88;
 
 // Hybrid clustering: embedding similarity + title word overlap
 // Prevents all articles from the same feed collapsing into one event
+/**
+ * Ponctuation retirée avant comparaison (2026-08-28) — trouvé en réutilisant
+ * cette fonction pour trier les images de carrousel par pertinence
+ * (carousel-package/route.ts, Bug B) : un titre d'article corrompu en JSON
+ * brut (`{"titre": "1968 Ford Mustang GT...`, bug de parsing antérieur à
+ * cette session) faisait échouer le rapprochement "1968" à cause du guillemet
+ * collé (`"1968` ≠ `1968`) — un même mot ignoré par une simple différence de
+ * ponctuation. Re-vérifié sur les 13 titres réels ayant servi à calibrer
+ * TITLE_OVERLAP_THRESHOLD (event 1919) : le score légitime max reste 0.429
+ * et le score de faux positif max reste 0.333 après ce changement — le seuil
+ * de 0.35 sépare toujours proprement les deux groupes, pas de recalibrage
+ * nécessaire.
+ */
+function tokenize(s: string): string[] {
+  return s
+    .toLowerCase()
+    .split(/\s+/)
+    .map(w => w.replace(/[^\p{L}\p{N}]/gu, ''))
+    .filter(w => w.length > 3);
+}
+
 export function titleOverlap(a: string, b: string): number {
-  const wordsA = new Set(a.toLowerCase().split(/\s+/).filter(w => w.length > 3));
-  const wordsB = new Set(b.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+  const wordsA = new Set(tokenize(a));
+  const wordsB = new Set(tokenize(b));
   if (wordsA.size === 0 || wordsB.size === 0) return 0;
   let common = 0;
   for (const w of wordsA) { if (wordsB.has(w)) common++; }
