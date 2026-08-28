@@ -27,6 +27,7 @@ interface Article {
   image_url: string | null;
   exported_at: string | null;
   drive_url: string | null;
+  is_scheduled: number;
 }
 
 export default function ReadyForInstagram() {
@@ -49,7 +50,11 @@ export default function ReadyForInstagram() {
            WHEN i.image_source = 'rss' THEN 4
            ELSE 5
          END
-       LIMIT 1) as image_url
+       LIMIT 1) as image_url,
+      EXISTS(
+        SELECT 1 FROM calendar_events ce
+        WHERE ce.article_id = a.id AND ce.event_type = 'publication_instagram'
+      ) as is_scheduled
     FROM articles a
     LEFT JOIN events e ON a.event_id = e.id
     WHERE a.status = 'validated'
@@ -129,7 +134,7 @@ export default function ReadyForInstagram() {
                   {article.content_id && (
                     <AssociatePartnerButton contentId={article.content_id} />
                   )}
-                  <PlanifierButton articleId={article.id} />
+                  <PlanifierButton articleId={article.id} alreadyScheduled={!!article.is_scheduled} />
                   {article.exported_at && article.drive_url ? (
                     <ButtonLink href={article.drive_url} external variant="secondary" size="md">
                       <IconCheck size={14} strokeWidth={1.75} />

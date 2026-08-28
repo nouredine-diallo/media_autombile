@@ -4,7 +4,22 @@ import { useActionState, useState } from "react";
 import { scheduleArticlePublication } from "@/app/actions/calendar";
 import { IconCalendarCheck } from "@/components/icons";
 
-export function PlanifierButton({ articleId }: { articleId: number }) {
+export function PlanifierButton({
+  articleId,
+  alreadyScheduled = false,
+}: {
+  articleId: number;
+  /**
+   * Trouvé en testant le parcours "Planifier" réellement (2026-08-28) : ce
+   * composant ne représentait "Planifié" que via l'état éphémère de
+   * `useActionState`, jamais depuis les données serveur. Après un rechargement
+   * de page, le bouton revenait à "Planifier" même pour un article déjà
+   * planifié — en violation de CLAUDE_DASHBOARD.md Parcours 1b ("L'article
+   * affiche 'Planifié', pas de re-planification possible"). `ready/page.tsx`
+   * calcule maintenant cet état via `calendar_events` et le transmet ici.
+   */
+  alreadyScheduled?: boolean;
+}) {
   const [showPicker, setShowPicker] = useState(false);
   const [state, formAction, pending] = useActionState(
     async (_prev: { success: boolean; error?: string } | undefined, formData: FormData) => {
@@ -22,7 +37,7 @@ export function PlanifierButton({ articleId }: { articleId: number }) {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const minDate = tomorrow.toISOString().split("T")[0];
 
-  if (state?.success) {
+  if (state?.success || alreadyScheduled) {
     return (
       <span
         style={{
