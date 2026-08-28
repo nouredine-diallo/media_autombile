@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getBrief, getCarouselSlides } from "@/lib/brief";
 import { getItemImages } from "@/lib/rss";
+import { titleOverlap } from "@/lib/scoring";
 
 /**
  * GET /api/events/[contentId]/carousel-package
@@ -47,16 +48,32 @@ export async function GET(
   // (migration additive, voir étape A).
   const items = db
     .prepare(
-      `SELECT i.id, i.image_url, i.image_source
+      `SELECT i.id, i.title, i.image_url, i.image_source
        FROM items i
        JOIN event_items ei ON ei.item_id = i.id
        WHERE ei.event_id = ? AND i.image_url IS NOT NULL`
     )
-    .all(event.id) as Array<{ id: number; image_url: string; image_source: string | null }>;
+    .all(event.id) as Array<{ id: number; title: string; image_url: string; image_source: string | null }>;
 
+  /**
+   * Tri par pertinence au titre de l'article (Bug B, 2026-08-28) — trouvé en
+   * inspectant l'event 1919 : même après le durcissement du clustering
+   * (TITLE_OVERLAP_THRESHOLD, scoring.ts), un event peut légitimement
+   * regrouper plusieurs items proches (même sujet, sources différentes) dont
+   * les images ne sont pas toutes aussi pertinentes que l'item qui a produit
+   * l'article. `assembleSlides()` (STUDIO, titres/carrousel/page.tsx) affecte
+   * les images par simple position — la première va au héros, etc. Sans tri,
+   * une image d'un item peu pertinent peut arriver en position héros pendant
+   * qu'une image bien plus pertinente finit en CTA ou est ignorée.
+   * Réutilise `titleOverlap()` (déjà calibré pour le clustering) plutôt que
+   * d'ajouter un nouveau mécanisme de scoring — les images les plus proches
+   * du titre validé passent en premier, l'ordre positionnel de STUDIO reste
+   * inchangé (pas de duplication de logique côté STUDIO).
+   */
   const seen = new Set<string>();
-  const images: Array<{ url: string; source: string | null }> = [];
+  const scoredImages: Array<{ url: string; source: string | null; relevance: number }> = [];
   for (const item of items) {
+    const relevance = titleOverlap(article.title, item.title);
     const candidates = getItemImages(item.id);
     const list = candidates.length > 0
       ? candidates.map(c => ({ url: c.url, source: c.source }))
@@ -64,9 +81,11 @@ export async function GET(
     for (const img of list) {
       if (!img.url || seen.has(img.url)) continue;
       seen.add(img.url);
-      images.push(img);
+      scoredImages.push({ ...img, relevance });
     }
   }
+  scoredImages.sort((a, b) => b.relevance - a.relevance);
+  const images = scoredImages.map(({ url, source }) => ({ url, source }));
 
   return NextResponse.json({
     contentId: article.content_id,

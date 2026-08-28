@@ -7,7 +7,7 @@ const SIMILARITY_THRESHOLD = 0.88;
 
 // Hybrid clustering: embedding similarity + title word overlap
 // Prevents all articles from the same feed collapsing into one event
-function titleOverlap(a: string, b: string): number {
+export function titleOverlap(a: string, b: string): number {
   const wordsA = new Set(a.toLowerCase().split(/\s+/).filter(w => w.length > 3));
   const wordsB = new Set(b.toLowerCase().split(/\s+/).filter(w => w.length > 3));
   if (wordsA.size === 0 || wordsB.size === 0) return 0;
@@ -16,11 +16,26 @@ function titleOverlap(a: string, b: string): number {
   return common / Math.max(wordsA.size, wordsB.size);
 }
 
+/**
+ * TODO: seuil provisoire (RADAR/CLAUDE.md §4.3 — à calibrer sur plus de
+ * données réelles). Relevé de 0.15 à 0.35 le 2026-08-28 : un event réel
+ * ("1968 Ford Mustang GT") avait fusionné 13 items totalement différents
+ * (Cadillac, moteur détaché, 4 générations de Mustang distinctes, Ford
+ * Bronco, un article sur un film...) — mesuré empiriquement sur ces 13
+ * titres réels : le seul cas légitime (même sujet, même année, formulé
+ * différemment) donne 0.429 ; tous les faux positifs se regroupent entre
+ * 0.167 et 0.333 (le simple mot "Ford" commun suffisait à dépasser 0.15
+ * sur des titres courts). 0.35 sépare proprement les deux groupes sur cet
+ * échantillon, mais reste un seul point de données — à re-vérifier si de
+ * vrais doublons formulés très différemment se retrouvent exclus à tort.
+ */
+const TITLE_OVERLAP_THRESHOLD = 0.35;
+
 function shouldCluster(a: { embedding: number[]; title: string }, b: { embedding: number[]; title: string }): boolean {
   const sim = cosineSimilarity(a.embedding, b.embedding);
   const title = titleOverlap(a.title, b.title);
   // Both high → cluster. High embedding + low title → don't cluster (different topics, same source)
-  return sim >= SIMILARITY_THRESHOLD && title >= 0.15;
+  return sim >= SIMILARITY_THRESHOLD && title >= TITLE_OVERLAP_THRESHOLD;
 }
 
 export async function embedUnprocessedItems(): Promise<number> {
