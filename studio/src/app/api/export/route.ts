@@ -147,7 +147,12 @@ async function processExportJob(
       });
     }
   } catch (driveErr) {
-    // Drive peut ne pas être configuré — le PNG reste disponible en téléchargement direct
+    // Drive peut ne pas être configuré — le PNG reste disponible en téléchargement direct.
+    // Callback RADAR quand même envoyé (2026-08-28) : sans lui, RADAR ne
+    // sait jamais qu'un export a eu lieu — l'article reste affiché comme
+    // non exporté indéfiniment alors que le fichier existe bien (trouvé en
+    // testant le parcours complet sans Drive configuré, voir
+    // ready/page.tsx pour le traitement du cas driveUrl absent).
     console.warn(`[export] Drive upload échoué pour ${jobId}:`, driveErr);
     updateJob(jobId, {
       status: "done",
@@ -155,6 +160,11 @@ async function processExportJob(
       driveUrl: undefined,
       driveFileId: undefined,
     });
+    if (contentId) {
+      notifyRadarExported(contentId, undefined, undefined).catch((err) => {
+        console.warn(`[export] Callback RADAR (repli local) échoué pour ${contentId}:`, err);
+      });
+    }
   }
 }
 
@@ -228,13 +238,21 @@ async function processCarouselExportJob(
       });
     }
   } catch (driveErr) {
-    // Drive peut ne pas être configuré — les slides restent disponibles en ZIP local.
+    // Drive peut ne pas être configuré — les slides restent disponibles en
+    // ZIP local. Callback RADAR envoyé quand même (2026-08-28, même
+    // correctif que processExportJob juste au-dessus) — sinon RADAR ignore
+    // toujours que le carrousel a été produit.
     console.warn(`[export] Drive upload carrousel échoué pour ${jobId}:`, driveErr);
     updateJob(jobId, {
       status: "done",
       driveUrl: undefined,
       driveFileId: undefined,
     });
+    if (contentId) {
+      notifyRadarExported(contentId, undefined, undefined).catch((err) => {
+        console.warn(`[export] Callback RADAR (repli local) échoué pour ${contentId}:`, err);
+      });
+    }
   }
 }
 
@@ -244,7 +262,10 @@ function extractSlideText(spec: CarouselSlideSpec): string {
 }
 
 /**
- * Notifie silencieusement RADAR que l'article a été exporté vers Drive.
+ * Notifie silencieusement RADAR qu'un export a eu lieu — vers Drive
+ * (`driveUrl`/`driveFileId` renseignés) ou en local seulement (les deux
+ * `undefined`, 2026-08-28 : sans cet appel, RADAR n'apprend jamais qu'un
+ * export local a réussi et affiche l'article comme jamais exporté).
  * Fire-and-forget : si RADAR est down, l'export STUDIO continue normalement.
  * `carouselTexts`, quand fourni, laisse RADAR garder une trace du texte
  * final utilisé sans dépendre de Drive pour le retrouver (§2.7 du plan
@@ -252,8 +273,8 @@ function extractSlideText(spec: CarouselSlideSpec): string {
  */
 async function notifyRadarExported(
   contentId: string,
-  driveUrl: string,
-  driveFileId: string,
+  driveUrl: string | undefined,
+  driveFileId: string | undefined,
   carouselTexts?: string[],
 ): Promise<void> {
   const radarUrl = process.env.RADAR_URL;

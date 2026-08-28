@@ -26,14 +26,14 @@ export async function GET(
   }
 
   try {
-    // Timeout temporairement élargi (2026-08-28) pour le test du parcours
-    // complet avec Ollama local (generateCarouselParagraphs peut prendre
-    // plusieurs minutes sur cette machine sans GPU) — 15s convenait pour
-    // Groq (généralement <2s) mais a produit un vrai 502 en test réel.
-    // À revenir à une valeur courte (15-30s) avant tout déploiement prod
-    // avec un fournisseur cloud rapide.
+    // Revenu à 30s le 2026-08-28 (retour à Groq en prod, cf. LLM_PROVIDER
+    // dans .env.local) — le timeout de 20 minutes n'était que pour tester
+    // le parcours complet avec Ollama local (generateCarouselParagraphs
+    // peut prendre plusieurs minutes sans GPU). Groq répond en général en
+    // moins de 2s ; 30s garde une marge sans laisser un vrai incident
+    // réseau invisible pendant 20 minutes.
     const res = await fetch(`${radarUrl}/api/events/${encodeURIComponent(contentId)}/carousel-package`, {
-      signal: AbortSignal.timeout(20 * 60 * 1000),
+      signal: AbortSignal.timeout(30 * 1000),
     });
     const data = await res.json().catch(() => null);
     if (!res.ok || !data) {

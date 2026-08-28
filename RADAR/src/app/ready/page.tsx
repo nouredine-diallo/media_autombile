@@ -140,6 +140,21 @@ export default function ReadyForInstagram() {
                       <IconCheck size={14} strokeWidth={1.75} />
                       Ouvrir dans Drive
                     </ButtonLink>
+                  ) : article.exported_at ? (
+                    // Exporté sans Drive configuré (2026-08-28) : le fichier a été
+                    // téléchargé en ZIP/PNG depuis STUDIO au moment de l'export, il
+                    // ne vit plus nulle part côté serveur à ce stade (le job STUDIO
+                    // est éphémère, cf. GUIDE-UTILISATEUR.md §18) — proposer un lien
+                    // ici serait un lien mort. On dit la vérité plutôt que de laisser
+                    // croire que rien n'a été exporté (bug corrigé : avant ce
+                    // correctif, ce cas retombait silencieusement sur "Créer un post").
+                    <span
+                      className="t-caption inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2 text-[var(--text-secondary)]"
+                      title="Exporté depuis STUDIO en local (Drive non configuré) — le fichier a déjà été téléchargé pendant l'export."
+                    >
+                      <IconCheck size={14} strokeWidth={1.75} className="text-[var(--success)]" />
+                      Exporté (local)
+                    </span>
                   ) : (
                     <ButtonLink
                       href={buildStudioLink({
