@@ -138,25 +138,10 @@ export default function TitresPage() {
       setSourceContext({ source: data.s, headline: data.b });
     }
 
-    // Si une image est fournie, la télécharger et l'uploader automatiquement
+    // Si une image est fournie, l'importer automatiquement (côté serveur —
+    // voir importFromUrl, corrige le blocage CORS documenté ci-dessous).
     if (data.i && data.i !== "empty") {
-      setStatus("loading");
-      setErrorMessage(null);
-      fetch(data.i)
-        .then((r) => r.blob())
-        .then((blob) => {
-          const ext = data.i.split(".").pop()?.split("?")[0] || "jpg";
-          const file = new File([blob], `radar-image.${ext}`, {
-            type: blob.type || "image/jpeg",
-          });
-          const dt = new DataTransfer();
-          dt.items.add(file);
-          uploadFiles(dt.files);
-        })
-        .catch(() => {
-          setErrorMessage("Impossible de télécharger l'image depuis RADAR.");
-          setStatus("idle");
-        });
+      void importFromUrl(data.i);
     }
 
     // Auto-générer les titres si on a un thème (élimine 1 clic)
@@ -271,6 +256,51 @@ export default function TitresPage() {
       void detourer(nouvelles);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setStatus("idle");
+    }
+  }
+
+  /**
+   * Importe une image externe (prefill RADAR) via `/api/images/import-urls` —
+   * un fetch SERVEUR-à-serveur, pas un `fetch()` du navigateur. Bug trouvé
+   * le 2026-08-28 : l'ancienne version faisait `fetch(data.i)` directement
+   * depuis le navigateur, ce qui échoue dès que la source ne renvoie pas
+   * `Access-Control-Allow-Origin` (confirmé avec une vraie URL Hagerty —
+   * échec systématique, pas un cas isolé). Le carrousel avait déjà ce
+   * correctif (`titres/carrousel/page.tsx`, `uploadImagesInChunks`), jamais
+   * reporté ici. Une seule image (pas de rôle à deviner, cf. commentaire de
+   * `import-urls/route.ts`) : `role` fixé à "fond", `bulleUrl` construit sur
+   * le même format que `upload-batch`.
+   */
+  async function importFromUrl(url: string) {
+    setStatus("loading");
+    setErrorMessage(null);
+    try {
+      const res = await fetch("/api/images/import-urls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urls: [url] }),
+      });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data.images) || data.images.length === 0) {
+        throw new Error(data.error ?? "Image indisponible");
+      }
+      const nouvelles: UploadedImage[] = data.images.map((img: { id: string; croppedUrl: string; backdropUrl: string }) => ({
+        id: img.id,
+        croppedUrl: img.croppedUrl,
+        backdropUrl: img.backdropUrl,
+        bulleUrl: `/api/images/${img.id}?variant=bulle`,
+        role: "fond",
+      }));
+      setImages((prev) => {
+        const suite = [...prev, ...nouvelles];
+        appliquerGabaritAuto(suite.length, gabaritAuto);
+        return suite;
+      });
+      void detourer(nouvelles);
+    } catch {
+      setErrorMessage("Impossible de télécharger l'image depuis RADAR.");
     } finally {
       setStatus("idle");
     }
