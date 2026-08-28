@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { logout } from "@/app/actions/auth";
+import { Mascot } from "@/components/assistant/Mascot";
 
 export default async function Home() {
   return (
@@ -19,8 +20,14 @@ export default async function Home() {
       </header>
       <main className="flex flex-1 items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
+          <span className="h-20 w-20 flex-none">
+            <Mascot state="happy" />
+          </span>
           <p className="text-sm text-zinc-500">
             Transformez 1 à 3 images + un texte en un post automobile prêt à publier.
+          </p>
+          <p className="max-w-sm text-xs text-zinc-400">
+            L&apos;assistante en bas à droite vous guide pas à pas : gabarit, titres, images, carrousel, export.
           </p>
           <Link
             href="/nouveau-post"

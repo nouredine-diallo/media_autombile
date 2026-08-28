@@ -26,6 +26,7 @@ export {
   ArrowUpRight as IconExternal,
   ArrowRight as IconArrowRight,
   ArrowLeft as IconArrowLeft,
+  ArrowUp as IconArrowUp,
   ChevronRight as IconChevronRight,
   ChevronDown as IconChevronDown,
   ChevronUp as IconChevronUp,

@@ -16,6 +16,7 @@ import {
   StatTile,
   Thumb,
 } from "@/components/ui";
+import { Mascot } from "@/components/assistant/Mascot";
 import {
   IconAlert,
   IconArrowRight,
@@ -164,32 +165,68 @@ export default async function Home() {
             status='validated'. */}
         {morningAutoGen && (
           <section className="mb-6">
-            <SectionHeader
-              label="Brouillons du matin"
-              icon={IconGenerate}
-              tone={morningAutoGen.passed > 0 ? "success" : "neutral"}
-              count={morningAutoGen.passed}
-            />
-            <p className="t-caption mb-2.5 -mt-1 text-[var(--text-muted)]">
+            <div className="mb-2.5 flex items-center gap-2">
+              <IconGenerate size={14} strokeWidth={2} className="text-[var(--accent)]" />
+              <h2 className="t-eyebrow">Brouillons du matin</h2>
+              <span className="inline-flex items-center gap-1.5 rounded-[var(--radius-full)] bg-[var(--accent-soft)] px-2 py-0.5 text-[11px] font-medium leading-5 text-[var(--accent)]">
+                <IconGenerate size={11} strokeWidth={2} />
+                GÉNÉRÉ PAR L&apos;IA
+              </span>
+              <div className="ml-auto flex items-center gap-2">
+                {morningAutoGen.passed > 0 ? (
+                  <span className="inline-flex items-center gap-1.5 text-[var(--success)]">
+                    <IconCheck size={13} strokeWidth={2} />
+                    <span className="t-caption">
+                      {morningAutoGen.passed}/{morningAutoGen.attempted}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="t-caption text-[var(--warn)]">
+                    {morningAutoGen.passed}/{morningAutoGen.attempted}
+                  </span>
+                )}
+                <span className="h-10 w-10 flex-none">
+                  <Mascot state={morningAutoGen.passed > 0 ? "happy" : "perplexed"} />
+                </span>
+              </div>
+            </div>
+            <p className="t-caption mb-3 -mt-1 text-[var(--text-muted)]">
               {morningAutoGen.passed}/{morningAutoGen.attempted} ont passé le contrôle qualité automatique ce matin.
             </p>
             {morningAutoGen.drafts.length > 0 ? (
-              <div className="space-y-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {morningAutoGen.drafts.map((draft) => (
-                  <Row key={draft.id} href={`/events/${draft.event_id}`}>
-                    <IconGenerate size={14} strokeWidth={2} className="text-[var(--success)]" />
-                    <span className="t-label min-w-0 flex-1 truncate text-[var(--text-primary)]">
+                  <Link
+                    key={draft.id}
+                    href={`/events/${draft.event_id}`}
+                    className="group flex flex-col gap-2.5 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-4 transition-colors duration-[var(--dur)] hover:border-[var(--accent-border)] hover:bg-[var(--surface-hover)]"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent)]">
+                        <IconGenerate size={10} strokeWidth={2} />
+                        Généré par l&apos;IA
+                      </span>
+                      <span className="ml-auto t-caption text-[var(--text-muted)]">à valider</span>
+                    </div>
+                    <span className="t-label min-w-0 text-[var(--text-primary)] line-clamp-2">
                       {draft.title}
                     </span>
-                    <span className="t-caption text-[var(--text-muted)]">à valider</span>
-                    <IconArrowRight size={15} strokeWidth={2} />
-                  </Row>
+                    <span className="mt-auto inline-flex items-center gap-1 text-[12px] font-medium text-[var(--accent)] opacity-0 transition-opacity duration-[var(--dur)] group-hover:opacity-100">
+                      Relire l&apos;événement
+                      <IconArrowRight size={13} strokeWidth={2} />
+                    </span>
+                  </Link>
                 ))}
               </div>
             ) : (
-              <p className="t-caption text-[var(--text-muted)]">
-                Aucun des {morningAutoGen.attempted} brouillons n&apos;a passé le contrôle qualité ce matin — retirés automatiquement, rien à valider.
-              </p>
+              <div className="flex items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--warn-border)] bg-[var(--warn-soft)] p-4">
+                <span className="h-12 w-12 flex-none">
+                  <Mascot state="perplexed" />
+                </span>
+                <p className="t-caption text-[var(--text-primary)]">
+                  Aucun des {morningAutoGen.attempted} brouillons n&apos;a passé le contrôle qualité ce matin — retirés automatiquement, rien à valider.
+                </p>
+              </div>
             )}
           </section>
         )}
@@ -201,10 +238,15 @@ export default async function Home() {
               title="Rien en attente"
               hint="Le pipeline ingère les flux automatiquement. Les nouveaux événements apparaîtront ici."
               action={
-                <ButtonLink href="/events" variant="secondary">
-                  Voir la veille
-                  <IconArrowRight size={13} strokeWidth={2} />
-                </ButtonLink>
+                <div className="flex flex-col items-center gap-3">
+                  <span className="inline-flex h-14 w-14 items-center justify-center">
+                    <Mascot state="happy" />
+                  </span>
+                  <ButtonLink href="/events" variant="secondary">
+                    Voir la veille
+                    <IconArrowRight size={13} strokeWidth={2} />
+                  </ButtonLink>
+                </div>
               }
             />
           </div>

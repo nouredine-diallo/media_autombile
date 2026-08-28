@@ -1,0 +1,512 @@
+/* ============================================================
+   Assistant LMA — palette alignée sur l'identité réelle de STUDIO
+   (fond clair, cartes blanches, bordures zinc, rouge de marque
+   #8B1D1D/#8F2626/#CA3E3E — mêmes valeurs que globals.css) plutôt
+   qu'une palette isolée : le panneau doit se lire comme un module
+   natif de l'atelier, pas une fenêtre étrangère collée par-dessus.
+   ============================================================ */
+
+/* Définies sur :root (pas une classe wrapper) — le launcher et le panneau
+   sont montés à la racine du DOM (portail implicite via position:fixed),
+   une classe sur un seul de ces éléments ne les couvrirait pas tous les
+   deux ; :root garantit que les deux les voient sans dépendre de la
+   structure exacte du DOM. */
+:root {
+  --lma-bg: #ffffff;
+  --lma-sunken: #fafafa;
+  --lma-border: #e4e4e7;
+  --lma-border-strong: #d4d4d8;
+  --lma-text: #18181b;
+  --lma-text-secondary: #3f3f46;
+  --lma-muted: #71717a;
+  --lma-brand: var(--brand, #8b1d1d);
+  --lma-brand-hover: var(--brand-hover, #8f2626);
+  --lma-brand-light: var(--brand-pressed, #ca3e3e);
+  --lma-brand-soft: rgba(139, 29, 29, 0.08);
+  --lma-brand-border: rgba(139, 29, 29, 0.28);
+  --lma-radius: 16px;
+  --lma-shadow: 0 18px 50px rgba(24, 24, 27, 0.16);
+  font-family: var(--font-geist-sans, ui-sans-serif, system-ui, sans-serif);
+}
+
+/* ---- Mascotte (SVG) ---- */
+.lma-mascot {
+  display: block;
+}
+
+.lma-bob {
+  animation: lma-bob 3.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.lma-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.lma-eyes .lma-blink {
+  animation: lma-blink 4.5s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.lma-antenna {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+}
+
+.lma-antenna--thinking {
+  animation: lma-antenna-wag 900ms ease-in-out infinite;
+}
+
+.lma-antenna-tip {
+  transition: fill 200ms ease;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.lma-antenna--thinking .lma-antenna-tip {
+  animation: lma-tip-pulse 900ms ease-in-out infinite;
+}
+
+.lma-wheels circle {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.lma-mascot--interactive .lma-antenna {
+  transition: transform 220ms ease-out;
+}
+
+.lma-launcher:hover .lma-mascot--interactive .lma-antenna {
+  transform: rotate(-8deg);
+}
+
+.lma-launcher:active .lma-mascot--interactive .lma-wheels circle {
+  animation: lma-wheel-kick 400ms ease-out;
+}
+
+@keyframes lma-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes lma-blink {
+  0%, 91%, 100% { transform: scaleY(1); }
+  94%, 97% { transform: scaleY(0.1); }
+}
+
+@keyframes lma-antenna-wag {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(6deg); }
+}
+
+@keyframes lma-tip-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.35); opacity: 0.7; }
+}
+
+@keyframes lma-wheel-kick {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.82); }
+  100% { transform: scale(1); }
+}
+
+/* ---- Launcher (bouton flottant) ---- */
+.lma-launcher {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 90;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 1px solid var(--lma-border-strong);
+  background: linear-gradient(180deg, var(--lma-brand-light), var(--lma-brand));
+  box-shadow: var(--lma-shadow);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.lma-launcher:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 55px rgba(24, 24, 27, 0.22);
+}
+
+.lma-launcher:focus-visible {
+  outline: 3px solid var(--lma-brand-border);
+  outline-offset: 2px;
+}
+
+.lma-launcher .lma-mascot {
+  width: 46px;
+  height: 46px;
+}
+
+/* ---- Panneau de dialogue ---- */
+.lma-panel {
+  position: fixed;
+  right: 22px;
+  bottom: 92px;
+  z-index: 90;
+  width: min(400px, calc(100vw - 32px));
+  height: min(560px, calc(100dvh - 120px));
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--lma-radius);
+  background: var(--lma-sunken);
+  border: 1px solid var(--lma-border);
+  box-shadow: var(--lma-shadow);
+  overflow: hidden;
+  animation: lma-pop 200ms ease;
+}
+
+@keyframes lma-pop {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.lma-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--lma-bg);
+  border-bottom: 1px solid var(--lma-border);
+}
+
+.lma-avatar {
+  width: 56px;
+  height: 56px;
+  flex: none;
+}
+
+.lma-header-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--lma-text);
+}
+
+.lma-header-status {
+  font-size: 11.5px;
+  color: var(--lma-muted);
+}
+
+.lma-close {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--lma-muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.lma-close:hover {
+  background: var(--lma-brand-soft);
+  color: var(--lma-brand);
+}
+
+.lma-close:focus-visible {
+  outline: 2px solid var(--lma-brand-border);
+  outline-offset: 2px;
+}
+
+/* ---- Corps de dialogue ---- */
+.lma-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--lma-border-strong) transparent;
+}
+
+.lma-msg {
+  display: flex;
+  gap: 8px;
+}
+
+.lma-msg--user {
+  justify-content: flex-end;
+}
+
+.lma-bubble {
+  max-width: 86%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--lma-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.lma-msg--assistant .lma-bubble {
+  background: var(--lma-bg);
+  border: 1px solid var(--lma-border);
+  border-top-left-radius: 4px;
+}
+
+.lma-msg--user .lma-bubble {
+  background: linear-gradient(180deg, var(--lma-brand-light), var(--lma-brand));
+  color: #fff;
+  border-top-right-radius: 4px;
+}
+
+.lma-typing {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.lma-typing span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--lma-brand-light);
+  animation: lma-dot 1.2s ease-in-out infinite;
+}
+
+.lma-typing span:nth-child(2) { animation-delay: 160ms; }
+.lma-typing span:nth-child(3) { animation-delay: 320ms; }
+
+@keyframes lma-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* ---- Fiche de réponse ---- */
+.lma-card {
+  background: var(--lma-bg);
+  border: 1px solid var(--lma-border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lma-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--lma-brand);
+}
+
+.lma-card-desc {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--lma-text-secondary);
+}
+
+.lma-card h4 {
+  margin: 2px 0 4px;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--lma-muted);
+}
+
+.lma-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lma-steps li {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--lma-text-secondary);
+}
+
+.lma-step-num {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--lma-brand-soft);
+  color: var(--lma-brand);
+  font-size: 11px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  margin-top: 1px;
+}
+
+.lma-tips {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.lma-tips li {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--lma-text-secondary);
+  padding-left: 16px;
+  position: relative;
+}
+
+.lma-tips li::before {
+  content: "↪";
+  position: absolute;
+  left: 0;
+  color: var(--lma-brand-light);
+}
+
+.lma-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--lma-brand-light), var(--lma-brand));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.lma-cta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(139, 29, 29, 0.25);
+}
+
+.lma-cta:focus-visible {
+  outline: 3px solid var(--lma-brand-border);
+  outline-offset: 2px;
+}
+
+.lma-related {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lma-chip {
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--lma-border-strong);
+  background: var(--lma-sunken);
+  color: var(--lma-brand);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.lma-chip:hover {
+  background: var(--lma-brand-soft);
+  border-color: var(--lma-brand-border);
+}
+
+.lma-chip:focus-visible {
+  outline: 2px solid var(--lma-brand-border);
+  outline-offset: 1px;
+}
+
+.lma-suggestion {
+  width: 100%;
+  text-align: left;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+
+.lma-fallback {
+  font-size: 13px;
+  color: var(--lma-muted);
+  line-height: 1.5;
+}
+
+/* ---- Pied : champ de saisie ---- */
+.lma-footer {
+  display: flex;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--lma-bg);
+  border-top: 1px solid var(--lma-border);
+}
+
+.lma-input {
+  flex: 1;
+  border: 1px solid var(--lma-border-strong);
+  border-radius: 12px;
+  background: var(--lma-sunken);
+  padding: 10px 12px;
+  font-size: 13.5px;
+  color: var(--lma-text);
+  outline: none;
+  transition: border-color 140ms ease;
+  font-family: inherit;
+}
+
+.lma-input:focus {
+  border-color: var(--lma-brand-light);
+}
+
+.lma-send {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(180deg, var(--lma-brand-light), var(--lma-brand));
+  color: #fff;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.lma-send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.lma-send:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.lma-send:focus-visible {
+  outline: 3px solid var(--lma-brand-border);
+  outline-offset: 2px;
+}
+
+/* ---- Réduction de mouvement ---- */
+@media (prefers-reduced-motion: reduce) {
+  .lma-bob,
+  .lma-eyes .lma-blink,
+  .lma-antenna--thinking,
+  .lma-antenna--thinking .lma-antenna-tip,
+  .lma-typing span,
+  .lma-panel {
+    animation: none;
+  }
+  .lma-launcher:hover .lma-mascot--interactive .lma-antenna,
+  .lma-launcher:active .lma-mascot--interactive .lma-wheels circle {
+    animation: none;
+    transform: none;
+  }
+}
