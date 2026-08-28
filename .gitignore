@@ -30,6 +30,13 @@ studio/post-*
 !studio/public/logo.png
 !studio/public/marque/logo-le-media-automobile.png
 !studio/public/test/fixtures/B_bulle_logo.jpg
+# Image d'exemple utilisée en direct par l'app (registry.tsx, constante
+# PLACEHOLDER) pour l'aperçu "avant upload" de chaque gabarit — trouvé
+# manquant en prod le 2026-08-29 (aperçu noir sur studio.89.168.53.133.nip.io)
+# à cause de cette même règle *.jpg trop large. Contrairement aux fixtures
+# de test (A_fond_voiture.jpg etc., non référencées par le code de l'app),
+# celle-ci est un vrai asset produit, pas un fichier de test jetable.
+!studio/public/test/placeholder-photo.jpg
 
 # OS files
 .DS_Store
