@@ -55,8 +55,27 @@ export function decodeStudioUrl(encoded: string): StudioPrefillData | null {
   }
 }
 
+/**
+ * Bug trouvé le 2026-08-28 : cette fonction est appelée depuis
+ * `events/[id]/page.tsx`, un Client Component (`'use client'`). Le rendu
+ * initial (SSR) a bien accès à `process.env.STUDIO_URL`, mais dès qu'un
+ * re-render se déclenche côté navigateur (n'importe quel `setState`, par
+ * exemple après le clic "Valider") — Next.js n'injecte JAMAIS une variable
+ * sans préfixe `NEXT_PUBLIC_` dans le bundle client, donc la valeur y est
+ * silencieusement `undefined` et retombe sur le fallback IP codé en dur, en
+ * écrasant la bonne valeur affichée un instant plus tôt. Confirmé par test
+ * réel : le lien "Carrousel →" pointait sur le fallback après validation,
+ * peu importe la config de `.env.local`. Cause très probable du premier
+ * lien mort signalé par l'utilisateur en session (le lien vers l'ancien
+ * tunnel Cloudflare) — pas un problème de timing de déploiement comme
+ * supposé à l'époque.
+ *
+ * `NEXT_PUBLIC_STUDIO_URL` est la variable exposée au client (inlinée au
+ * build par Next.js) ; `STUDIO_URL` reste utilisée par le code
+ * serveur-à-serveur (`visualSearch.ts` notamment) qui n'a pas ce problème.
+ */
 export function getStudioUrl(): string {
-  return process.env.STUDIO_URL || "http://89.168.53.133:3002";
+  return process.env.NEXT_PUBLIC_STUDIO_URL || process.env.STUDIO_URL || "http://89.168.53.133:3002";
 }
 
 export function buildStudioLink(params: {

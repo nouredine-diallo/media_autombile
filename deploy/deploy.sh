@@ -12,8 +12,14 @@ cd "$REPO_DIR/RADAR" && git pull origin main
 cd "$REPO_DIR/studio" && git pull origin main
 
 # 2. Build
+# NEXT_PUBLIC_STUDIO_URL doit être présente AU BUILD (Next.js l'inline dans
+# le bundle client, contrairement à STUDIO_URL lue au runtime côté serveur)
+# — bug trouvé le 2026-08-28 : events/[id]/page.tsx est un Client Component,
+# STUDIO_URL seule y retombe sur le fallback IP dès qu'un re-render se
+# déclenche côté navigateur (voir studio-prefill.ts). Même valeur que
+# STUDIO_URL dans start-radar.sh.
 echo "[2/5] Building RADAR..."
-cd "$REPO_DIR/RADAR" && npm run build 2>&1 | tail -5
+cd "$REPO_DIR/RADAR" && NEXT_PUBLIC_STUDIO_URL="http://studio.89.168.53.133.nip.io" npm run build 2>&1 | tail -5
 
 echo "[2/5] Building STUDIO..."
 cd "$REPO_DIR/studio" && npm run build 2>&1 | tail -5
