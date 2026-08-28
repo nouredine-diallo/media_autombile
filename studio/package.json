@@ -11,6 +11,7 @@
     "verify:detourage": "node scripts/verify-detourage.mjs"
   },
   "dependencies": {
+    "archiver": "^8.0.0",
     "googleapis": "^175.0.0",
     "jose": "^6.2.9",
     "lucide-react": "^1.33.0",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/archiver": "^8.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

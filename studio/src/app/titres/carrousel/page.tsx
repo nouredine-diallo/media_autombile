@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Download, Loader2 } from "lucide-react";
 import { decodePrefill } from "@/lib/prefill";
 import { GABARITS, GABARIT_HEIGHT, GABARIT_WIDTH } from "@/components/gabarits/registry";
 
@@ -57,7 +57,7 @@ export default function CarrouselPage() {
   const [slides, setSlides] = useState<Slide[]>([]);
   const [legend, setLegend] = useState("");
   const [exporting, setExporting] = useState(false);
-  const [exportJob, setExportJob] = useState<{ status: string; driveUrl?: string } | null>(null);
+  const [exportJob, setExportJob] = useState<{ status: string; driveUrl?: string; jobId?: string } | null>(null);
 
   useEffect(() => {
     let annule = false;
@@ -146,7 +146,7 @@ export default function CarrouselPage() {
       const data = await res.json().catch(() => ({ error: "Échec inconnu" }));
       if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
       const jobId = data.jobId as string;
-      setExportJob({ status: "pending" });
+      setExportJob({ status: "pending", jobId });
       pollExport(jobId);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Erreur inconnue");
@@ -162,7 +162,7 @@ export default function CarrouselPage() {
         const r = await fetch(`/api/export/${jobId}`);
         if (!r.ok) return;
         const j = await r.json();
-        setExportJob({ status: j.status, driveUrl: j.driveUrl });
+        setExportJob({ status: j.status, driveUrl: j.driveUrl, jobId });
         if (j.status !== "done" && j.status !== "error") {
           setTimeout(loop, 800);
         } else {
@@ -265,6 +265,16 @@ export default function CarrouselPage() {
                     className="flex items-center gap-1.5 text-sm font-medium text-brand"
                   >
                     <CheckCircle2 className="h-4 w-4" /> Ouvrir le dossier Drive →
+                  </a>
+                )}
+                {/* Repli local — Drive non configuré ou échoué : les slides restent
+                    récupérables via un dossier ZIP téléchargé directement. */}
+                {exportJob?.status === "done" && !exportJob.driveUrl && exportJob.jobId && (
+                  <a
+                    href={`/api/export/${exportJob.jobId}/download-zip`}
+                    className="flex items-center gap-1.5 text-sm font-medium text-brand"
+                  >
+                    <Download className="h-4 w-4" /> Télécharger le dossier (ZIP) →
                   </a>
                 )}
                 {exportJob?.status === "error" && (
