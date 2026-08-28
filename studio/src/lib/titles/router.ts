@@ -109,6 +109,8 @@ export async function generateTitles(theme: string): Promise<TitleGenerationResu
   switch (fournisseurActif()) {
     case "groq":
       return generateAvecGroq(trimmed);
+    case "ollama":
+      return generateAvecOllama(trimmed);
     // ── Point de branchement Claude (prod uniquement) ──
     // `LLM_PROVIDER=claude` activerait ici generateAvecClaude(trimmed).
     // Elle exigera une clé (ANTHROPIC_API_KEY) posée côté serveur et pourra
@@ -117,7 +119,7 @@ export async function generateTitles(theme: string): Promise<TitleGenerationResu
     // pour le tester (pas d'appel réel sans moyen de vérification).
     default:
       throw new TitleGenerationError(
-        `Fournisseur LLM inconnu : "${fournisseurActif()}" (valeurs possibles : groq)`,
+        `Fournisseur LLM inconnu : "${fournisseurActif()}" (valeurs possibles : groq, ollama)`,
       );
   }
 }
@@ -171,12 +173,85 @@ async function generateAvecGroq(theme: string): Promise<TitleGenerationResult> {
   if (!content) {
     throw new TitleGenerationError("Réponse Groq sans contenu");
   }
+  return parseUnifiedResponse(content, "groq");
+}
 
+/**
+ * Générateur Ollama (local) — ajouté le 2026-08-28, uniquement pour débloquer
+ * le test du parcours utilisateur complet quand Groq/OpenRouter sont tous
+ * les deux insuffisants (quota journalier, pool gratuit partagé saturé).
+ * Tourne entièrement sur cette machine, jamais de 429/quota — seule
+ * contrainte, la vitesse (CPU pur, ~13 tokens/s mesurés en réel). Même
+ * prompt et même parsing que Groq (`buildUnifiedPrompt`, `parseUnifiedResponse`)
+ * — seul le transport change, comme prévu pour le point de branchement Claude
+ * ci-dessus. Non destiné à la prod (studio/CLAUDE.md §3 : modèle local en
+ * dernier repli hors-ligne uniquement, jamais en fournisseur principal).
+ */
+/**
+ * Streaming obligatoire (voir RADAR/src/lib/llmProvider.ts pour le
+ * diagnostic complet) : en `stream: false`, Ollama ne renvoie rien — pas
+ * même les en-têtes HTTP — avant la fin de la génération complète, ce qui
+ * dépasse le `headersTimeout` par défaut d'undici (5 min) sur cette
+ * machine sans GPU. Un `AbortSignal` plus généreux n'y change rien, ce
+ * timeout est distinct. En streaming les en-têtes arrivent au premier
+ * token, le timeout ne se déclenche jamais.
+ */
+async function generateAvecOllama(theme: string): Promise<TitleGenerationResult> {
+  const url = process.env.OLLAMA_URL || "http://localhost:11434";
+  const model = process.env.OLLAMA_MODEL || "gemma4:e2b-it-qat";
+
+  const res = await fetch(`${url}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: buildUnifiedPrompt() },
+        { role: "user", content: `Thème : ${theme}` },
+      ],
+      format: "json",
+      options: { temperature: 0.8 },
+      stream: true,
+    }),
+  });
+
+  if (!res.ok || !res.body) {
+    const body = await res.text().catch(() => "");
+    throw new TitleGenerationError(`Ollama a répondu ${res.status} : ${body.slice(0, 300)}`);
+  }
+
+  let content = "";
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const chunk = JSON.parse(line);
+      content += chunk.message?.content ?? "";
+    }
+  }
+
+  if (!content) {
+    throw new TitleGenerationError("Réponse Ollama sans contenu");
+  }
+  return parseUnifiedResponse(content, "ollama");
+}
+
+/** Parsing JSON commun à tous les fournisseurs — seul le transport diffère
+ * (voir generateAvecGroq / generateAvecOllama), le contrat de sortie est
+ * identique quel que soit le fournisseur actif. */
+function parseUnifiedResponse(content: string, provider: "groq" | "ollama"): TitleGenerationResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
   } catch {
-    throw new TitleGenerationError("Réponse Groq n'est pas un JSON valide");
+    throw new TitleGenerationError(`Réponse ${provider} n'est pas un JSON valide`);
   }
 
   const obj = (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed))
@@ -210,6 +285,6 @@ async function generateAvecGroq(theme: string): Promise<TitleGenerationResult> {
     titles: titles as string[],
     surtitres: surtitreList.slice(0, titles.length),
     paragraphs: paragraphList.slice(0, 3),
-    provider: "groq",
+    provider,
   };
 }

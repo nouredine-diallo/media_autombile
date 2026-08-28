@@ -15,11 +15,13 @@ import Groq from 'groq-sdk';
  * Conforme à RADAR/CLAUDE.md §3.1 : "routeur LLM multi-fournisseur", déjà
  * prescrit dans le cahier des charges, pas une nouvelle idée d'architecture.
  */
-export type LLMProvider = 'groq' | 'claude';
+export type LLMProvider = 'groq' | 'claude' | 'ollama';
 
 export function getLLMProvider(): LLMProvider {
   const value = (process.env.LLM_PROVIDER || 'groq').toLowerCase();
-  return value === 'claude' ? 'claude' : 'groq';
+  if (value === 'claude') return 'claude';
+  if (value === 'ollama') return 'ollama';
+  return 'groq';
 }
 
 let anthropicClient: Anthropic | null = null;
@@ -116,6 +118,83 @@ async function callClaude(params: ChatCompleteParams): Promise<ChatCompleteResul
 }
 
 /**
+ * Ollama local (2026-08-28) — ajouté uniquement pour débloquer le test du
+ * parcours utilisateur complet : le quota Groq (200k tokens/jour, partagé
+ * entre local/prod/STUDIO) était systématiquement insuffisant après les
+ * tests répétés de cette session, et OpenRouter gratuit s'est révélé
+ * soumis au même problème structurel (pool de fournisseurs partagé,
+ * lui-même saturé — 429 upstream sur 2 modèles testés sur 3). Ollama tourne
+ * entièrement sur cette machine : aucun appel réseau externe, donc aucun
+ * quota/429 possible — seule contrainte, la vitesse (CPU pur, pas de GPU
+ * sur cette machine, ~13 tokens/s mesurés en réel avec `gemma4:e2b-it-qat`,
+ * déjà installé). Pas destiné à la prod (RADAR/CLAUDE.md §3.1 : la prod
+ * cible un fournisseur cloud gratuit avec confidentialité vérifiée, jamais
+ * un modèle local en fournisseur principal) — usage explicitement temporaire
+ * et local, sur demande de l'utilisateur.
+ */
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'gemma4:e2b-it-qat';
+const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
+
+/**
+ * Streaming obligatoire (pas juste une préférence) : trouvé en test réel
+ * le 2026-08-28 — en `stream: false`, Ollama ne renvoie RIEN (pas même les
+ * en-têtes HTTP) tant que la génération complète n'est pas terminée. Sur
+ * cette machine sans GPU, une génération de plusieurs minutes dépasse le
+ * `headersTimeout` par défaut d'undici (5 min, contrôlé séparément de
+ * `AbortSignal` — un `signal` plus généreux n'y change rien, confirmé par
+ * un échec identique après avoir ajouté `AbortSignal.timeout(20min)`).
+ * En streaming, les en-têtes arrivent dès le premier token — le timeout ne
+ * se déclenche jamais, peu importe la durée totale de génération.
+ */
+async function callOllama(params: ChatCompleteParams): Promise<ChatCompleteResult> {
+  const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      messages: [
+        { role: 'system', content: params.system },
+        { role: 'user', content: params.user },
+      ],
+      options: { temperature: params.temperature, num_predict: params.maxTokens },
+      stream: true,
+    }),
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`Ollama a répondu ${res.status} — le service tourne-t-il bien sur ${OLLAMA_URL} ?`);
+  }
+
+  let content = '';
+  let promptEvalCount = 0;
+  let evalCount = 0;
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const chunk = JSON.parse(line);
+      content += chunk.message?.content ?? '';
+      if (chunk.done) {
+        promptEvalCount = chunk.prompt_eval_count ?? 0;
+        evalCount = chunk.eval_count ?? 0;
+      }
+    }
+  }
+
+  return {
+    content,
+    tokensUsed: promptEvalCount + evalCount,
+    provider: 'ollama',
+  };
+}
+
+/**
  * Point d'entrée unique pour tout appel de complétion de chat, quel que soit
  * le fournisseur actif. Le chemin Groq ci-dessous est un copier strict du
  * code qui tournait déjà avant cette bascule (même messages, mêmes
@@ -123,8 +202,12 @@ async function callClaude(params: ChatCompleteParams): Promise<ChatCompleteResul
  * `LLM_PROVIDER` reste sur 'groq' (le défaut).
  */
 export async function chatComplete(params: ChatCompleteParams): Promise<ChatCompleteResult> {
-  if (getLLMProvider() === 'claude') {
+  const provider = getLLMProvider();
+  if (provider === 'claude') {
     return callClaude(params);
+  }
+  if (provider === 'ollama') {
+    return callOllama(params);
   }
 
   const completion = await getGroqClient().chat.completions.create({
