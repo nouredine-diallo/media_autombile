@@ -24,10 +24,21 @@ const publicRoutes = ["/login", "/select-name"];
  * lu par `studio/src/app/api/carousel-package/[contentId]/route.ts`, qui
  * lui-même exige déjà une session STUDIO avant d'appeler RADAR — l'exposer
  * ne fait que lire des données déjà publiques via le lien de prefill.
+ *
+ * `/api/system/status` s'y ajoute pour une raison différente : trouvé par
+ * test réel en navigateur (Playwright, 2026-08-28) — `DegradedModeBanner`
+ * est monté dans `layout.tsx` racine, donc rendu même sur `/login` et
+ * `/select-name` (routes publiques, avant toute session). Sans exception,
+ * le bandeau échouait silencieusement sur ces deux pages (le composant
+ * gère déjà l'échec avec un `.catch()` muet — jamais de crash — mais
+ * l'information de mode dégradé disparaissait là où elle doit justement
+ * apparaître le plus tôt). Endpoint en lecture seule, non sensible (statut
+ * killswitch/mode dégradé, `src/lib/killswitch.ts`) — aucune donnée utilisateur.
  */
 const publicApiPatterns = [
   /^\/api\/events\/[^/]+\/exported$/,
   /^\/api\/events\/[^/]+\/carousel-package$/,
+  /^\/api\/system\/status$/,
 ];
 
 async function verifySession(token: string) {
