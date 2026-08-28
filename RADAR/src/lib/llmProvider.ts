@@ -1,5 +1,19 @@
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
+import { Agent } from 'undici';
+
+/**
+ * Dispatcher undici dédié à Ollama, avec headers/body timeout élargis —
+ * trouvé en test réel (2026-08-28) que le streaming seul ne suffit pas :
+ * undici a deux timeouts distincts à 5 min par défaut (headersTimeout ET
+ * bodyTimeout, ce dernier se déclenchant si le silence entre deux chunks
+ * dépasse le délai, pas seulement à la première réponse). Sur cette
+ * machine sans GPU, le temps de traitement du prompt seul (avant le
+ * premier token) peut dépasser 5 min pour un prompt volumineux — d'où
+ * l'échec identique malgré le passage en streaming. `undici` ajoutée en
+ * dépendance directe (MIT) pour ce seul besoin de configuration.
+ */
+const ollamaDispatcher = new Agent({ headersTimeout: 20 * 60 * 1000, bodyTimeout: 20 * 60 * 1000 });
 
 /**
  * Terrain préparé pour la bascule Claude (2026-08-27) — pas encore active.
@@ -159,6 +173,9 @@ async function callOllama(params: ChatCompleteParams): Promise<ChatCompleteResul
       options: { temperature: params.temperature, num_predict: params.maxTokens },
       stream: true,
     }),
+    // @ts-expect-error -- `dispatcher` est une extension undici de fetch,
+    // absente des types DOM standards mais bien supportée au runtime Node.
+    dispatcher: ollamaDispatcher,
   });
   if (!res.ok || !res.body) {
     throw new Error(`Ollama a répondu ${res.status} — le service tourne-t-il bien sur ${OLLAMA_URL} ?`);
