@@ -3,28 +3,39 @@
 /**
  * Client de suivi léger — voir /api/analytics pour le pourquoi.
  *
- * navigator.sendBeacon() plutôt que fetch() (2026-08-29) — bug réel signalé
- * en prod : "la page charge puis affiche This page couldn't load" après
- * navigation. Cause trouvée : nginx sert en HTTP/1.1 pur (pas de HTTP/2,
- * vérifié sur la conf), donc le navigateur plafonne à ~6 connexions
- * simultanées par origine. Un fetch() de plus à CHAQUE changement de page
- * entrait en concurrence avec les propres requêtes de la page (le payload
- * RSC de Next.js, les chunks JS) — sur une connexion à latence variable,
- * ça pouvait faire échouer la navigation elle-même. sendBeacon() est conçu
- * précisément pour ce cas d'usage : le navigateur le traite hors de la
- * queue de connexions normale, ne bloque et ne fait jamais échouer une
- * navigation. Fallback sur fetch() uniquement si sendBeacon est indisponible
- * ou refuse la requête (garde le comportement précédent en dernier recours).
+ * Vraie cause du "This page couldn't load" trouvée le 2026-08-29 par
+ * diagnostic réseau réel (Playwright, écouteur `pageerror` sur la vraie
+ * URL de prod) : `crypto.randomUUID()` lève une exception NON RATTRAPÉE
+ * ("crypto.randomUUID is not a function") — cette méthode n'existe QUE
+ * dans un contexte sécurisé (HTTPS, ou localhost par exception du
+ * navigateur). Le site de prod tourne en HTTP simple (89.168.53.133.nip.io,
+ * pas de certificat) : chaque appel plantait, sur CHAQUE navigation,
+ * puisqu'appelé aussi bien dans le `try` que dans son propre `catch` (le
+ * `catch` relançait donc la même exception, cette fois vraiment non
+ * rattrapée). Invisible en local car `localhost` bénéficie de l'exception
+ * "contexte sécurisé" du navigateur — d'où l'écart jamais reproduit avant
+ * ce diagnostic direct sur la vraie URL. Le passage à sendBeacon() (fait
+ * juste avant) ne pouvait rien résoudre : le plantage a lieu avant l'envoi,
+ * dans la génération de l'id.
+ *
+ * Corrigé avec un générateur d'id sans API restreinte — suffisant pour
+ * grouper des événements par session (pas besoin d'aléa cryptographique
+ * ici), fonctionne dans tous les contextes, plus léger qu'un appel à
+ * l'API Web Crypto.
  */
 
 const SESSION_KEY = "lma-analytics-session";
+
+function generateId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 function getSessionId(): string {
   if (typeof window === "undefined") return "server";
   try {
     let id = sessionStorage.getItem(SESSION_KEY);
     if (!id) {
-      id = crypto.randomUUID();
+      id = generateId();
       sessionStorage.setItem(SESSION_KEY, id);
     }
     return id;
@@ -32,7 +43,7 @@ function getSessionId(): string {
     // sessionStorage indisponible (navigation privée stricte, etc.) — un id
     // par appel plutôt qu'un crash, la session groupée devient juste moins
     // précise pour cet utilisateur, ce n'est jamais bloquant.
-    return crypto.randomUUID();
+    return generateId();
   }
 }
 
