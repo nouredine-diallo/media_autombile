@@ -318,6 +318,23 @@ function initializeDb(db: any) {
     db.exec("ALTER TABLE articles ADD COLUMN carousel_slides TEXT");
   }
 
+  // Migration: aperçu visuel auto-généré (parcours "un seul geste de
+  // décision", plan écosystème 2026-08-29) — statut du cycle
+  // null/pending/ready/failed, l'image en data URL (pas de fichier à servir
+  // entre les deux apps, cf. commentaire dans studio/src/lib/autoGenerate.ts
+  // sur sameSite=lax qui empêche un <img> cross-site d'envoyer le cookie de
+  // session STUDIO), et l'erreur le cas échéant — jamais de dégradation
+  // silencieuse (CLAUDE.md §6).
+  if (!articleColumns2.some(col => col.name === 'auto_preview_status')) {
+    db.exec("ALTER TABLE articles ADD COLUMN auto_preview_status TEXT");
+  }
+  if (!articleColumns2.some(col => col.name === 'auto_preview_data_url')) {
+    db.exec("ALTER TABLE articles ADD COLUMN auto_preview_data_url TEXT");
+  }
+  if (!articleColumns2.some(col => col.name === 'auto_preview_error')) {
+    db.exec("ALTER TABLE articles ADD COLUMN auto_preview_error TEXT");
+  }
+
   // Migration: add image_url to items for Mission 2 (visual search pipeline)
   const itemColumns = db.prepare("PRAGMA table_info(items)").all() as { name: string }[];
   if (!itemColumns.some(col => col.name === 'image_url')) {

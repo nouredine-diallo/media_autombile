@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Badge, ButtonLink, EmptyState, Thumb } from "@/components/ui";
 import { PlanifierButton } from "@/components/PlanifierButton";
 import { AssociatePartnerButton } from "@/components/AssociatePartnerButton";
+import { PostConfirmCard } from "@/components/PostConfirmCard";
 import {
   IconArrowRight,
   IconCheck,
@@ -28,6 +29,9 @@ interface Article {
   exported_at: string | null;
   drive_url: string | null;
   is_scheduled: number;
+  auto_preview_status: 'pending' | 'ready' | 'failed' | null;
+  auto_preview_data_url: string | null;
+  auto_preview_error: string | null;
 }
 
 export default function ReadyForInstagram() {
@@ -54,7 +58,8 @@ export default function ReadyForInstagram() {
       EXISTS(
         SELECT 1 FROM calendar_events ce
         WHERE ce.article_id = a.id AND ce.event_type = 'publication_instagram'
-      ) as is_scheduled
+      ) as is_scheduled,
+      a.auto_preview_status, a.auto_preview_data_url, a.auto_preview_error
     FROM articles a
     LEFT JOIN events e ON a.event_id = e.id
     WHERE a.status = 'validated'
@@ -88,7 +93,34 @@ export default function ReadyForInstagram() {
           </div>
         ) : (
           <div className="space-y-2.5">
-            {articles.map((article) => (
+            {articles.map((article) =>
+              !article.exported_at && article.auto_preview_status ? (
+                // Parcours "un seul geste de décision" : un aperçu du visuel a
+                // été préparé automatiquement à la validation — un seul écran
+                // article + visuel, Confirmer ou Modifier (plan écosystème
+                // 2026-08-29). Les articles sans aperçu déclenché (ancien flux,
+                // ou pas de visuel source) gardent le parcours manuel inchangé
+                // ci-dessous.
+                <PostConfirmCard
+                  key={article.id}
+                  articleId={article.id}
+                  contentId={article.content_id}
+                  title={article.title}
+                  chapeau={article.chapeau}
+                  eventTitle={article.event_title}
+                  status={article.auto_preview_status}
+                  dataUrl={article.auto_preview_data_url}
+                  error={article.auto_preview_error}
+                  alreadyScheduled={!!article.is_scheduled}
+                  studioModifyHref={buildStudioLink({
+                    title: article.title,
+                    source: (article.event_title || "RADAR").slice(0, 50),
+                    imageUrl: article.image_url,
+                    contentId: article.content_id || "",
+                    briefHeadline: article.chapeau?.slice(0, 200) || article.title.slice(0, 200),
+                  })}
+                />
+              ) : (
               <article
                 key={article.id}
                 className="flex gap-4 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-4 transition-colors duration-[var(--dur)] hover:border-[var(--border-default)]"
@@ -175,7 +207,8 @@ export default function ReadyForInstagram() {
                   )}
                 </div>
               </article>
-            ))}
+              )
+            )}
           </div>
         )}
       </main>

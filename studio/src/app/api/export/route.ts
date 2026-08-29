@@ -5,7 +5,8 @@ import { getSession } from "@/lib/session";
 import { GABARITS } from "@/components/gabarits/registry";
 import { createJob, createCarouselJob, updateJob, type CarouselSlideSpec } from "@/lib/jobs/store";
 import { renderGabaritToPng } from "@/lib/render/renderGabarit";
-import { uploadToDrive, uploadCarouselToDrive } from "@/lib/drive/upload";
+import { uploadCarouselToDrive } from "@/lib/drive/upload";
+import { processExportJob, notifyRadarExported } from "@/lib/export/runExport";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -110,64 +111,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ jobId }, { status: 202 });
 }
 
-async function processExportJob(
-  jobId: string,
-  gabaritId: string,
-  fieldValues: Record<string, string>,
-  contentId: string | null,
-  origin: string,
-) {
-  // 1. Rendu Playwright (~1-3s)
-  updateJob(jobId, { status: "rendering" });
-  const pngBuffer = await renderGabaritToPng(gabaritId, fieldValues, origin);
-  updateJob(jobId, { status: "rendering" }, );
-
-  // 2. Upload Google Drive (~1-2s) — image + légende dans un package unifié
-  const timestamp = new Date().toISOString().slice(0, 10);
-  const filename = `post-${timestamp}-${jobId.slice(0, 8)}.png`;
-  const caption = fieldValues.title || "";
-
-  try {
-    updateJob(jobId, { status: "uploading" });
-    const { fileId, webViewLink } = await uploadToDrive(pngBuffer, filename, {
-      title: fieldValues.title,
-      caption,
-    });
-    updateJob(jobId, {
-      status: "done",
-      pngBuffer,
-      driveUrl: webViewLink,
-      driveFileId: fileId,
-    });
-
-    // 3. Callback silencieux vers RADAR (fire-and-forget)
-    if (contentId) {
-      notifyRadarExported(contentId, webViewLink, fileId).catch((err) => {
-        console.warn(`[export] Callback RADAR échoué pour ${contentId}:`, err);
-      });
-    }
-  } catch (driveErr) {
-    // Drive peut ne pas être configuré — le PNG reste disponible en téléchargement direct.
-    // Callback RADAR quand même envoyé (2026-08-28) : sans lui, RADAR ne
-    // sait jamais qu'un export a eu lieu — l'article reste affiché comme
-    // non exporté indéfiniment alors que le fichier existe bien (trouvé en
-    // testant le parcours complet sans Drive configuré, voir
-    // ready/page.tsx pour le traitement du cas driveUrl absent).
-    console.warn(`[export] Drive upload échoué pour ${jobId}:`, driveErr);
-    updateJob(jobId, {
-      status: "done",
-      pngBuffer,
-      driveUrl: undefined,
-      driveFileId: undefined,
-    });
-    if (contentId) {
-      notifyRadarExported(contentId, undefined, undefined).catch((err) => {
-        console.warn(`[export] Callback RADAR (repli local) échoué pour ${contentId}:`, err);
-      });
-    }
-  }
-}
-
 /**
  * Renommage "intelligent" d'une slide : dérivé de son propre texte plutôt
  * que d'un numéro générique (`slide-1.png`) — l'opérateur doit reconnaître
@@ -261,29 +204,3 @@ function extractSlideText(spec: CarouselSlideSpec): string {
   return spec.fieldValues.title ?? spec.fieldValues.paragraph ?? spec.fieldValues.message ?? "";
 }
 
-/**
- * Notifie silencieusement RADAR qu'un export a eu lieu — vers Drive
- * (`driveUrl`/`driveFileId` renseignés) ou en local seulement (les deux
- * `undefined`, 2026-08-28 : sans cet appel, RADAR n'apprend jamais qu'un
- * export local a réussi et affiche l'article comme jamais exporté).
- * Fire-and-forget : si RADAR est down, l'export STUDIO continue normalement.
- * `carouselTexts`, quand fourni, laisse RADAR garder une trace du texte
- * final utilisé sans dépendre de Drive pour le retrouver (§2.7 du plan
- * écosystème) — absent pour un export single-image, comportement inchangé.
- */
-async function notifyRadarExported(
-  contentId: string,
-  driveUrl: string | undefined,
-  driveFileId: string | undefined,
-  carouselTexts?: string[],
-): Promise<void> {
-  const radarUrl = process.env.RADAR_URL;
-  if (!radarUrl) return;
-
-  await fetch(`${radarUrl}/api/events/${contentId}/exported`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ driveUrl, driveFileId, carouselTexts }),
-    signal: AbortSignal.timeout(5000),
-  });
-}
