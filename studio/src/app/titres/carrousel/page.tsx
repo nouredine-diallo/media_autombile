@@ -6,7 +6,10 @@ import { AlertTriangle, ArrowRight, CheckCircle2, Download, Loader2 } from "luci
 import { decodePrefill } from "@/lib/prefill";
 import { GABARITS, GABARIT_HEIGHT, GABARIT_WIDTH } from "@/components/gabarits/registry";
 
-const PREVIEW_SCALE = 0.28;
+// Plafond desktop, jamais dépassé — voir la note équivalente dans
+// titres/page.tsx (2026-08-29) : rendu à résolution réelle puis réduit par
+// CSS, sans effet sur l'export (route séparée à pleine résolution).
+const PREVIEW_SCALE_MAX = 0.28;
 /** 1 accroche + jusqu'à 3 slides de développement + 1 CTA — plafond mesuré sur
  * les 8 posts réels de studio/inspi/TEXTPOST.txt (jamais plus de 3 slides de
  * dev observées). Uploader plus que ça gaspillerait du recadrage pour rien :
@@ -58,6 +61,19 @@ export default function CarrouselPage() {
   const [legend, setLegend] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportJob, setExportJob] = useState<{ status: string; driveUrl?: string; jobId?: string } | null>(null);
+  const [previewScale, setPreviewScale] = useState(PREVIEW_SCALE_MAX);
+
+  /* ── Aperçu responsive : ne dépasse jamais la largeur de l'écran (même
+     correctif que titres/page.tsx, 2026-08-29) ── */
+  useEffect(() => {
+    function recalcScale() {
+      const disponible = window.innerWidth - 32;
+      setPreviewScale(Math.min(PREVIEW_SCALE_MAX, disponible / GABARIT_WIDTH));
+    }
+    recalcScale();
+    window.addEventListener("resize", recalcScale);
+    return () => window.removeEventListener("resize", recalcScale);
+  }, []);
 
   useEffect(() => {
     let annule = false;
@@ -241,6 +257,7 @@ export default function CarrouselPage() {
                   total={totalSlides}
                   slide={slide}
                   uploaded={uploaded}
+                  previewScale={previewScale}
                   onTextChange={(v) => updateSlideText(i, v)}
                   onImageChange={(idx) => updateSlideImage(i, idx)}
                 />
@@ -300,6 +317,7 @@ function SlideCard({
   total,
   slide,
   uploaded,
+  previewScale,
   onTextChange,
   onImageChange,
 }: {
@@ -307,6 +325,7 @@ function SlideCard({
   total: number;
   slide: Slide;
   uploaded: UploadedImage[];
+  previewScale: number;
   onTextChange: (value: string) => void;
   onImageChange: (imageIndex: number) => void;
 }) {
@@ -325,11 +344,11 @@ function SlideCard({
 
       {Preview && (
         <div
-          style={{ width: GABARIT_WIDTH * PREVIEW_SCALE, height: GABARIT_HEIGHT * PREVIEW_SCALE }}
+          style={{ width: GABARIT_WIDTH * previewScale, height: GABARIT_HEIGHT * previewScale }}
           className="relative overflow-hidden rounded-lg border border-zinc-200"
         >
           <div
-            style={{ width: GABARIT_WIDTH, height: GABARIT_HEIGHT, transform: `scale(${PREVIEW_SCALE})`, transformOrigin: "top left" }}
+            style={{ width: GABARIT_WIDTH, height: GABARIT_HEIGHT, transform: `scale(${previewScale})`, transformOrigin: "top left" }}
           >
             <Preview {...slide.fieldValues} />
           </div>

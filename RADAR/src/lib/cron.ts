@@ -157,6 +157,21 @@ export function startCron(): void {
   });
 
   console.log(`[CRON] Scheduled with interval: ${config.ingestInterval}`);
+
+  // node-cron n'exécute jamais immédiatement au démarrage — seulement au
+  // prochain créneau (jusqu'à 4h d'attente, config.ingestInterval). Sur une
+  // base tout juste réinitialisée (ou une toute première installation),
+  // l'utilisateur ouvrait donc un dashboard vide sans savoir qu'il devait
+  // cliquer "Lancer maintenant" (trouvé le 2026-08-29). Corrigé par un
+  // déclenchement immédiat, mais seulement si la veille est réellement vide
+  // — jamais sur un redémarrage PM2 normal avec des données déjà présentes,
+  // pour ne pas re-ingérer 60 flux RSS à chaque redéploiement.
+  const db = getDb();
+  const eventCount = (db.prepare('SELECT COUNT(*) as c FROM events').get() as { c: number }).c;
+  if (eventCount === 0) {
+    console.log('[CRON] Aucun événement en base — déclenchement immédiat du pipeline');
+    runPipeline().catch((err) => console.error('[CRON] Échec du déclenchement immédiat:', err));
+  }
 }
 
 export function stopCron(): void {

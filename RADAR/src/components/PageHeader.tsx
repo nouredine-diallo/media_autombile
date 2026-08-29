@@ -24,7 +24,11 @@ export function PageHeader({
 }) {
   return (
     <header className="sticky top-0 z-30 border-b border-white/8 bg-[var(--chrome-bg)]">
-      <div className="flex h-14 items-center gap-4 px-6">
+      {/* flex-wrap + min-h (au lieu de h-14 fixe) : sur mobile, le logo/titre
+          et les actions passent sur 2 lignes plutôt que de forcer un défilement
+          horizontal de toute la page (trouvé le 2026-08-29, voir CLAUDE_DASHBOARD.md
+          §4.4 "mobile-first" — jamais vérifié en pratique jusqu'ici). */}
+      <div className="flex min-h-14 flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 sm:px-6">
         {/* Logo LMA — ancre la marque */}
         <Link href="/" className="flex shrink-0 items-center">
           <img
@@ -34,8 +38,8 @@ export function PageHeader({
           />
         </Link>
 
-        {/* Séparateur vertical */}
-        <div className="h-5 w-px bg-white/10" />
+        {/* Séparateur vertical — masqué sur mobile, où le titre passe sous le logo */}
+        <div className="hidden h-5 w-px bg-white/10 sm:block" />
 
         {/* Titre + navigation */}
         <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -56,7 +60,11 @@ export function PageHeader({
             </span>
           )}
         </div>
-        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+        {actions && (
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">
+            {actions}
+          </div>
+        )}
       </div>
     </header>
   );

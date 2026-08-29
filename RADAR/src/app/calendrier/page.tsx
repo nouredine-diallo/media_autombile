@@ -272,8 +272,14 @@ export default function CalendarPage() {
           </div>
         )}
 
-        {/* Calendar Grid */}
-        <div className="grid grid-cols-7 gap-2">
+        {/* Calendar Grid — 7 colonnes fixes ne peuvent pas tenir sur un
+            téléphone sans devenir illisibles (colonnes de ~40px). Plutôt que
+            de casser la vue semaine, le défilement horizontal est contenu
+            dans ce wrapper (2026-08-29) : la page elle-même ne défile jamais
+            de côté, seule cette bande le fait — motif standard des vues
+            calendrier sur mobile (glisser pour voir les jours suivants). */}
+        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
+        <div className="grid min-w-[640px] grid-cols-7 gap-2">
           {/* Day Headers */}
           {weekDates.dates.map((date) => (
             <div
@@ -346,6 +352,7 @@ export default function CalendarPage() {
               )}
             </div>
           ))}
+        </div>
         </div>
 
         {/* Legend */}

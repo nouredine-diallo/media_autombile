@@ -36,7 +36,15 @@ const BULLES_PAR_GABARIT: Record<string, { cle: string; geom: BulleGeometry; lib
 
 const MIN_LEN = 30;
 const MAX_LEN = 95;
-const PREVIEW_SCALE = 0.35;
+// 0.35 = le rendu desktop actuel (378px de large pour un gabarit 1080px) —
+// conservé comme plafond, jamais dépassé. Sur un écran plus étroit que ça
+// (téléphone), l'aperçu débordait du viewport de quelques pixels (trouvé le
+// 2026-08-29, jamais vérifié sur un vrai petit écran avant). Le calque
+// intérieur reste rendu à la résolution RÉELLE du gabarit puis réduit par
+// `transform: scale()` — un CSS d'affichage pur, sans effet sur l'export
+// (qui screenshotte la résolution réelle via une route séparée) : changer
+// l'échelle ici ne touche jamais à la fidélité "zéro écart aperçu/rendu".
+const PREVIEW_SCALE_MAX = 0.35;
 
 /**
  * Compte les photos que l'utilisateur doit réellement fournir : les champs
@@ -116,8 +124,24 @@ export default function TitresPage() {
   const [sourceContext, setSourceContext] = useState<{ source: string; headline: string } | null>(null);
   /** État de l'export inline — évite la navigation vers /export/{jobId}. */
   const [exportJob, setExportJob] = useState<{ jobId: string; status: string; driveUrl?: string; hasDownload?: boolean } | null>(null);
+  /** Échelle réelle de l'aperçu — voir PREVIEW_SCALE_MAX. */
+  const [previewScale, setPreviewScale] = useState(PREVIEW_SCALE_MAX);
 
   const fileInput = useRef<HTMLInputElement>(null);
+
+  /* ── Aperçu responsive : ne dépasse jamais la largeur de l'écran ── */
+  useEffect(() => {
+    function recalcScale() {
+      // 32px de marge de sécurité (padding de page) — évite un aperçu qui
+      // touche pile les bords, plus fragile au moindre écart d'arrondi.
+      const disponible = window.innerWidth - 32;
+      const echelle = Math.min(PREVIEW_SCALE_MAX, disponible / GABARIT_WIDTH);
+      setPreviewScale(echelle);
+    }
+    recalcScale();
+    window.addEventListener("resize", recalcScale);
+    return () => window.removeEventListener("resize", recalcScale);
+  }, []);
 
   /* ── Prefill depuis RADAR : auto-remplit le thème, uploade l'image, génère les titres ── */
   useEffect(() => {
@@ -939,8 +963,8 @@ export default function TitresPage() {
           {PreviewComponent ? (
             <div
               style={{
-                width: GABARIT_WIDTH * PREVIEW_SCALE,
-                height: GABARIT_HEIGHT * PREVIEW_SCALE,
+                width: GABARIT_WIDTH * previewScale,
+                height: GABARIT_HEIGHT * previewScale,
               }}
               className="relative overflow-hidden rounded-xl border border-zinc-200 shadow-md"
             >
@@ -948,7 +972,7 @@ export default function TitresPage() {
                 style={{
                   width: GABARIT_WIDTH,
                   height: GABARIT_HEIGHT,
-                  transform: `scale(${PREVIEW_SCALE})`,
+                  transform: `scale(${previewScale})`,
                   transformOrigin: "top left",
                 }}
               >
@@ -960,7 +984,7 @@ export default function TitresPage() {
                   reste jugé pour lui-même. */}
               {ciblesBulles.length > 0 && (
                 <MontageDirect
-                  echelle={PREVIEW_SCALE}
+                  echelle={previewScale}
                   cibles={ciblesBulles}
                   valeurs={previewValues}
                   onChange={(maj) => setReglages((p) => ({ ...p, ...maj }))}

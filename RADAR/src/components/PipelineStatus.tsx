@@ -143,20 +143,14 @@ export function PipelineStatusIndicator() {
 
   return (
     <div className="rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-raised)]">
-      <div className="flex items-center gap-3 px-3.5 py-2.5">
+      {/* flex-wrap (2026-08-29) : sur un conteneur étroit (< ~380px), le
+          libellé + les boutons restent sur une première ligne courte ; la
+          légende (intervalle / dernière exécution), plus longue, passe sur
+          sa propre ligne pleine largeur au lieu de s'enrouler autour des
+          boutons — jamais vérifié sur un vrai petit écran avant. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-2.5">
         <span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} aria-hidden />
-        <div className="min-w-0 flex-1">
-          <span className="t-label text-[var(--text-primary)]">Pipeline automatique</span>
-          <span className="t-caption ml-2 text-[var(--text-muted)]">
-            {status.cron.enabled
-              ? `${formatInterval(status.cron.interval)} · ${
-                  lastRun
-                    ? `dernière exécution ${formatTimeAgo(lastRun.started_at)}`
-                    : 'pas encore exécuté'
-                }`
-              : 'Désactivé'}
-          </span>
-        </div>
+        <span className="t-label min-w-0 flex-1 text-[var(--text-primary)]">Pipeline automatique</span>
 
         <Button
           onClick={handleTrigger}
@@ -189,6 +183,16 @@ export function PipelineStatusIndicator() {
             <IconChevronDown size={14} strokeWidth={2} />
           )}
         </Button>
+
+        <span className="t-caption basis-full pl-5 text-[var(--text-muted)] sm:basis-auto sm:pl-0">
+          {status.cron.enabled
+            ? `${formatInterval(status.cron.interval)} · ${
+                lastRun
+                  ? `dernière exécution ${formatTimeAgo(lastRun.started_at)}`
+                  : 'pas encore exécuté'
+              }`
+            : 'Désactivé'}
+        </span>
       </div>
 
       {showDetails && lastRun && (

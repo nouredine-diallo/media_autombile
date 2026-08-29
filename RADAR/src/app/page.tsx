@@ -128,9 +128,12 @@ export default async function Home() {
         }
       />
 
-      <main className="mx-auto max-w-5xl px-6 py-6">
-        {/* Coup d'œil en 30 secondes — la Direction s'arrête ici */}
-        <div className="mb-5 grid grid-cols-3 gap-2.5">
+      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+        {/* Coup d'œil en 30 secondes — la Direction s'arrête ici.
+            grid-cols-1 sur mobile (2026-08-29) : en grid-cols-3 fixe, les 3
+            tuiles s'écrasaient sur un téléphone au point de rendre le
+            contenu illisible — jamais vérifié sur un vrai petit écran avant. */}
+        <div className="mb-5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
           <StatTile
             value={counters.totalEvents}
             label="Événements suivis"
@@ -151,7 +154,10 @@ export default async function Home() {
           />
         </div>
 
-        <div className="mb-6 flex items-center gap-3">
+        {/* flex-col sur mobile (2026-08-29) : en flex-row fixe, DriveStatusBadge
+            écrasait la largeur disponible pour PipelineStatusIndicator au point
+            de faire retomber son texte en un mot par ligne. */}
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="min-w-0 flex-1">
             <PipelineStatusIndicator />
           </div>
