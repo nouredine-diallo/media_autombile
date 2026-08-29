@@ -1,9 +1,20 @@
 "use client";
 
 /**
- * Client de suivi léger — voir /api/analytics pour le pourquoi. Fire-and-
- * forget : un échec réseau ne doit jamais bloquer l'usage réel de l'outil,
- * exactement comme le callback STUDIO→RADAR (même pattern déjà établi).
+ * Client de suivi léger — voir /api/analytics pour le pourquoi.
+ *
+ * navigator.sendBeacon() plutôt que fetch() (2026-08-29) — bug réel signalé
+ * en prod : "la page charge puis affiche This page couldn't load" après
+ * navigation. Cause trouvée : nginx sert en HTTP/1.1 pur (pas de HTTP/2,
+ * vérifié sur la conf), donc le navigateur plafonne à ~6 connexions
+ * simultanées par origine. Un fetch() de plus à CHAQUE changement de page
+ * entrait en concurrence avec les propres requêtes de la page (le payload
+ * RSC de Next.js, les chunks JS) — sur une connexion à latence variable,
+ * ça pouvait faire échouer la navigation elle-même. sendBeacon() est conçu
+ * précisément pour ce cas d'usage : le navigateur le traite hors de la
+ * queue de connexions normale, ne bloque et ne fait jamais échouer une
+ * navigation. Fallback sur fetch() uniquement si sendBeacon est indisponible
+ * ou refuse la requête (garde le comportement précédent en dernier recours).
  */
 
 const SESSION_KEY = "lma-analytics-session";
@@ -27,10 +38,19 @@ function getSessionId(): string {
 
 function send(eventType: "page_view" | "action", page: string, label?: string) {
   if (typeof window === "undefined") return;
+  const payload = JSON.stringify({ eventType, page, label, sessionId: getSessionId() });
+
+  if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+    const blob = new Blob([payload], { type: "application/json" });
+    const queued = navigator.sendBeacon("/api/analytics", blob);
+    if (queued) return;
+  }
+
+  // Repli fetch — sendBeacon indisponible ou a refusé la requête.
   fetch("/api/analytics", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ eventType, page, label, sessionId: getSessionId() }),
+    body: payload,
     keepalive: true,
   }).catch(() => {});
 }
