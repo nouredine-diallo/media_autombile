@@ -83,7 +83,14 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
+  // Fichiers statiques exclus par extension (2026-08-29) — trouvé en testant
+  // réellement le premier chargement de /login sans session : le matcher
+  // n'excluait que _next/static/_next/image/favicon.ico, jamais les fichiers
+  // de public/ (logo.png, etc.). Sans session, /logo.png passait par ce
+  // middleware comme n'importe quelle page et se faisait rediriger vers
+  // /login (307) au lieu de renvoyer l'image — le logo de la page de
+  // connexion elle-même ne s'affichait donc jamais pour un premier visiteur.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|css|map)$).*)",
   ],
 };
