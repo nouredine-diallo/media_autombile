@@ -14,6 +14,7 @@ import {
   IconCalendar,
   IconPartners,
   IconDrive,
+  IconAnalytics,
   IconStudio,
   IconPanelToggle,
   IconExternal,
@@ -39,6 +40,7 @@ const NAV_GROUPS: NavItem[][] = [
     { href: '/calendrier', icon: IconCalendar, label: 'Calendrier', shortcut: 'K' },
     { href: '/partenaires', icon: IconPartners, label: 'Partenaires', shortcut: 'P' },
     { href: '/drive', icon: IconDrive, label: 'Drive' },
+    { href: '/analytics', icon: IconAnalytics, label: 'Usage de l\'outil' },
   ],
 ];
 

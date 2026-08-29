@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, usePathname } from 'next/navigation';
+import { trackAction } from '@/lib/analyticsClient';
 import { useFocusMode } from '@/hooks/useFocusMode';
 import { KeyboardHint } from '@/components/KeyboardHint';
 import { PageHeader } from '@/components/PageHeader';
@@ -105,6 +106,7 @@ interface Verification {
 export default function EventDetail() {
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
   const eventId = params.id as string;
   
   const [event, setEvent] = useState<Event | null>(null);
@@ -295,6 +297,7 @@ export default function EventDetail() {
       
       const data = await response.json();
       setBrief(data.brief);
+      trackAction(pathname, 'Générer le brief');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
@@ -335,6 +338,7 @@ export default function EventDetail() {
       const artData = await artRes.json();
       setArticles(prev => [artData.article, ...prev]);
       setSelectedArticle(artData.article);
+      trackAction(pathname, 'Générer le brief et l\'article');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
@@ -365,6 +369,7 @@ export default function EventDetail() {
       const data = await response.json();
       setArticles(prev => [data.article, ...prev]);
       setSelectedArticle(data.article);
+      trackAction(pathname, 'Générer l\'article');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
@@ -438,6 +443,7 @@ export default function EventDetail() {
         }
         if (status === 'validated') {
           setError(null);
+          trackAction(pathname, 'Valider un article');
         }
       }
     } catch (err) {

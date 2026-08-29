@@ -46,7 +46,7 @@ export async function generateArticle(eventId: number, provenance: string = 'ass
   if (!brief) {
     // Import and generate brief
     const { generateBrief } = await import('./brief');
-    brief = generateBrief(eventId);
+    brief = await generateBrief(eventId);
     if (!brief) return null;
   }
 

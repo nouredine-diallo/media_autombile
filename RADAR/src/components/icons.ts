@@ -67,6 +67,7 @@ export {
   Paperclip as IconFileGeneric,
   Newspaper as IconArticle,
   TrendingUp as IconTrend,
+  Activity as IconAnalytics,
   Inbox as IconInbox,
   User as IconUser,
 } from 'lucide-react';

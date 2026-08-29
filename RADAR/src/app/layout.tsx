@@ -13,6 +13,7 @@ import { ConsoleSignature } from "@/components/ConsoleSignature";
 import { AppFrame } from "@/components/AppFrame";
 import { getStudioUrl } from "@/lib/studio-prefill";
 import { AssistantLauncher } from "@/components/assistant/AssistantLauncher";
+import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -46,6 +47,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <EngineSignature />
           </AppFrame>
           <ScrollToTop />
+          <AnalyticsTracker />
           <AssistantLauncher />
         </ToastProvider>
       </body>

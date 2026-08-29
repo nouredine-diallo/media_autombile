@@ -1,5 +1,6 @@
 import { getDb, Item, Event } from './db';
 import { generateCarouselParagraphs } from './llm';
+import { translateTextLocal } from './translateLocal';
 
 export interface Fact {
   text: string;
@@ -19,18 +20,53 @@ export interface Brief {
   generated_at?: string;
 }
 
-export function generateBrief(eventId: number): Brief | null {
+/**
+ * Traduit et met en cache une fois par item (title_fr/summary_fr/content_fr,
+ * colonnes nullable — voir migration db.ts). extractFacts()/generateBody()
+ * recopiaient ces champs RSS bruts tels quels, jamais traduits : seul le
+ * titre/résumé de l'EVENT passait par translateToFrench() — trouvé le
+ * 2026-08-29 ("le brief est à moitié en anglais"). Paresseux : appelé
+ * uniquement quand un humain ouvre réellement une fiche événement
+ * (generateBrief n'est jamais appelé en masse pendant le cron), donc le
+ * coût (quelques secondes par item, modèle local) reste borné à ce qui est
+ * vraiment consulté, jamais à tous les événements ingérés.
+ */
+async function ensureItemTranslated(db: ReturnType<typeof getDb>, item: Item): Promise<Item> {
+  if (item.title_fr && item.summary_fr !== undefined && item.content_fr !== undefined) {
+    return item;
+  }
+
+  const [titleFr, summaryFr, contentFr] = await Promise.all([
+    item.title_fr ?? translateTextLocal(item.title),
+    item.summary_fr ?? (item.summary ? translateTextLocal(item.summary) : Promise.resolve(null)),
+    item.content_fr ?? (item.content ? translateTextLocal(item.content) : Promise.resolve(null)),
+  ]);
+
+  db.prepare('UPDATE items SET title_fr = ?, summary_fr = ?, content_fr = ? WHERE id = ?')
+    .run(titleFr, summaryFr, contentFr, item.id);
+
+  return { ...item, title_fr: titleFr, summary_fr: summaryFr, content_fr: contentFr };
+}
+
+export async function generateBrief(eventId: number): Promise<Brief | null> {
   const db = getDb();
-  
+
   const event = db.prepare('SELECT * FROM events WHERE id = ?').get(eventId) as Event | undefined;
   if (!event) return null;
-  
-  const items = db.prepare(
+
+  const rawItems = db.prepare(
     'SELECT i.*, f.name as feed_name FROM items i JOIN event_items ei ON i.id = ei.item_id JOIN feeds f ON i.feed_id = f.id WHERE ei.event_id = ? ORDER BY i.published_at DESC'
   ).all(eventId) as (Item & { feed_name: string })[];
-  
-  if (items.length === 0) return null;
-  
+
+  if (rawItems.length === 0) return null;
+
+  // Traduction paresseuse, une fois par item (voir ensureItemTranslated) —
+  // faite ici, pas dans extractFacts/generateBody, pour rester la seule
+  // frontière async de tout le module (le reste demeure la composition
+  // synchrone par assemblage de texte voulue à l'origine, RADAR/CLAUDE.md
+  // "le brief est bâti sur les faits, pas généré par IA").
+  const items = await Promise.all(rawItems.map((item) => ensureItemTranslated(db, item))) as (Item & { feed_name: string })[];
+
   // Extract facts from items
   const facts = extractFacts(items);
   
@@ -67,7 +103,11 @@ function extractFacts(items: Item[]): Fact[] {
   const seen = new Set<string>();
   
   for (const item of items) {
-    const text = `${item.title || ''} ${item.summary || ''} ${item.content || ''}`.trim();
+    // *_fr : traduction locale mise en cache par ensureItemTranslated().
+    // Repli sur le texte anglais brut si la traduction n'est pas encore
+    // disponible (modèle en cours de chargement, ou échec) — jamais un
+    // brief vide plutôt qu'un brief encore partiellement en anglais.
+    const text = `${item.title_fr || item.title || ''} ${item.summary_fr || item.summary || ''} ${item.content_fr || item.content || ''}`.trim();
     
     // Extract sentences that contain key information
     const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 10);
@@ -127,8 +167,11 @@ function assessConfidence(sentence: string, item: Item): 'high' | 'medium' | 'lo
 }
 
 function generateHeadline(event: Event, items: Item[]): string {
-  // Use event title as base, clean it up
-  let headline = event.title;
+  // Titre français si disponible — bug trouvé le 2026-08-29 en testant
+  // réellement un brief : cette fonction gardait event.title (anglais) même
+  // quand event.title_fr existait déjà (generateLede(), juste plus bas,
+  // faisait bien ce choix — incohérence entre les deux, pas un oubli général).
+  let headline = event.title_fr || event.title;
   
   // If multiple sources, mention it
   if (event.source_count > 1) {
@@ -164,7 +207,7 @@ function generateBody(event: Event, items: Item[], facts: Fact[]): string {
   
   const summaries = items
     .filter(i => i.summary && i.summary.length > 20)
-    .map(i => i.summary)
+    .map(i => i.summary_fr || i.summary)
     .slice(0, 2);
   
   // Premier paragraphe : faits principaux (en français)

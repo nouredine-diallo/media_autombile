@@ -1,77 +1,37 @@
-import { generate, VOICE_REGISTER } from './llm';
+import { translateTextLocal } from './translateLocal';
 
 /**
  * Translate an event title and summary from English to French.
- * Uses the LLM for natural journalistic translation (not word-for-word).
+ *
+ * Bascule sur le modèle de traduction local (2026-08-29) — c'était le
+ * dernier appel LLM (Groq) restant pour de la traduction pure. Avantages
+ * vérifiés : plus de risque de dérive/résumé inventé propre à un LLM
+ * généraliste, plus de dépendance au quota Groq partagé (déjà épuisé une
+ * fois pendant cette session), et une traduction dédiée est simplement
+ * plus fiable pour cette tâche précise. Signature et comportement de repli
+ * inchangés — aucun appelant à modifier.
  */
 export async function translateToFrench(
   title: string,
   summary: string | null,
-  retriesLeft: number = 2,
 ): Promise<{ titleFr: string; summaryFr: string }> {
   // If already mostly French, skip translation
   if (isMostlyFrench(title)) {
     return { titleFr: title, summaryFr: summary ?? '' };
   }
 
-  const prompt = `Tu es un rédacteur automobile francophone expert. Traduis ce titre et ce résumé d'actualité automobile en français journalistique.
+  const [titleFr, summaryFr] = await Promise.all([
+    translateTextLocal(title),
+    summary ? translateTextLocal(summary) : Promise.resolve(null),
+  ]);
 
-RÈGLES :
-- Traduction naturelle, PAS mot à mot
-- Conserve les noms propres (Toyota, WEC, Le Mans, etc.)
-- Conserve les termes techniques anglais courants en automobile (restylage, facelift, drift)
-- Le titre doit être accrocheur et concis (max 120 caractères)
-- Le résumé doit être factuel et complet
-- ${VOICE_REGISTER}
-
-TITRE EN ANGLAIS :
-${title}
-
-RÉSUMÉ EN ANGLAIS :
-${summary || '(pas de résumé)'}
-
-Réponds UNIQUEMENT avec le format :
-TITRE: [titre en français]
-RÉSUMÉ: [résumé en français]`;
-
-  try {
-    const response = await generate({
-      prompt,
-      maxTokens: 500,
-      temperature: 0.2,
-    });
-
-    const content = response.content;
-    const titleMatch = content.match(/TITRE:\s*(.+)/i);
-    const summaryMatch = content.match(/RÉSUMÉ:\s*(.+)/i);
-
-    const titleFr = titleMatch?.[1]?.trim() || title;
-    const summaryFr = summaryMatch?.[1]?.trim() || summary || '';
-
-    // If title wasn't translated (still same as input), retry once
-    if (titleFr === title && !isMostlyFrench(title) && retriesLeft > 0) {
-      return translateToFrench(title, summary, retriesLeft - 1);
-    }
-
-    return { titleFr, summaryFr };
-  } catch (error: unknown) {
-    // Retry on rate limit — plafonné (2 tentatives par défaut), pas de boucle
-    // infinie. Découvert le 2026-08-27 : un quota Groq épuisé faisait retenter
-    // TOUTES les 10s indéfiniment (aucun compteur), bloquant tout le pipeline
-    // — un événement non traduit gardait déjà son titre anglais en repli
-    // (ligne ci-dessous), donc rien ne justifiait de ne jamais y arriver.
-    if (error instanceof Error && error.message.includes('429') && retriesLeft > 0) {
-      console.log(`  Rate limited, waiting 10s and retrying... (${retriesLeft} tentative(s) restante(s))`);
-      await new Promise(r => setTimeout(r, 10000));
-      return translateToFrench(title, summary, retriesLeft - 1);
-    }
-    if (error instanceof Error && error.message.includes('429')) {
-      console.warn('  Quota LLM épuisé après plusieurs tentatives — titre gardé en anglais, pas bloquant.');
-    } else {
-      console.error('Translation error:', error);
-    }
-    return { titleFr: title, summaryFr: summary ?? '' };
-  }
+  // Jamais une dégradation silencieuse : si le modèle local échoue
+  // (indisponible, erreur), on garde le texte anglais tel quel plutôt que
+  // de produire une chaîne vide ou un faux résultat français.
+  return {
+    titleFr: titleFr ?? title,
+    summaryFr: summaryFr ?? summary ?? '',
+  };
 }
 
 /**

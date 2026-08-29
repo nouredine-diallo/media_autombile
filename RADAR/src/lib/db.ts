@@ -393,6 +393,43 @@ function initializeDb(db: any) {
     );
     CREATE INDEX IF NOT EXISTS idx_item_images_item ON item_images(item_id, rank);
   `);
+
+  // Migration: summary_fr/content_fr sur items — traduction locale mise en
+  // cache une fois par item (2026-08-29, correctif "brief à moitié en
+  // anglais"). generateBody()/extractFacts() dans brief.ts recopiaient les
+  // résumés RSS bruts tels quels, jamais traduits — seul le titre/résumé de
+  // l'event passait par translateToFrench(). Colonnes nullable : NULL tant
+  // que non traduit, jamais une dégradation silencieuse (RADAR/CLAUDE.md §6).
+  if (!itemColumns.some(col => col.name === 'title_fr')) {
+    db.exec("ALTER TABLE items ADD COLUMN title_fr TEXT");
+  }
+  if (!itemColumns.some(col => col.name === 'summary_fr')) {
+    db.exec("ALTER TABLE items ADD COLUMN summary_fr TEXT");
+  }
+  if (!itemColumns.some(col => col.name === 'content_fr')) {
+    db.exec("ALTER TABLE items ADD COLUMN content_fr TEXT");
+  }
+
+  // Migration: analytics_events — suivi léger du parcours utilisateur
+  // (2026-08-29, demande explicite) : pages vues + actions clés, pas de
+  // pistage pixel par pixel (disproportionné pour un outil interne de 5-10
+  // personnes) — juste de quoi voir ce qui est réellement utilisé et où les
+  // gens s'arrêtent. Aucune donnée envoyée à un tiers, tout reste dans cette
+  // base (cohérent avec RADAR/CLAUDE.md §3.1 sur la confidentialité).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS analytics_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL CHECK(event_type IN ('page_view', 'action')),
+      page TEXT NOT NULL,
+      label TEXT,
+      user_name TEXT,
+      session_id TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_analytics_created ON analytics_events(created_at);
+    CREATE INDEX IF NOT EXISTS idx_analytics_page ON analytics_events(page);
+    CREATE INDEX IF NOT EXISTS idx_analytics_session ON analytics_events(session_id);
+  `);
 }
 
 export interface Feed {
@@ -421,6 +458,9 @@ export interface Item {
   image_url?: string | null;
   image_source?: string | null;
   image_preflight?: string | null;
+  title_fr?: string | null;
+  summary_fr?: string | null;
+  content_fr?: string | null;
 }
 
 export interface PipelineRun {

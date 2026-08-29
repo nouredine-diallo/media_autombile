@@ -12,7 +12,7 @@ export async function POST(request: Request) {
       );
     }
     
-    const brief = generateBrief(event_id);
+    const brief = await generateBrief(event_id);
     
     if (!brief) {
       return NextResponse.json(

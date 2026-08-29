@@ -44,6 +44,15 @@ export async function generate(request: GenerationRequest): Promise<GenerationRe
     const result = await chatComplete({
       system: `Tu es un rédacteur pour Le Média Automobile. Tu écris dans leur style exact.
 
+LANGUE :
+- Réponds EXCLUSIVEMENT en français, du premier au dernier mot.
+- Si le brief fourni contient un fragment resté en anglais (résumé de
+  source non traduit, citation), traduis-le naturellement dans ta réponse
+  — ne recopie JAMAIS un fragment anglais tel quel, même une expression
+  courte ou un chiffre accompagné de son unité en anglais.
+- Seuls les noms propres (marques, modèles, lieux, ex. "Toyota", "Le Mans")
+  et les sigles reconnus (ex. "WEC", "NCAP") restent inchangés.
+
 STYLE :
 - ${VOICE_REGISTER}
 - Factuel mais jamais froid — ton complice avec le lecteur
