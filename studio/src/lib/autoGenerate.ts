@@ -152,12 +152,23 @@ export async function notifyRadarAutoPreview(
 ): Promise<void> {
   const radarUrl = process.env.RADAR_URL;
   if (!radarUrl) return;
-  await fetch(`${radarUrl}/api/events/${contentId}/auto-preview`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(10_000),
-  }).catch((err) => {
+  try {
+    // `fetch` ne rejette JAMAIS sur un statut HTTP d'erreur (401, 500…),
+    // seulement sur un échec réseau — trouvé en testant réellement le
+    // round-trip en prod (2026-08-29) : un 401 (middleware RADAR bloquant
+    // cette route avant qu'elle soit ajoutée à l'allowlist) passait
+    // silencieusement le `.catch()` faute de vérifier `res.ok`, exactement
+    // la dégradation silencieuse interdite par les deux CLAUDE.md.
+    const res = await fetch(`${radarUrl}/api/events/${contentId}/auto-preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) {
+      console.warn(`[auto-generate] Callback RADAR refusé pour ${contentId} (${res.status})`);
+    }
+  } catch (err) {
     console.warn(`[auto-generate] Callback RADAR échoué pour ${contentId}:`, err);
-  });
+  }
 }

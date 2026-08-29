@@ -25,6 +25,13 @@ const publicRoutes = ["/login", "/select-name"];
  * lui-même exige déjà une session STUDIO avant d'appeler RADAR — l'exposer
  * ne fait que lire des données déjà publiques via le lien de prefill.
  *
+ * `/auto-preview` (2026-08-29) rejoint `/exported` pour la même raison : le
+ * callback STUDIO→RADAR du parcours "un seul geste de décision"
+ * (`runAutoGenerate` dans studio/src/lib/autoGenerate.ts) est lui aussi un
+ * appel serveur-à-serveur sans session RADAR possible — trouvé bloqué par un
+ * 401 en testant réellement le round-trip en prod (2026-08-29), exactement
+ * le même piège documenté ci-dessus pour `/exported`.
+ *
  * `/api/system/status` s'y ajoute pour une raison différente : trouvé par
  * test réel en navigateur (Playwright, 2026-08-28) — `DegradedModeBanner`
  * est monté dans `layout.tsx` racine, donc rendu même sur `/login` et
@@ -37,6 +44,7 @@ const publicRoutes = ["/login", "/select-name"];
  */
 const publicApiPatterns = [
   /^\/api\/events\/[^/]+\/exported$/,
+  /^\/api\/events\/[^/]+\/auto-preview$/,
   /^\/api\/events\/[^/]+\/carousel-package$/,
   /^\/api\/system\/status$/,
 ];
