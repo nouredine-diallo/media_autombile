@@ -341,6 +341,7 @@ export function buildCreativePrompt(
     config.regleEcriture,
     examplesBlock,
     "",
+    `RÈGLE ABSOLUE : le brief fourni est ta SEULE source de chiffres/faits. N'invente, n'estime ni n'ajoute AUCUN chiffre (prix, puissance, vitesse, date, quantité...) absent du brief — même s'il te semble plausible ou typique du sujet. Une info non chiffrée dans le brief reste non chiffrée dans l'article.`,
     `IMPORTANT : écris le texte librement, sans contrainte de format. Pas de JSON, pas de markdown. Juste le texte brut.`,
   ].join("\n");
 }
@@ -405,6 +406,8 @@ export function buildDirectPrompt(
     `Faits :\n${factsText}`,
     `Angle : ${brief.angle_suggestion}`,
     extraStyleRules ? `\nRÈGLES PERSONNALISÉES :\n${extraStyleRules}` : "",
+    "",
+    `RÈGLE ABSOLUE : le brief ci-dessus est ta SEULE source de chiffres/faits. N'invente, n'estime ni n'ajoute AUCUN chiffre absent du brief.`,
     "",
     `FORMAT DE SORTIE :`,
     `Titre: [titre accrocheur]`,
