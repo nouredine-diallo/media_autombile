@@ -32,6 +32,8 @@ interface Article {
   auto_preview_status: 'pending' | 'ready' | 'failed' | null;
   auto_preview_data_url: string | null;
   auto_preview_error: string | null;
+  validated_by: 'humain' | 'auto_score' | null;
+  verification_score: number | null;
 }
 
 export default function ReadyForInstagram() {
@@ -112,6 +114,8 @@ export default function ReadyForInstagram() {
                   dataUrl={article.auto_preview_data_url}
                   error={article.auto_preview_error}
                   alreadyScheduled={!!article.is_scheduled}
+                  validatedBy={article.validated_by}
+                  verificationScore={article.verification_score}
                   studioModifyHref={buildStudioLink({
                     title: article.title,
                     source: (article.event_title || "RADAR").slice(0, 50),

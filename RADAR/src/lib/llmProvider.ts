@@ -227,29 +227,44 @@ export async function chatComplete(params: ChatCompleteParams): Promise<ChatComp
     return callOllama(params);
   }
 
-  const completion = await getGroqClient().chat.completions.create({
-    messages: [
-      { role: 'system', content: params.system },
-      { role: 'user', content: params.user },
-    ],
-    model: params.model,
-    temperature: params.temperature,
-    max_tokens: params.maxTokens,
-    top_p: 0.9,
-    stream: false,
+  const completion = await getGroqClient().chat.completions.create(
+    {
+      messages: [
+        { role: 'system', content: params.system },
+        { role: 'user', content: params.user },
+      ],
+      model: params.model,
+      temperature: params.temperature,
+      max_tokens: params.maxTokens,
+      top_p: 0.9,
+      stream: false,
+      /**
+       * Bug trouvé le 2026-08-27 en creusant pourquoi 100% des titres restent
+       * en anglais (local ET prod) : `openai/gpt-oss-120b` est un modèle
+       * "raisonneur" — sans ce réglage, il peut consommer tout son budget de
+       * tokens de sortie en réflexion interne et ne jamais produire de texte
+       * de réponse (reproduit par un appel réel : 20/20 tokens de "reasoning",
+       * 0 caractère de contenu). Déjà documenté et corrigé côté STUDIO
+       * (`titles/router.ts`, studio/CLAUDE.md §1.1) mais jamais appliqué ici —
+       * cause racine de translateToFrench qui retombe sur l'anglais à chaque
+       * appel, pas un problème de quota comme supposé initialement.
+       */
+      reasoning_effort: 'low',
+    },
     /**
-     * Bug trouvé le 2026-08-27 en creusant pourquoi 100% des titres restent
-     * en anglais (local ET prod) : `openai/gpt-oss-120b` est un modèle
-     * "raisonneur" — sans ce réglage, il peut consommer tout son budget de
-     * tokens de sortie en réflexion interne et ne jamais produire de texte
-     * de réponse (reproduit par un appel réel : 20/20 tokens de "reasoning",
-     * 0 caractère de contenu). Déjà documenté et corrigé côté STUDIO
-     * (`titles/router.ts`, studio/CLAUDE.md §1.1) mais jamais appliqué ici —
-     * cause racine de translateToFrench qui retombe sur l'anglais à chaque
-     * appel, pas un problème de quota comme supposé initialement.
+     * Trouvé le 2026-08-30 : cet appel n'avait aucun timeout explicite. Le
+     * SDK Groq a un timeout par défaut d'1 min, mais retente automatiquement
+     * dessus (documenté dans son propre .d.ts : "you may wait much longer
+     * than this timeout before the promise succeeds or fails") — pas une
+     * garantie dure. Un run de pipeline (`cron.ts`, run_type='full') est
+     * resté bloqué à `status='running'` pendant plus de 2h, `isRunning`
+     * jamais libéré, "Lancer" silencieusement sans effet (juste
+     * "Pipeline already running, skipping"). `signal` coupe la connexion
+     * plutôt que de compter sur les retries internes — même pattern que
+     * `AbortSignal.timeout()` déjà utilisé ailleurs (llm.ts, cron.ts).
      */
-    reasoning_effort: 'low',
-  });
+    { signal: AbortSignal.timeout(30_000) },
+  );
 
   return {
     content: completion.choices[0]?.message?.content || '',

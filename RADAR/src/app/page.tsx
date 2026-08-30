@@ -7,6 +7,7 @@ import { DriveStatusBadge } from "@/components/DriveStatusBadge";
 import { PageHeader } from "@/components/PageHeader";
 import { buildStudioLink, getStudioUrl } from "@/lib/studio-prefill";
 import { getEventTitleFr } from "@/lib/eventDisplay";
+import { getAutoValidateTrust } from "@/lib/killswitch";
 import { EVENT_TYPES } from "@/lib/calendar";
 import {
   Badge,
@@ -90,6 +91,7 @@ export default async function Home() {
     correctionsThreshold,
     counters,
   } = getDashboardAgenda();
+  const autoValidateTrust = getAutoValidateTrust();
 
   const correctionsThresholdReached = correctionsCount >= correctionsThreshold;
   const hasEcheances =
@@ -197,9 +199,44 @@ export default async function Home() {
               </div>
             </div>
             <p className="t-caption mb-3 -mt-1 text-[var(--text-muted)]">
-              {morningAutoGen.passed}/{morningAutoGen.attempted} ont passé le contrôle qualité automatique ce matin.
+              {morningAutoGen.passed}/{morningAutoGen.attempted} ont passé le contrôle qualité automatique ce matin
+              {morningAutoGen.autoValidated > 0 && (
+                <> — <span className="text-[var(--success)]">{morningAutoGen.autoValidated} prêt{morningAutoGen.autoValidated > 1 ? "s" : ""} à confirmer</span>, aucun humain ne les a encore relus</>
+              )}
+              .
             </p>
-            {morningAutoGen.drafts.length > 0 ? (
+
+            {/* Prêts à confirmer — le score a franchi le seuil, personne n'a
+                encore lu le texte. Distinct visuellement (vert = prêt) et va
+                vers /ready (l'écran de confirmation), jamais vers /events. */}
+            {morningAutoGen.readyToConfirm.length > 0 && (
+              <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {morningAutoGen.readyToConfirm.map((post) => (
+                  <Link
+                    key={post.id}
+                    href="/ready"
+                    className="group flex flex-col gap-2.5 rounded-[var(--radius-lg)] border border-[var(--success-border)] bg-[var(--success-soft)] p-4 transition-colors duration-[var(--dur)] hover:border-[var(--success)]"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-raised)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--success)]">
+                        <IconCheck size={10} strokeWidth={2} />
+                        Auto-validé
+                      </span>
+                      <span className="ml-auto t-caption text-[var(--success)]">prêt à confirmer</span>
+                    </div>
+                    <span className="t-label min-w-0 text-[var(--text-primary)] line-clamp-2">
+                      {post.title}
+                    </span>
+                    <span className="mt-auto inline-flex items-center gap-1 text-[12px] font-medium text-[var(--success)] opacity-0 transition-opacity duration-[var(--dur)] group-hover:opacity-100">
+                      Voir sur /ready
+                      <IconArrowRight size={13} strokeWidth={2} />
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {morningAutoGen.drafts.length > 0 && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {morningAutoGen.drafts.map((draft) => (
                   <Link
@@ -224,7 +261,9 @@ export default async function Home() {
                   </Link>
                 ))}
               </div>
-            ) : (
+            )}
+
+            {morningAutoGen.passed === 0 && (
               <div className="flex items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--warn-border)] bg-[var(--warn-soft)] p-4">
                 <span className="h-12 w-12 flex-none">
                   <Mascot state="perplexed" />
@@ -235,6 +274,34 @@ export default async function Home() {
               </div>
             )}
           </section>
+        )}
+
+        {/* Confiance dans le seuil d'auto-validation (B) — mesurée, pas
+            estimée. Indépendante de morningAutoGen : reste visible même les
+            jours sans nouveau brouillon, tant que l'historique 30j existe.
+            Une seule ligne, pas un tableau de bord à part — la mascotte
+            porte le verdict d'un coup d'œil, le texte donne le détail pour
+            qui veut vérifier. */}
+        {autoValidateTrust && (
+          <div className="mb-6 flex items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-4 py-3">
+            <span className="h-8 w-8 flex-none">
+              <Mascot state={autoValidateTrust.confirmedRate >= 80 ? "happy" : "perplexed"} variant="face" />
+            </span>
+            <p className="t-caption text-[var(--text-secondary)]">
+              Seuil d&apos;auto-validation —{" "}
+              <span
+                className={
+                  autoValidateTrust.confirmedRate >= 80
+                    ? "font-medium text-[var(--success)]"
+                    : "font-medium text-[var(--warn)]"
+                }
+              >
+                {autoValidateTrust.confirmedRate}% confirmés sans rejet
+              </span>{" "}
+              sur les {autoValidateTrust.total} derniers posts auto-validés ({autoValidateTrust.windowDays}j)
+              {autoValidateTrust.rejected > 0 && ` — ${autoValidateTrust.rejected} rejeté${autoValidateTrust.rejected > 1 ? "s" : ""}`}
+            </p>
+          </div>
         )}
 
         {nothingToDo && (

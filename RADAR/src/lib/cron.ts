@@ -74,7 +74,14 @@ async function runPipeline(): Promise<void> {
 
     try {
       const { runMorningAutoGeneration } = await import('./autoGenerate');
-      await runMorningAutoGeneration(runId);
+      // Trouvé le 2026-08-30 : seule étape du pipeline sans withTimeout —
+      // un appel LLM interne sans timeout (corrigé dans llmProvider.ts) a
+      // laissé un run entier bloqué à 'running' plus de 2h, isRunning
+      // jamais libéré. Ceinture ET bretelles : le vrai correctif est la
+      // limite sur l'appel LLM lui-même, celle-ci garantit qu'un futur
+      // hang ailleurs dans cette fonction ne rebloque plus jamais tout le
+      // pipeline en silence.
+      await withTimeout(runMorningAutoGeneration(runId), 5 * 60 * 1000);
     } catch (error) {
       // Ne bloque jamais le reste du pipeline — la génération auto est un
       // bonus, pas une étape critique (chantier 3 du plan écosystème).

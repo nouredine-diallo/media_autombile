@@ -202,13 +202,18 @@
 - ⬜ `Exclure les flux Stellantis` — Peugeot, Citroën etc. nécessitent Playwright, bloqués par CDN
 - ⬜ `Supprimer radar.db et repartir à zéro après ajout de nouveaux feeds`
 
-### 4.2 Rédaction LLM → Articles (à construire)
+### 4.2 Rédaction LLM → Articles
 
-- ⬜ `Implémenter la route de rédaction d'article` — brief → article via routeur LLM
+- ✅ `Implémenter la route de rédaction d'article` — brief → article via routeur LLM (`generateChained`/`generateArticleSmart`, `RADAR/src/lib/llm.ts`)
 - ⬜ `Connecter le guide de style à la rédaction` — charger `guide-de-style-v0.md` comme contexte
-- ⬜ `Implémenter les contrôles qualité §7` — vérification des chiffres vs brief, anti-plagiat, structure, provenance
-- ⬜ `Bloquer les articles qui échouent aux contrôles` — ne jamais présenter à l'humain un article non validé automatiquement
+- ✅ `Implémenter les contrôles qualité §7` — vérification des chiffres vs brief (`verifyArticleAgainstBrief`), structure, provenance. Anti-plagiat implémenté (`checkArticlePlagiarism`) mais pas calibré, voir ligne ci-dessous.
+- ✅ `Bloquer les articles qui échouent aux contrôles` — `runMorningAutoGeneration` (`autoGenerate.ts`) supprime silencieusement tout brouillon qui échoue, jamais présenté à l'humain.
 - ⬜ `Calibrer l'anti-plagiat` — pas juste activé, calibré sur des cas réels (trop strict = bloque des articles innocents)
+
+**Deux bugs trouvés et corrigés le 2026-08-29/30, en creusant pourquoi aucun article ne franchissait jamais le contrôle qualité (0 article en base, prod comme local — voir le plan de la même date sur l'auto-validation)** :
+- **Le format de réponse du chemin "meilleure qualité" (`generateChained`, 2 passes) ne correspondait pas à ce que lisait le parseur.** `buildFormattingPrompt()` (`content-engine.ts`) demande explicitement du JSON (`{"titre","chapeau","contenu",...}`), mais `parseGeneratedArticle()` (`articles.ts`) ne savait lire que le format ligne-par-ligne du chemin de repli à 1 passe (`generateArticleSmart`). Résultat mesuré sur un vrai article : le JSON entier atterrissait dans `title`, `content` restait vide, et la vérification des chiffres comparait des artefacts de formatage (`word_count`) au lieu du texte réel. **Corrigé** : `parseGeneratedArticle()` détecte et parse le JSON en premier, retombe sur le format ligne-par-ligne sinon. Sans ce correctif, le chemin de génération "meilleure qualité" — celui tenté en premier — ne produisait jamais un article exploitable.
+- **Du HTML brut (balises + attributs) provenant du flux RSS source traversait `extractFacts()` sans nettoyage** et se retrouvait dans le texte des faits du brief — mesuré : un `<em data-start="407">` a fait sortir `407` comme "chiffre du brief absent de l'article", une fausse anomalie. **Corrigé** : nouvelle fonction `stripHtml()` dans `brief.ts`, appliquée une fois à tous les champs texte des items juste après traduction, avant toute construction du brief.
+- **Limite non corrigée, notée pour plus tard** : `extractNumbers()` traite tout chiffre isolé comme un fait à retrouver mot pour mot, y compris des chiffres de nom de finition/pack (ex. "Premium 1") ou des fragments de specs tronqués pendant l'extraction/traduction (ex. "une vitesse accrue (de 3,7)" sans unité ni contexte "0-100"). Un article par ailleurs fidèle peut encore être bloqué pour ne pas avoir répété ce genre de chiffre. Pas touché maintenant — resserrer la détection de "fait numérique" toucherait directement la barre de qualité non négociable (CLAUDE.md §6), à ne faire qu'avec de vraies données de calibration, pas une estimation.
 
 ### 4.3 Connectique RADAR → STUDIO (à finaliser)
 

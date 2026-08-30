@@ -50,9 +50,9 @@ C'est ton « à faire aujourd'hui ». Il agrège, en haut ce qui est urgent, en 
 
 - **Urgent** — événements marqués urgents (retard, sujet chaud) avec tonnette ambre.
 - **En production** — les meilleurs événements **pas encore rédigés** (pas d'article associé), avec un bouton **« Rédiger »** pour les prendre en main. Ce n'est pas une liste d'articles en cours de relecture — c'est la file d'attente de rédaction, triée par score.
-- **Prêt à publier** — articles validés : bouton **« Créer un post »** (ouvre STUDIO pré-rempli) ou **« Ouvrir dans Drive »** si déjà exporté (voir la limite Drive au §18 — ce bouton ne change jamais si le Drive n'est pas configuré, même après un export réussi).
+- **Prêt à publier** — articles validés : chaque ligne montre déjà article + visuel préparés, avec **« Confirmer »** (exporte vers Drive et retient le créneau) ou **« Modifier »** (ouvre STUDIO pré-rempli) ; **« Ouvrir dans Drive »** remplace tout ça une fois exporté (voir la limite Drive au §18 — ce bouton ne change jamais si le Drive n'est pas configuré, même après un export réussi).
 - **Échéances** — une seule section qui regroupe trois choses : les prochaines échéances du calendrier (deadlines articles, publications, rapports), une alerte si le seuil de corrections du guide de style est atteint, et les campagnes partenaires en cours. Il n'y a pas de bloc « Tâches partenaires » séparé — c'est ici qu'elles apparaissent.
-- **Brouillons du matin** — les actualités auto-générées par le pipeline (vaguement étiquetées « GÉNÉRÉ PAR L'IA ») : relis-les, elles ne sont pas publiées.
+- **Brouillons du matin** — les actualités auto-générées par le pipeline (étiquetées « GÉNÉRÉ PAR L'IA »). Deux cas, affichés séparément : ceux qui ont franchi le seuil de confiance sont **déjà auto-validés** (badge « Auto-validé », lien direct vers `/ready` pour confirmer ou rejeter — personne ne les a relus, à toi de trancher) ; le reste reste un brouillon classique, « à valider » sur sa fiche événement, comme avant.
 - **Statut du pipeline** — indicateur vert/orange/rouge : dernière exécution automatique, nb d'items, nb de visuels. Bouton **« Lancer maintenant »** pour forcer une exécution.
 - **Statut Drive** — badge si le dossier Drive est configuré et connecté.
 
@@ -89,7 +89,7 @@ La page la plus riche : **tout le travail de rédaction se passe ici**. Elle est
    - *Les faits sont mis en évidence* (**FactHighlighter**) : chaque chiffre est souligné et relié au brief — s'il n'y est pas, c'est une anomalie. Tu coches chaque fait vérifié avant de valider.
    - *Affiner* : tu donnes une consigne (ex. « selon une autre source », « raccourci ») et l'article est retravaillé.
    - *Contrôles auto* : **vérification des chiffres, anti-plagiat, structure, provenance** tournent avant la revue humaine. Un échec bloque l'article — jamais de dégradation silencieuse.
-4. **Validation** — quand les faits sont cochés et l'article relu, tu valides. Le bouton **« Valider sans vérifier »** est l'exception explicite pour les articles de confiance (macro-action). Après validation, l'action bar s'affiche (voir §6).
+4. **Validation** — quand les faits sont cochés et l'article relu, tu valides. Le bouton **« Valider sans vérifier »** est l'exception explicite pour les articles de confiance (macro-action). Après validation, l'action bar s'affiche (voir §6). Pour les brouillons du matin, cette étape peut déjà avoir été franchie automatiquement si le score de confiance était assez haut (§15) — dans ce cas tu ne verras jamais cet écran pour ce brouillon-là, il t'attend directement sur `/ready`.
 5. **Verrou d'édition** — si un collègue travaille déjà sur l'article, un verrou `locked_by` est posé (badge + rafraîchissement). À 10 personnes c'est suffisant — pas de notification temps réel.
 
 **Le raccourci clavier 1-2-3-4** sélectionne la colonne (sources → brief → article → action), `Ctrl+Entrée` valide.
@@ -98,12 +98,21 @@ La page la plus riche : **tout le travail de rédaction se passe ici**. Elle est
 
 ## 6. Prêts à publier — `/ready`
 
-La liste des articles **validés** (historique cumulatif, y compris déjà exportés). Pour chaque article tu as :
+La liste des articles **validés** (historique cumulatif, y compris déjà exportés). L'automatisation prépare tout ce qu'elle peut ; toi, tu décides.
 
-- la vignette du visuel source (la meilleure image de l'événement, selon la hiérarchie og:image → twitter:image → page → RSS) ;
-- **« Créer un post »** → ouvre STUDIO **avec le titre, le chapô et l'image déjà pré-remplis** (`buildStudioLink`) ;
-- **« Ouvrir dans Drive »** → une fois l'article exporté (`exported_at` + `drive_url` renseignés par le callback de STUDIO), le lien Drive remplace le bouton de création ;
-- **« Planifier »** → ouvre un sélecteur de date (demain minimum) et crée un événement `publication_instagram` dans le calendrier ; l'article affiche alors « Planifié » ;
+**Dès qu'un article est validé** (que ce soit toi qui as cliqué « Valider », ou que le score de confiance ait dépassé le seuil automatiquement — voir §15), le visuel se génère tout seul côté STUDIO et un créneau de publication est déjà proposé au calendrier. Sur `/ready`, chaque article passe par l'un de ces états :
+
+- **Visuel en préparation…** — le rendu vient de démarrer, quelques secondes suffisent en général (mascotte qui réfléchit).
+- **Prêt** — article + visuel affichés côte à côte, avec :
+  - **« Confirmer »** → exporte le visuel vers Drive et verrouille le créneau proposé. C'est le seul geste qui engage réellement quelque chose.
+  - **« Modifier »** → bascule vers l'éditeur STUDIO complet (choix du gabarit, retouche des images) si l'aperçu automatique ne convient pas.
+  - **« Rejeter »** — visible uniquement sur un article **auto-validé** (badge « Auto-validé — score X% ») : personne n'a relu le texte, donc dire non doit être aussi rapide que dire oui.
+- **Aperçu automatique indisponible** — l'automatisation a échoué (STUDIO indisponible, image manquante) : un bouton « Réessayer » relance la préparation, et « Créer un post » reste disponible pour repartir à la main, exactement comme avant cette fonctionnalité.
+
+**Ce qui ne change jamais :** le clic final qui publie réellement sur Instagram reste, et restera, entièrement humain — rien ici ne l'automatise.
+
+Autres actions sur chaque ligne :
+- **« Planifier »** (si aucun créneau n'a encore été proposé) → sélecteur de date (demain minimum), crée un événement `publication_instagram` dans le calendrier ; l'article affiche alors « Planifié ».
 - **Associer à un partenaire** → pour les livrables de campagne.
 
 ---
@@ -247,9 +256,10 @@ Toutes les 4h (configurable), en arrière-plan :
 1. **Ingestion RSS** → nouveaux items (avec images quand la source les fournit : enclosure / `media:content`).
 2. **Embeddings locaux** (pour dédupliquer) + **clustering** → détection d'événements.
 3. **Scoring composite** (densité, vélocité, fraîcheur, marque) + **auto-tagging**.
-4. **Auto-génération matinale** des brouillons (étiquetés IA — à relire et valider).
+4. **Auto-génération matinale** des brouillons (étiquetés IA), avec contrôle qualité automatique — un brouillon qui échoue est retiré sans jamais être montré.
+5. **Auto-validation** : si le brouillon dépasse aussi un second seuil de confiance (plus strict que le contrôle qualité du point 4, réglage interne — voir `/ready`), il saute la revue humaine du texte lui-même et passe directement à l'écran de confirmation (§6), badgé « Auto-validé » pour que tu saches toujours que personne ne l'a relu. En dessous de ce seuil, rien ne change : le brouillon attend ta relecture comme avant.
 
-L'indicateur du Dashboard te dit s'il a bien tourné (vert/orange/rouge) et **« Lancer maintenant »** déclenche une exécution manuelle. Tu n'as rien à surveiller : le rédacteur ne fait que rédiger et valider.
+L'indicateur du Dashboard te dit s'il a bien tourné (vert/orange/rouge) et **« Lancer maintenant »** déclenche une exécution manuelle. Tu n'as rien à surveiller : le rédacteur ne fait que confirmer (ou, pour les brouillons sous le seuil, relire et valider).
 
 **Hiérarchie des visuels (rappelle-toi) :** RSS (gratuit) → scraping og:image (gratuit) → recherche manuelle (dépannage). L'outil cherche avant toi ; tu ne cherches un visuel que par exception.
 

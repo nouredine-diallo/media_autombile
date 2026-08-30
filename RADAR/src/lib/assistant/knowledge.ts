@@ -166,8 +166,9 @@ export const RADAR_KNOWLEDGE: AssistantFiche[] = [
       "Le bouton « Valider sans vérifier » est un raccourci pour les articles simples — utilisez-le avec discernement.",
       "Un verrou (cadenas) sur un article signifie qu'il a déjà été validé : le déverrouiller retire la validation.",
       "Les bandeaux et pastilles de statut vous évitent de republicr un contenu déjà validé.",
+      "Certains brouillons du matin sautent complètement cette étape si leur score de confiance est assez haut — ils vous attendent directement sur /ready, badgés « Auto-validé » (voir la fiche « confirmer »).",
     ],
-    related: ["rediger", "publier", "corrections"],
+    related: ["rediger", "publier", "confirmer", "corrections"],
   },
   {
     id: "publier",
@@ -175,7 +176,7 @@ export const RADAR_KNOWLEDGE: AssistantFiche[] = [
     keywords: [
       "publier", "publication", "pret", "publier", "partage", "instagram",
       "post", "preview", "apercu", "build", "studio link", "envoyer", "creer le post",
-      "lien camion", "ready",
+      "lien camion", "ready", "confirmer", "confirmation",
     ],
     phrases: [
       "comment publier un article",
@@ -186,20 +187,53 @@ export const RADAR_KNOWLEDGE: AssistantFiche[] = [
       "ouvrir le post dans studio",
       "publier sur instagram",
       "obtenir un lien studio",
+      "comment confirmer un post",
     ],
     description:
-      "La page « Prêt à publier » liste tous les articles validés et prêts à être exposés. Chaque ligne propose des actions : Créer un post (transférer vers l'outil STUDIO avec titre/images pré-remplis), Ouvrir dans STUDIO, Planifier, ou Associer à un partenaire. Publier, c'est valider le texte ici puis créer le visuel dans STUDIO.",
+      "La page « Prêt à publier » liste tous les articles validés. Dès qu'un article est validé (par vous ou automatiquement, voir la fiche « confirmer »), le visuel se génère déjà tout seul côté STUDIO et un créneau est déjà proposé — chaque ligne affiche article + visuel ensemble, avec « Confirmer » (exporte vers Drive, retient le créneau) ou « Modifier » (ouvre l'éditeur STUDIO complet si l'aperçu automatique ne convient pas).",
     steps: [
       "Ouvrez la page Prêt à publier (barre latérale).",
-      "Sur la ligne de l'article, choisissez « Créer un post » : le post est transmis à STUDIO préalablement rempli (titre, image, sources).",
-      "Terminez le visuel dans STUDIO (choix du gabarit, titre, images) et exportez-le.",
+      "Le visuel apparaît déjà préparé sur la ligne de l'article (quelques secondes après validation) — pas besoin d'aller dans STUDIO pour ça.",
+      "Cliquez « Confirmer » si tout convient, ou « Modifier » pour ouvrir l'éditeur STUDIO et ajuster gabarit/images/titre avant d'exporter vous-même.",
     ],
     tips: [
-      "Le lien STUDIO est généré automatiquement : un clic et tout le contexte voyage déjà.",
+      "« Confirmer » est la seule action qui exporte réellement vers Drive et verrouille le créneau — tout le reste n'est qu'un aperçu.",
+      "Publier sur Instagram reste toujours un geste humain, à part, jamais automatisé par ce bouton.",
       "Associez la publication à un partenaire pour la traçabilité livrables.",
-      "Vérifiez côté STUDIO qu'aucun fait du brief n'a été perdu pendant le transfert.",
     ],
-    related: ["studio", "valider", "planifier", "partenaires"],
+    related: ["studio", "valider", "confirmer", "planifier", "partenaires"],
+  },
+  {
+    id: "confirmer",
+    title: "Confirmer un post — le geste unique de fin de parcours",
+    keywords: [
+      "confirmer", "confirmation", "auto-valide", "auto valide", "score",
+      "seuil", "rejeter", "rejet", "un seul clic", "un clic", "geste",
+      "personne na relu", "auto-genere", "confiance",
+    ],
+    phrases: [
+      "comment confirmer un post",
+      "quest ce que confirmer",
+      "que veut dire auto-valide",
+      "un article auto valide cest quoi",
+      "comment rejeter un post auto valide",
+      "le post est deja pret le matin",
+      "je nai rien fait et un post est pret",
+      "que fait le bouton confirmer",
+    ],
+    description:
+      "Le geste final du parcours « un seul geste de décision » : l'automatisation prépare tout (article, visuel, créneau), vous décidez. Un article validé (par vous, ou automatiquement si le score de confiance dépasse le seuil réglé) fait apparaître sur `/ready` article + visuel ensemble. « Confirmer » exporte le visuel vers Drive et verrouille le créneau — c'est la seule action qui a un effet réel. « Modifier » rouvre l'éditeur STUDIO complet si l'aperçu ne convient pas. Sur un article auto-validé (badge « Auto-validé — score X% »), un bouton « Rejeter » apparaît en plus : personne n'a relu ce texte, donc dire non doit être aussi facile que dire oui.",
+    steps: [
+      "Ouvrez /ready le matin : les articles déjà validés (à la main ou automatiquement) y affichent déjà leur visuel.",
+      "Repérez le badge « Auto-validé — score X% » : ça veut dire qu'aucun humain n'a encore lu ce texte, contrairement au reste.",
+      "Cliquez « Confirmer » pour finaliser (export Drive + créneau verrouillé), « Modifier » pour ajuster dans STUDIO, ou « Rejeter » pour écarter un auto-validé qui ne convient pas.",
+    ],
+    tips: [
+      "Rien n'est jamais publié sur Instagram par ce bouton — ce clic-là reste, et restera, entièrement humain.",
+      "Un article qui reste \"en préparation\" plus d'une minute propose un bouton « Réessayer » — l'automatisation prévient toujours si elle échoue, jamais de blocage silencieux.",
+      "Le seuil de confiance qui déclenche l'auto-validation est réglable et volontairement prudent : mieux vaut un article qui attend votre relecture qu'un post de mauvaise qualité auto-validé.",
+    ],
+    related: ["publier", "valider", "brouillons", "pipeline"],
   },
   {
     id: "planifier",
@@ -219,7 +253,7 @@ export const RADAR_KNOWLEDGE: AssistantFiche[] = [
       "organiser les publications",
     ],
     description:
-      "Le calendrier hebdomadaire centralise tous les événements de l'équipe : deadlines d'articles, publications Instagram, envois de rapports partenaires, campagnes. Depuis la page Prêt à publier, « Planifier » associe directement l'article à un créneau. Vous pouvez aussi glisser-déposer des événements pour recaler un planning.",
+      "Le calendrier hebdomadaire centralise tous les événements de l'équipe : deadlines d'articles, publications Instagram, envois de rapports partenaires, campagnes. Un créneau est déjà proposé automatiquement dès qu'un article est validé — « Planifier » n'apparaît que si aucun créneau n'existe encore. Vous pouvez aussi glisser-déposer des événements pour recaler un planning.",
     steps: [
       "Sur un article validé (page Prêt à publier), ouvrez le menu Planifier.",
       "Choisissez le jour et le type d'événement (publication Instagram, deadline d'article, envoi de rapport, campagne partenaire, autre).",
@@ -371,17 +405,18 @@ export const RADAR_KNOWLEDGE: AssistantFiche[] = [
       "comment relancer le pipeline",
     ],
     description:
-      "RADAR tourne en continu (toutes les 4 heures) un pipeline automatique : ingestion des flux RSS, calcul d'embeddings locaux (aucun coût API), regroupement en sujets, calcul du score composite (pertinence, urgence, marginalité) et auto-génération matinale des brouillons. Vous pouvez aussi lancer le pipeline à la demande.",
+      "RADAR tourne en continu (toutes les 4 heures) un pipeline automatique : ingestion des flux RSS, calcul d'embeddings locaux (aucun coût API), regroupement en sujets, calcul du score composite (pertinence, urgence, marginalité) et auto-génération matinale des brouillons. Un brouillon dont le score de confiance dépasse un second seuil (plus strict que le simple contrôle qualité) saute aussi la revue humaine du texte et devient directement un post à confirmer sur /ready — voir la fiche « confirmer ». Vous pouvez aussi lancer le pipeline à la demande.",
     steps: [
       "Sans action de votre part, le pipeline tourne toutes les 4 heures.",
-      "Observez le résultat du matin : le nombre de brouillons générés s'affiche sur le tableau de bord.",
+      "Observez le résultat du matin : le tableau de bord distingue les brouillons « prêts à confirmer » (auto-validés, score au-dessus du seuil) des brouillons « à valider » (le reste).",
       "Pour forcer une exécution, utilisez le bouton de relance disponible (démarrage pipeline).",
     ],
     tips: [
       "Des embeddings locaux signifient zéro coût d'API : le traitement peut tourner sans risque de quota.",
       "Plus vos corrections sont prises en compte, plus la génération du matin correspond à votre style (cf. corrections).",
+      "Le seuil d'auto-validation est volontairement mesuré : le but n'est jamais de se retrouver sans aucun article, juste d'éviter de relire ce qui est déjà assez fiable.",
     ],
-    related: ["brouillons", "corrections", "veille", "dashboard"],
+    related: ["brouillons", "confirmer", "corrections", "veille", "dashboard"],
   },
   {
     id: "brouillons",
@@ -401,18 +436,18 @@ export const RADAR_KNOWLEDGE: AssistantFiche[] = [
       "les brouillons automatiques",
     ],
     description:
-      "Chaque matin, le pipeline génère des brouillons d'articles à partir du brief le plus pertinent. Le tableau de bord affiche ces brouillons sous forme de cartes massives marquées « GÉNÉRÉ PAR L'IA », avec un titre court en 2-3 lignes. Chaque carte donne accès à la fiche complète. Les brouillons qui n'ont pas passé le contrôle qualité automatique sont retirés — si rien ne reste, c'est une information, pas un bug.",
+      "Chaque matin, le pipeline génère des brouillons d'articles à partir du brief le plus pertinent. Le tableau de bord affiche ces brouillons sous forme de cartes marquées « GÉNÉRÉ PAR L'IA ». Les brouillons qui n'ont pas passé le contrôle qualité automatique sont retirés — si rien ne reste, c'est une information, pas un bug. Parmi ceux qui restent, deux groupes de cartes distincts : les cartes vertes « Auto-validé, prêt à confirmer » (score de confiance assez haut, mènent directement à /ready) et les cartes classiques « à valider » (mènent à la fiche événement, comme avant).",
     steps: [
       "Le matin, ouvrez le tableau de bord.",
-      "Parcourez les cartes « GÉNÉRÉ PAR L'IA » : elles reflètent les sujets que le pipeline estime les plus forts.",
-      "Cliquez sur une carte pour relire et valider la fiche détaillée (ou la laisser reposer si elle n'est pas au point).",
+      "Les cartes vertes « prêt à confirmer » vous envoient directement sur /ready — article et visuel déjà prêts, personne ne les a relus.",
+      "Les cartes « à valider » vous envoient sur la fiche événement pour une relecture classique.",
     ],
     tips: [
-      "Le nombre de brouillons passés vs tentés (« X/Y ont passé le contrôle qualité ») est un thermomètre de la fiabilité du robot.",
+      "Le nombre de brouillons passés vs tentés (« X/Y ont passé le contrôle qualité ») est un thermomètre de la fiabilité du robot ; le nombre auto-validés en plus dit combien ont sauté votre relecture ce matin-là.",
       "Une carte rejetée peut être régénérée via la page de l'événement : le robot n'écrase jamais ce que vous validez vous-même.",
-      "Utilisez les cartes comme point de départ : il est plus rapide de corriger un bon brouillon que de partir de zéro.",
+      "Utilisez les cartes « à valider » comme point de départ : il est plus rapide de corriger un bon brouillon que de partir de zéro.",
     ],
-    related: ["pipeline", "rediger", "valider", "dashboard"],
+    related: ["pipeline", "rediger", "valider", "confirmer", "dashboard"],
   },
   {
     id: "corrections",

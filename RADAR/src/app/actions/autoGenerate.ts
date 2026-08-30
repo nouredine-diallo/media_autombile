@@ -3,6 +3,8 @@
 import { getDb } from "@/lib/db";
 import { getBestImageForEvent } from "@/lib/visualSearch";
 import { triggerAutoGenerate } from "@/lib/studioAutoGenerate";
+import { updateArticleStatus } from "@/lib/articles";
+import { recordDecision } from "@/lib/killswitch";
 
 const STUDIO_IMPORT_URL = process.env.STUDIO_IMPORT_URL || process.env.STUDIO_URL || "http://127.0.0.1:3002";
 const IMPORT_SECRET = process.env.IMPORT_SECRET || "";
@@ -78,5 +80,33 @@ export async function retryAutoGenerate(
   }
 
   await triggerAutoGenerate(articleId, article.content_id, article.title, imageUrl);
+  return { success: true };
+}
+
+/**
+ * "Rejeter" sur un post déjà validé (surtout : un post auto-validé, plan
+ * écosystème 2026-08-29, qu'aucun humain n'a encore relu). Aussi facile
+ * qu'un clic Confirmer — puisque personne n'a lu le texte avant, dire non
+ * doit être aussi rapide que dire oui. Alimente `article_decisions`
+ * (killswitch.ts) : si l'auto-validation dérape, le coupe-circuit existant
+ * (mode dégradé sur rejets consécutifs) réagit tout seul, sans rien
+ * construire de nouveau pour ça.
+ */
+export async function rejectAutoPost(
+  articleId: number,
+): Promise<{ success: boolean; error?: string }> {
+  const db = getDb();
+  const article = db
+    .prepare(`SELECT id, validated_by FROM articles WHERE id = ? AND status = 'validated'`)
+    .get(articleId) as { id: number; validated_by: 'humain' | 'auto_score' | null } | undefined;
+  if (!article) {
+    return { success: false, error: "Article non trouvé ou déjà traité." };
+  }
+
+  updateArticleStatus(articleId, "rejected");
+  // Capturé depuis l'article lui-même à l'instant du clic, pas supposé —
+  // ce bouton n'apparaît que sur les posts auto-validés côté UI, mais on
+  // ne fait pas confiance à ça seul pour un signal d'audit.
+  recordDecision(articleId, "rejected", article.validated_by ?? "humain");
   return { success: true };
 }

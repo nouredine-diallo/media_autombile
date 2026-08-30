@@ -200,10 +200,33 @@ export async function clusterItemsIntoEvents(): Promise<number> {
     autoTagEvent(event.id, event.title, event.summary);
   }
 
+  /**
+   * Plafond par run (2026-08-30) — trouvé en prod : un backlog jamais
+   * traduit (848 événements) a fait durer un seul cycle "toutes les 4h"
+   * plus de 6h (04:00 → 10:05, mesuré dans pipeline_runs), faisant
+   * manquer le déclenchement suivant (node-cron : "missed execution...
+   * Possible blocking IO"). La traduction locale (CPU pur, pas de GPU sur
+   * cette VM) est le vrai goulot, pas un bug ponctuel à corriger — chaque
+   * run ne traite plus qu'un lot borné, le reste du backlog se rattrape
+   * sur les cycles suivants au lieu de bloquer tout le pipeline d'un coup.
+   * Les événements les plus récents (id décroissant) passent en premier :
+   * `events.score` n'est pas encore calculé à ce stade du pipeline
+   * (calculateScores() tourne après), la fraîcheur est le seul signal
+   * disponible ici — cohérent avec RADAR/CLAUDE.md §11 (fraîcheur du flux
+   * avant tout). TODO : valeur provisoire, jamais mesurée sur un vrai
+   * historique de plusieurs jours (CLAUDE.md §4.3).
+   */
+  const TRANSLATE_BATCH_LIMIT = 100;
+
   // Translate event titles/summaries to French
-  const untranslated = allEvents.filter(e => !e.title_fr);
+  const untranslatedAll = allEvents.filter(e => !e.title_fr).sort((a, b) => b.id - a.id);
+  const untranslated = untranslatedAll.slice(0, TRANSLATE_BATCH_LIMIT);
   if (untranslated.length > 0) {
-    console.log(`Translating ${untranslated.length} events to French...`);
+    const remaining = untranslatedAll.length - untranslated.length;
+    console.log(
+      `Translating ${untranslated.length} events to French` +
+      (remaining > 0 ? ` (${remaining} restants, prochains cycles)` : '') + '...'
+    );
     const translations = await translateEvents(
       untranslated.map(e => ({ id: e.id, title: e.title, summary: e.summary }))
     );

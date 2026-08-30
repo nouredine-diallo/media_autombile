@@ -2,6 +2,31 @@ import { getDb, Item, Event } from './db';
 import { generateCarouselParagraphs } from './llm';
 import { translateTextLocal } from './translateLocal';
 
+/**
+ * Retire les balises HTML (et leurs attributs) d'un texte source RSS.
+ * Trouvé le 2026-08-29 : un `<em data-start="407">...</em>` non nettoyé
+ * dans `item.summary` traversait extractFacts() intact, et `verifyArticleAgainstBrief()`
+ * extrayait `407` de l'attribut `data-start` comme si c'était un vrai chiffre
+ * du brief — un article parfaitement correct se faisait alors signaler une
+ * "anomalie" (chiffre manquant) qui n'était qu'un artefact de scraping.
+ * Regex volontairement simple (pas de dépendance HTML parser — la stack est
+ * figée, RADAR/CLAUDE.md §3) : supprime toute balise `<...>` en bloc, ce qui
+ * élimine aussi bien la balise que les attributs qu'elle porte.
+ */
+function stripHtml(text: string | null | undefined): string {
+  if (!text) return '';
+  return text
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export interface Fact {
   text: string;
   source_url: string | null;
@@ -65,7 +90,20 @@ export async function generateBrief(eventId: number): Promise<Brief | null> {
   // frontière async de tout le module (le reste demeure la composition
   // synchrone par assemblage de texte voulue à l'origine, RADAR/CLAUDE.md
   // "le brief est bâti sur les faits, pas généré par IA").
-  const items = await Promise.all(rawItems.map((item) => ensureItemTranslated(db, item))) as (Item & { feed_name: string })[];
+  const translatedItems = await Promise.all(rawItems.map((item) => ensureItemTranslated(db, item))) as (Item & { feed_name: string })[];
+
+  // Nettoyage HTML — une seule fois ici, avant toute construction du brief
+  // (extractFacts/generateHeadline/generateLede/generateBody en dépendent
+  // tous) plutôt que dans chaque fonction séparément.
+  const items = translatedItems.map((item) => ({
+    ...item,
+    title: stripHtml(item.title),
+    title_fr: item.title_fr ? stripHtml(item.title_fr) : item.title_fr,
+    summary: item.summary ? stripHtml(item.summary) : item.summary,
+    summary_fr: item.summary_fr ? stripHtml(item.summary_fr) : item.summary_fr,
+    content: item.content ? stripHtml(item.content) : item.content,
+    content_fr: item.content_fr ? stripHtml(item.content_fr) : item.content_fr,
+  }));
 
   // Extract facts from items
   const facts = extractFacts(items);

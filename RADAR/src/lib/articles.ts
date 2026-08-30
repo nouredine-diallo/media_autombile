@@ -172,6 +172,39 @@ function parseGeneratedArticle(content: string): {
   metaDescription: string | null;
   wordCount: number;
 } {
+  // generateChained() (le chemin "meilleure qualité", tenté en premier par
+  // generateArticle ci-dessous) répond en JSON — buildFormattingPrompt()
+  // dans content-engine.ts le demande explicitement
+  // (`{"titre","chapeau","contenu","meta_description","word_count"}`), et
+  // son propre repli manuel (llm.ts, quand le LLM ne renvoie pas de JSON
+  // valide) produit aussi du JSON via JSON.stringify(). Cette fonction ne
+  // savait lire que le format ligne-par-ligne de generateArticleSmart() —
+  // trouvé le 2026-08-29 en testant un vrai article généré : le JSON entier
+  // atterrissait dans `title` (première "ligne" du texte) et `content`
+  // restait vide, ce qui faisait ensuite échouer la vérification des
+  // chiffres sur des artefacts de formatage (`0`, `187` du word_count) au
+  // lieu du contenu réel. Sans ce cas, le chemin "meilleure qualité" ne
+  // produisait jamais un article exploitable.
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed && typeof parsed === 'object' && typeof parsed.titre === 'string' && typeof parsed.contenu === 'string') {
+      const bodyContent = parsed.contenu.trim();
+      const wordCount = typeof parsed.word_count === 'number'
+        ? parsed.word_count
+        : bodyContent.split(/\s+/).filter((w: string) => w.length > 0).length;
+      return {
+        title: parsed.titre.trim() || 'Titre non généré',
+        chapeau: typeof parsed.chapeau === 'string' ? parsed.chapeau.trim() : null,
+        content: bodyContent,
+        metaDescription: typeof parsed.meta_description === 'string' ? parsed.meta_description.trim() : null,
+        wordCount,
+      };
+    }
+  } catch {
+    // Pas du JSON — c'est le format ligne-par-ligne de generateArticleSmart(),
+    // traité normalement ci-dessous.
+  }
+
   const lines = content.split('\n').filter(l => l.trim());
   
   let title = '';

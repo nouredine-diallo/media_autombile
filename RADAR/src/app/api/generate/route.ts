@@ -4,9 +4,7 @@ import { getBrief } from '@/lib/brief';
 import { generateVerificationReport } from '@/lib/verification';
 import { getDb } from '@/lib/db';
 import { recordDecision, getDegradedModeStatus } from '@/lib/killswitch';
-import { generateArticleDeadlines } from '@/lib/calendar';
-import { getBestImageForEvent } from '@/lib/visualSearch';
-import { triggerAutoGenerate } from '@/lib/studioAutoGenerate';
+import { finalizeArticleValidation } from '@/lib/validation';
 
 export async function POST(request: Request) {
   try {
@@ -123,36 +121,16 @@ export async function PATCH(request: Request) {
       );
     }
     
-    if (status) {
+    if (status === 'validated') {
+      // Toute la séquence (statut, décision, traçabilité, créneau, visuel
+      // STUDIO) vit dans finalizeArticleValidation — réutilisée telle
+      // quelle par l'auto-validation du matin (autoGenerate.ts), pour que
+      // les deux voies produisent exactement le même résultat.
+      finalizeArticleValidation(id, 'humain');
+    } else if (status) {
       updateArticleStatus(id, status);
-      if (status === 'validated' || status === 'rejected') {
-        recordDecision(id, status);
-      }
-      if (status === 'validated') {
-        // Anticipe le besoin : dès la validation, une échéance de publication
-        // apparaît au calendrier — plus besoin d'aller cliquer "Générer
-        // deadlines" séparément. Idempotent (ne crée rien si déjà fait).
-        generateArticleDeadlines();
-
-        // Parcours "un seul geste de décision" (plan écosystème 2026-08-29) :
-        // dès la validation humaine de l'article, préparer automatiquement le
-        // visuel STUDIO (gabarit 1A, titre déjà validé par l'humain) pour que
-        // /ready affiche article + visuel prêts à confirmer. Fire-and-forget
-        // — ne doit jamais retarder la réponse de validation. Sauté sans bruit
-        // si l'article n'a ni content_id ni visuel source (cas déjà géré par
-        // le bouton manuel "Créer un post" existant sur /ready).
-        const db = getDb();
-        const article = db.prepare(
-          `SELECT content_id, event_id, title FROM articles WHERE id = ?`
-        ).get(id) as { content_id: string | null; event_id: number; title: string } | undefined;
-        if (article?.content_id) {
-          const imageUrl = getBestImageForEvent(article.event_id);
-          if (imageUrl) {
-            triggerAutoGenerate(id, article.content_id, article.title, imageUrl).catch((err) => {
-              console.error('[generate] triggerAutoGenerate a levé une exception:', err);
-            });
-          }
-        }
+      if (status === 'rejected') {
+        recordDecision(id, status, 'humain');
       }
     }
     

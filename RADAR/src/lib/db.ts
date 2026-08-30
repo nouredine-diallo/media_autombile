@@ -194,7 +194,22 @@ function initializeDb(db: any) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_article_decisions_created ON article_decisions(created_at);
+  `);
 
+  // Migration: source_method sur article_decisions — marque explicitement,
+  // au moment de l'appel à recordDecision(), si la décision porte sur un
+  // article validé par un humain ou auto-validé par le seuil de confiance
+  // (plan écosystème 2026-08-30, boucle de vérification de B). Capturé à
+  // l'instant T, pas dérivé après coup de `articles.validated_by` — ce
+  // dernier reste un champ métier réutilisable, pas une garantie d'audit.
+  // Aucun rétro-remplissage des décisions déjà existantes (demande
+  // explicite) : NULL pour tout ce qui précède ce correctif.
+  const decisionColumns = db.prepare("PRAGMA table_info(article_decisions)").all() as { name: string }[];
+  if (!decisionColumns.some(col => col.name === 'source_method')) {
+    db.exec("ALTER TABLE article_decisions ADD COLUMN source_method TEXT");
+  }
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS google_tokens (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       access_token TEXT NOT NULL,
@@ -299,6 +314,15 @@ function initializeDb(db: any) {
     db.exec("ALTER TABLE articles ADD COLUMN drive_url TEXT");
   }
 
+  // Migration: validated_by — qui a validé, distinct de `provenance` (qui a
+  // écrit). 'humain' (clic "Valider", comportement historique) ou
+  // 'auto_score' (seuil de confiance franchi, plan écosystème 2026-08-29) —
+  // jamais confondu, traçabilité obligatoire dès qu'une validation peut se
+  // produire sans qu'un humain ait lu l'article.
+  if (!articleColumns2.some(col => col.name === 'validated_by')) {
+    db.exec("ALTER TABLE articles ADD COLUMN validated_by TEXT");
+  }
+
   // Migration: cible structurée pour les partenaires (§chantier 5 du plan
   // écosystème) — vient à côté de `deliverables` (texte libre conservé pour
   // le contexte), pas à sa place. `target_format` reprend les deux formats
@@ -391,6 +415,13 @@ function initializeDb(db: any) {
   }
   if (!pipelineRunColumns.some(col => col.name === 'auto_gen_passed')) {
     db.exec("ALTER TABLE pipeline_runs ADD COLUMN auto_gen_passed INTEGER DEFAULT 0");
+  }
+  // Combien, parmi les `auto_gen_passed`, ont aussi franchi le seuil de
+  // confiance et sauté la revue humaine (plan écosystème 2026-08-29) —
+  // jamais un chiffre caché, le dashboard doit pouvoir dire honnêtement
+  // combien de posts n'ont été relus par personne ce matin-là.
+  if (!pipelineRunColumns.some(col => col.name === 'auto_gen_auto_validated')) {
+    db.exec("ALTER TABLE pipeline_runs ADD COLUMN auto_gen_auto_validated INTEGER DEFAULT 0");
   }
 
   // Migration: item_images — toutes les images candidates trouvées par scrapeArticleImages(),
@@ -653,11 +684,17 @@ export function getDashboardAgenda() {
   // 'draft' généré ce matin serait invisible sans cette section dédiée.
   const today = new Date().toISOString().slice(0, 10);
   const autoGenRun = db.prepare(
-    `SELECT auto_gen_attempted, auto_gen_passed FROM pipeline_runs WHERE date(started_at) = ? AND auto_gen_attempted > 0 ORDER BY id DESC LIMIT 1`
-  ).get(today) as { auto_gen_attempted: number; auto_gen_passed: number } | undefined;
-  const morningDrafts = autoGenRun ? db.prepare(
-    `SELECT id, event_id, title, content_id FROM articles WHERE provenance = 'généré' AND date(generated_at) = ? ORDER BY generated_at DESC`
-  ).all(today) as { id: number; event_id: number; title: string; content_id: string | null }[] : [];
+    `SELECT auto_gen_attempted, auto_gen_passed, auto_gen_auto_validated FROM pipeline_runs WHERE date(started_at) = ? AND auto_gen_attempted > 0 ORDER BY id DESC LIMIT 1`
+  ).get(today) as { auto_gen_attempted: number; auto_gen_passed: number; auto_gen_auto_validated: number } | undefined;
+  const morningArticlesAll = autoGenRun ? db.prepare(
+    `SELECT id, event_id, title, content_id, status, validated_by FROM articles WHERE provenance = 'généré' AND date(generated_at) = ? ORDER BY generated_at DESC`
+  ).all(today) as { id: number; event_id: number; title: string; content_id: string | null; status: string; validated_by: string | null }[] : [];
+  // Un brouillon du matin qui a franchi le seuil de confiance saute la revue
+  // humaine (plan écosystème 2026-08-29) — il apparaît "prêt à confirmer"
+  // (lien vers /ready) plutôt que "à valider" (lien vers /events/[id]),
+  // deux destinations différentes pour deux états réellement différents.
+  const morningReadyToConfirm = morningArticlesAll.filter(a => a.validated_by === 'auto_score');
+  const morningDrafts = morningArticlesAll.filter(a => a.status === 'draft');
 
   // ✍️ Corrections : même seuil que /corrections (§ analyse des patterns) — pas dupliqué, juste relu ici
   const CORRECTIONS_GUIDE_THRESHOLD = 30;
@@ -682,7 +719,9 @@ export function getDashboardAgenda() {
     morningAutoGen: autoGenRun ? {
       attempted: autoGenRun.auto_gen_attempted,
       passed: autoGenRun.auto_gen_passed,
+      autoValidated: autoGenRun.auto_gen_auto_validated,
       drafts: morningDrafts,
+      readyToConfirm: morningReadyToConfirm,
     } : null,
     correctionsCount: totalCorrections.count,
     correctionsThreshold: CORRECTIONS_GUIDE_THRESHOLD,

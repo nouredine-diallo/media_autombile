@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useActionState } from 'react';
-import { confirmAutoPost, retryAutoGenerate } from '@/app/actions/autoGenerate';
+import { confirmAutoPost, retryAutoGenerate, rejectAutoPost } from '@/app/actions/autoGenerate';
 import { Badge, ButtonLink } from '@/components/ui';
 import { Mascot } from '@/components/assistant/Mascot';
 import { PlanifierButton } from '@/components/PlanifierButton';
 import { AssociatePartnerButton } from '@/components/AssociatePartnerButton';
-import { IconCheck, IconGenerate, IconRefresh, IconStudio } from '@/components/icons';
+import { IconAlert, IconCheck, IconClose, IconGenerate, IconRefresh, IconStudio } from '@/components/icons';
 
 const POLL_INTERVAL_MS = 4000;
 const MAX_POLLS = 20; // ~80s — au-delà, on arrête de spammer et on laisse "Actualiser" manuel
@@ -23,6 +23,9 @@ interface Props {
   error: string | null;
   alreadyScheduled: boolean;
   studioModifyHref: string;
+  /** 'auto_score' = personne n'a relu le texte, seul un seuil de confiance l'a laissé passer. */
+  validatedBy: 'humain' | 'auto_score' | null;
+  verificationScore: number | null;
 }
 
 /**
@@ -44,6 +47,8 @@ export function PostConfirmCard({
   error: initialError,
   alreadyScheduled,
   studioModifyHref,
+  validatedBy,
+  verificationScore,
 }: Props) {
   const [status, setStatus] = useState(initialStatus);
   const [dataUrl, setDataUrl] = useState(initialDataUrl);
@@ -94,7 +99,13 @@ export function PostConfirmCard({
     return retryAutoGenerate(articleId);
   }, undefined);
 
+  const [rejectState, rejectAction, rejecting] = useActionState(
+    async () => rejectAutoPost(articleId),
+    undefined,
+  );
+
   const confirmed = confirmState?.success === true;
+  const rejected = rejectState?.success === true;
 
   return (
     <article className="flex gap-4 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-4 transition-colors duration-[var(--dur)] hover:border-[var(--border-default)]">
@@ -121,7 +132,23 @@ export function PostConfirmCard({
           )}
           {status === 'pending' && <Badge tone="info">Visuel en préparation…</Badge>}
           {status === 'failed' && <Badge tone="warn">Aperçu automatique indisponible</Badge>}
+          {validatedBy === 'auto_score' && (
+            <Badge
+              tone="warn"
+              icon={IconAlert}
+              className="cursor-help"
+            >
+              {verificationScore !== null
+                ? `Contenu auto-validé — score ${verificationScore}%`
+                : 'Contenu auto-validé'}
+            </Badge>
+          )}
         </div>
+        {validatedBy === 'auto_score' && (
+          <p className="t-caption -mt-0.5 mb-1.5 text-[var(--text-muted)]">
+            Aucun humain n&apos;a relu ce texte — la confiance mesurée a dépassé le seuil configuré.
+          </p>
+        )}
 
         <h2 className="t-title truncate text-[var(--text-primary)]">{title}</h2>
         {chapeau && <p className="t-body mt-1 line-clamp-2 text-[var(--text-secondary)]">{chapeau}</p>}
@@ -137,11 +164,24 @@ export function PostConfirmCard({
         {contentId && <AssociatePartnerButton contentId={contentId} />}
         <PlanifierButton articleId={articleId} alreadyScheduled={alreadyScheduled} />
 
-        {status === 'ready' && !confirmed && (
+        {status === 'ready' && !confirmed && !rejected && (
           <div className="flex gap-2">
             <ButtonLink href={studioModifyHref} external variant="secondary" size="md">
               Modifier
             </ButtonLink>
+            {validatedBy === 'auto_score' && (
+              <form action={rejectAction}>
+                <button
+                  type="submit"
+                  disabled={rejecting}
+                  title="Aucun humain n'a relu ce texte — refuser si le contenu ne convient pas"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3.5 text-[13px] font-medium text-[var(--danger)] transition-colors duration-[var(--dur-fast)] hover:opacity-90 disabled:opacity-45"
+                >
+                  <IconClose size={14} strokeWidth={1.75} />
+                  {rejecting ? '…' : 'Rejeter'}
+                </button>
+              </form>
+            )}
             <form action={confirmAction}>
               <button
                 type="submit"
@@ -162,8 +202,18 @@ export function PostConfirmCard({
           </span>
         )}
 
+        {status === 'ready' && rejected && (
+          <span className="t-caption inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2 text-[var(--text-secondary)]">
+            <IconClose size={14} strokeWidth={1.75} />
+            Rejeté
+          </span>
+        )}
+
         {status === 'ready' && confirmState?.success === false && confirmState.error && (
           <p className="t-caption text-[var(--danger)]">{confirmState.error}</p>
+        )}
+        {status === 'ready' && rejectState?.success === false && rejectState.error && (
+          <p className="t-caption text-[var(--danger)]">{rejectState.error}</p>
         )}
 
         {status === 'pending' && !stalled && (
