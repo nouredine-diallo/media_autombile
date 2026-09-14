@@ -62,15 +62,27 @@ export function cleanupOldEvents(): number {
   cutoff.setDate(cutoff.getDate() - EVENTS_RETENTION_DAYS);
   const cutoffStr = cutoff.toISOString();
 
-  // Supprime les événements sans article et sans brief
-  const result = db.prepare(`
-    DELETE FROM events 
-    WHERE id NOT IN (SELECT event_id FROM articles)
-    AND id NOT IN (SELECT event_id FROM briefs)
-    AND first_seen_at < ?
-  `).run(cutoffStr);
+  // Supprime les événements sans article et sans brief. Même contournement
+  // que clusterItemsIntoEvents (scoring.ts:126-140, FK "stats_imports →
+  // events" informelle sans vraie colonne) : le DELETE échouait en
+  // "foreign key mismatch" et faisait planter le process au boot (SQLITE_ERROR
+  // non rattrapé, trouvé le 2026-08-30). FK désactivées le temps du
+  // nettoyage, réactivées dans tous les cas.
+  db.pragma('foreign_keys = OFF');
+  let changes = 0;
+  try {
+    const result = db.prepare(`
+      DELETE FROM events 
+      WHERE id NOT IN (SELECT event_id FROM articles)
+      AND id NOT IN (SELECT event_id FROM briefs)
+      AND first_seen_at < ?
+    `).run(cutoffStr);
+    changes = result.changes;
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
 
-  return result.changes;
+  return changes;
 }
 
 /**
