@@ -48,7 +48,15 @@ export async function createSession(
 
   cookieStore.set("session", session, {
     httpOnly: true,
-    secure: false,
+    // Audit du 2026-09-07 (finding A1/A2) : sans ces deux réglages sortis en
+    // variables d'env, le cookie était host-only (jamais transmis entre
+    // 89.168.53.133.nip.io et studio.89.168.53.133.nip.io, contrairement à ce
+    // qu'affirme ECOSYSTEM.md) et toujours envoyé en clair. Par défaut
+    // (variables absentes) le comportement actuel est préservé à l'identique
+    // pour ne rien casser en dev local — activer les deux dès que le HTTPS
+    // (setup-ssl.sh) est en place en prod.
+    secure: process.env.SESSION_COOKIE_SECURE === "true",
+    domain: process.env.SESSION_COOKIE_DOMAIN || undefined,
     expires: expiresAt,
     sameSite: "lax",
     path: "/",

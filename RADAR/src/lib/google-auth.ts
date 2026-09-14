@@ -1,3 +1,4 @@
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { getDb } from './db';
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
@@ -5,6 +6,41 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:4000/api/auth/google/callback';
 
 const SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
+
+/**
+ * Chiffrement au repos des tokens Drive — finding A5 (audit 2026-09-07) :
+ * `access_token`/`refresh_token` étaient stockés en clair dans `google_tokens`
+ * (table SQLite). Le `refresh_token` Google est longue durée — sa fuite via
+ * une copie de `radar.db` (sauvegarde, accès disque) donnerait un accès
+ * Drive persistant. AES-256-GCM, clé dérivée de `SESSION_SECRET` (déjà
+ * présent, aucun nouveau secret à gérer) — natif `node:crypto`, aucune
+ * dépendance ajoutée (RADAR/CLAUDE.md §3).
+ */
+function getTokenEncryptionKey(): Buffer {
+  const secret = process.env.SESSION_SECRET || 'fallback-very-long-secret-key-that-is-32-bytes-at-least-123456789';
+  return createHash('sha256').update(`google-tokens:${secret}`).digest();
+}
+
+function encryptToken(plaintext: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', getTokenEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
+}
+
+function decryptToken(ciphertext: string): string {
+  const [ivHex, authTagHex, dataHex] = ciphertext.split(':');
+  if (!ivHex || !authTagHex || !dataHex) {
+    // Compatibilité : une valeur stockée avant ce correctif n'a pas ce
+    // format — la traiter comme déjà en clair plutôt que planter, le
+    // prochain `storeTokens()` (refresh normal) la re-chiffrera.
+    return ciphertext;
+  }
+  const decipher = createDecipheriv('aes-256-gcm', getTokenEncryptionKey(), Buffer.from(ivHex, 'hex'));
+  decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+  return Buffer.concat([decipher.update(Buffer.from(dataHex, 'hex')), decipher.final()]).toString('utf8');
+}
 
 export interface GoogleTokens {
   access_token: string;
@@ -17,7 +53,18 @@ export function isGoogleConfigured(): boolean {
   return !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
 }
 
-export function getGoogleAuthUrl(): string {
+/**
+ * `state` obligatoire — finding A4 (audit 2026-09-07) : sans lui, un
+ * attaquant peut obtenir un `code` d'autorisation pour SON PROPRE compte
+ * Google puis forcer la navigation d'une victime déjà connectée vers
+ * `/api/auth/google/callback?code=<code_attaquant>` (GET, cookie de session
+ * joint même en sameSite=lax sur une navigation top-level) — les tokens
+ * Drive de toute l'équipe (ligne unique partagée, `storeTokens`) basculent
+ * alors silencieusement vers le Drive de l'attaquant. `state` est généré et
+ * posé en cookie ici, vérifié dans le callback (route.ts) avant tout
+ * échange de code.
+ */
+export function getGoogleAuthUrl(state: string): string {
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: GOOGLE_REDIRECT_URI,
@@ -25,6 +72,7 @@ export function getGoogleAuthUrl(): string {
     scope: SCOPES.join(' '),
     access_type: 'offline',
     prompt: 'consent',
+    state,
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
@@ -112,7 +160,7 @@ export function storeTokens(tokens: GoogleTokens): void {
       expiry_date = excluded.expiry_date,
       email = COALESCE(excluded.email, google_tokens.email),
       updated_at = datetime('now')
-  `).run(tokens.access_token, tokens.refresh_token, tokens.expiry_date, tokens.email ?? null);
+  `).run(encryptToken(tokens.access_token), encryptToken(tokens.refresh_token), tokens.expiry_date, tokens.email ?? null);
 }
 
 export function getStoredTokens(): GoogleTokens | null {
@@ -126,8 +174,8 @@ export function getStoredTokens(): GoogleTokens | null {
 
   if (!row) return null;
   return {
-    access_token: row.access_token,
-    refresh_token: row.refresh_token,
+    access_token: decryptToken(row.access_token),
+    refresh_token: decryptToken(row.refresh_token),
     expiry_date: row.expiry_date,
     email: row.email ?? undefined,
   };
