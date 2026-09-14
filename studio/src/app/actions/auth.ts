@@ -52,7 +52,23 @@ export async function login(_prevState: string | undefined, formData: FormData) 
 
   loginAttempts.delete(ip);
   await createSession("user");
-  redirect("/");
+  redirect(safeRedirectTarget(formData.get("next")));
+}
+
+/**
+ * Bug du 14 sept. 2026 : `redirect("/")` était codé en dur — un opérateur
+ * arrivant depuis RADAR sans session STUDIO existante (lien "Carrousel"/
+ * "Slide unique") perdait sa destination pré-remplie après connexion.
+ * `next` vient de proxy.ts via un champ caché du formulaire — jamais une
+ * URL absolue de confiance : un chemin qui ne commence pas par exactement
+ * un seul "/" (donc pas "//evil.com", pas "https://...") est rejeté au
+ * profit de l'accueil, pour ne pas ouvrir de redirection arbitraire.
+ */
+function safeRedirectTarget(value: FormDataEntryValue | null): string {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return "/";
+  }
+  return value;
 }
 
 export async function logout() {

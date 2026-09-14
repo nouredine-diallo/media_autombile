@@ -1,10 +1,24 @@
 "use client";
 
-import { useActionState } from "react";
+import { Suspense, useActionState } from "react";
+import { useSearchParams } from "next/navigation";
 import { login } from "@/app/actions/auth";
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const [error, action, pending] = useActionState(login, undefined);
+  // Destination d'origine posée par proxy.ts quand l'accès a été bloqué
+  // faute de session (ex. lien "Carrousel" depuis RADAR) — reportée dans le
+  // formulaire pour y revenir après connexion au lieu d'atterrir sur
+  // l'accueil générique (bug du 14 sept. 2026).
+  const next = useSearchParams().get("next");
 
   return (
     <div
@@ -70,6 +84,7 @@ export default function LoginPage() {
         </p>
 
         <form action={action} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          {next && <input type="hidden" name="next" value={next} />}
           <div>
             <label
               htmlFor="password"
