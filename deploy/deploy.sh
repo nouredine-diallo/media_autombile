@@ -53,7 +53,16 @@ echo "[3/6] Updating configs..."
 cp "$REPO_DIR/deploy/start-radar.sh" /opt/media-labs/start-radar.sh
 cp "$REPO_DIR/deploy/start-studio.sh" /opt/media-labs/start-studio.sh
 chmod +x /opt/media-labs/start-radar.sh /opt/media-labs/start-studio.sh
-sudo cp "$REPO_DIR/nginx/media-labs.conf" /etc/nginx/sites-available/media-labs.conf
+# Bug trouvé le 14 sept. 2026, une fois HTTPS activé pour de vrai (setup-ssl.sh) :
+# ceci copiait toujours le bootstrap HTTP-only, même après activation de
+# HTTPS — le déploiement suivant aurait silencieusement désactivé le SSL
+# fraîchement obtenu. Copie la conf SSL finale si un certificat existe déjà
+# pour ce domaine, sinon le bootstrap (premier déploiement, avant SSL).
+if [ -d "/etc/letsencrypt/live/89.168.53.133.nip.io" ]; then
+    sudo cp "$REPO_DIR/nginx/media-labs-ssl.conf" /etc/nginx/sites-available/media-labs.conf
+else
+    sudo cp "$REPO_DIR/nginx/media-labs.conf" /etc/nginx/sites-available/media-labs.conf
+fi
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 
