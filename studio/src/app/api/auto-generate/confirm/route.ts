@@ -9,6 +9,18 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
+ * Finding D5 (audit 2026-09-07) : le sidecar n'était effacé qu'APRÈS un
+ * export réussi (`.then(() => clearAutoGenerateSidecar(...))` ci-dessous) —
+ * deux appels rapprochés de cette route pour le même contentId (double-clic,
+ * requête rejouée) passaient donc tous les deux `loadAutoGenerateSidecar`
+ * avec succès et déclenchaient chacun leur propre export Drive. Verrou en
+ * mémoire process, même idée que `locked_by`/`locked_at` côté RADAR
+ * (articles) — suffisant ici : un seul process Node sert STUDIO (PM2 sans
+ * cluster, deploy/start-studio.sh).
+ */
+const contentIdsInFlight = new Set<string>();
+
+/**
  * POST /api/auto-generate/confirm — le clic humain "Confirmer" côté RADAR
  * (studio/CLAUDE.md §2 : c'est LA confirmation explicite requise avant tout
  * export). Rejoue le rendu + upload Drive exactement comme /api/export
@@ -29,6 +41,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "contentId requis" }, { status: 400 });
   }
 
+  if (contentIdsInFlight.has(contentId)) {
+    return NextResponse.json(
+      { error: "Export déjà en cours pour cet article" },
+      { status: 409 },
+    );
+  }
+
   const sidecar = await loadAutoGenerateSidecar(contentId);
   if (!sidecar) {
     return NextResponse.json(
@@ -36,6 +55,8 @@ export async function POST(request: NextRequest) {
       { status: 404 },
     );
   }
+
+  contentIdsInFlight.add(contentId);
 
   const jobId = randomUUID();
   createJob(jobId, sidecar.gabaritId, sidecar.fieldValues);
@@ -48,6 +69,9 @@ export async function POST(request: NextRequest) {
         status: "error",
         error: err instanceof Error ? err.message : "Erreur inconnue",
       });
+    })
+    .finally(() => {
+      contentIdsInFlight.delete(contentId);
     });
 
   return NextResponse.json({ jobId }, { status: 202 });

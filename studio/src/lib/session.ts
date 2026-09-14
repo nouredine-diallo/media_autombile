@@ -37,7 +37,11 @@ export async function createSession(userId: string) {
 
   cookieStore.set("session", session, {
     httpOnly: true,
-    secure: false,
+    // Voir RADAR/src/lib/session.ts pour le contexte (finding A1/A2, audit
+    // 2026-09-07) — mêmes variables d'env des deux côtés, c'est ce qui
+    // matérialise réellement la session partagée en prod.
+    secure: process.env.SESSION_COOKIE_SECURE === "true",
+    domain: process.env.SESSION_COOKIE_DOMAIN || undefined,
     expires: expiresAt,
     sameSite: "lax",
     path: "/",

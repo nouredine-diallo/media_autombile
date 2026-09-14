@@ -94,7 +94,12 @@ export async function runAutoGenerate(params: AutoGenerateParams): Promise<void>
 
   const croppedPath = path.join(dir, "cropped.jpg");
   const backdropPath = path.join(dir, "backdrop.jpg");
-  await cropToAspectSmart(
+  // Finding D4 (audit 2026-09-07) : la valeur de retour était jetée ici —
+  // contrairement au chemin d'upload manuel (upload/route.ts), qui capture
+  // et transmet déjà `outcome`. `backdrop` est la variante utilisée comme
+  // `imageUrl` plus bas (fond plein cadre du gabarit 1A) : c'est son
+  // `fallbackToCenter` qui compte pour ce chemin précis.
+  const cropOutcome = await cropToAspectSmart(
     sourcePath,
     croppedPath,
     backdropPath,
@@ -126,7 +131,12 @@ export async function runAutoGenerate(params: AutoGenerateParams): Promise<void>
   // sameSite=lax, donc un lien direct vers STUDIO ne fonctionnerait pas
   // depuis la page /ready de RADAR).
   const dataUrl = `data:image/png;base64,${pngBuffer.toString("base64")}`;
-  await notifyRadarAutoPreview(contentId, { ok: true, previewDataUrl: dataUrl, gabaritId: "1a" });
+  await notifyRadarAutoPreview(contentId, {
+    ok: true,
+    previewDataUrl: dataUrl,
+    gabaritId: "1a",
+    fallbackCrop: cropOutcome.backdrop.fallbackToCenter,
+  });
 }
 
 /** Charge la spec persistée pour reconfirmer un export identique (utilisé par /api/auto-generate/confirm). */
@@ -146,29 +156,45 @@ export async function clearAutoGenerateSidecar(contentId: string): Promise<void>
   await rm(sidecarPath(contentId), { force: true }).catch(() => {});
 }
 
+// Finding C3 (audit 2026-09-07) : ce callback est bien serveur-à-serveur
+// (jamais exposé au réseau de l'utilisateur), mais un seul échec — RADAR en
+// plein redémarrage PM2, cas déjà documenté ailleurs dans ce fichier — le
+// rendait définitif : `exported_at`/l'aperçu restaient bloqués sans jamais
+// se rattraper. 3 tentatives, backoff court : RADAR redémarre en quelques
+// secondes typiquement, pas besoin d'attendre plus longtemps pour ce cas.
+const NOTIFY_RETRY_DELAYS_MS = [1000, 3000];
+
 export async function notifyRadarAutoPreview(
   contentId: string,
-  payload: { ok: boolean; previewDataUrl?: string; gabaritId?: string; error?: string },
+  payload: { ok: boolean; previewDataUrl?: string; gabaritId?: string; error?: string; fallbackCrop?: boolean },
 ): Promise<void> {
   const radarUrl = process.env.RADAR_URL;
   if (!radarUrl) return;
-  try {
-    // `fetch` ne rejette JAMAIS sur un statut HTTP d'erreur (401, 500…),
-    // seulement sur un échec réseau — trouvé en testant réellement le
-    // round-trip en prod (2026-08-29) : un 401 (middleware RADAR bloquant
-    // cette route avant qu'elle soit ajoutée à l'allowlist) passait
-    // silencieusement le `.catch()` faute de vérifier `res.ok`, exactement
-    // la dégradation silencieuse interdite par les deux CLAUDE.md.
-    const res = await fetch(`${radarUrl}/api/events/${contentId}/auto-preview`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!res.ok) {
+
+  for (let attempt = 0; attempt <= NOTIFY_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      // `fetch` ne rejette JAMAIS sur un statut HTTP d'erreur (401, 500…),
+      // seulement sur un échec réseau — trouvé en testant réellement le
+      // round-trip en prod (2026-08-29) : un 401 (middleware RADAR bloquant
+      // cette route avant qu'elle soit ajoutée à l'allowlist) passait
+      // silencieusement le `.catch()` faute de vérifier `res.ok`, exactement
+      // la dégradation silencieuse interdite par les deux CLAUDE.md.
+      const res = await fetch(`${radarUrl}/api/events/${contentId}/auto-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.ok) return;
       console.warn(`[auto-generate] Callback RADAR refusé pour ${contentId} (${res.status})`);
+    } catch (err) {
+      console.warn(`[auto-generate] Callback RADAR échoué pour ${contentId}:`, err);
     }
-  } catch (err) {
-    console.warn(`[auto-generate] Callback RADAR échoué pour ${contentId}:`, err);
+
+    const delay = NOTIFY_RETRY_DELAYS_MS[attempt];
+    if (delay !== undefined) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
   }
+  console.error(`[auto-generate] Callback RADAR abandonné pour ${contentId} après ${NOTIFY_RETRY_DELAYS_MS.length + 1} tentatives`);
 }
