@@ -1,7 +1,9 @@
 import cron, { type ScheduledTask } from 'node-cron';
-import { getFeeds, fetchFeed, storeItems, updateFeedLastFetched } from './rss';
+import { getFeeds, fetchFeed, storeItems, recordFeedFetchSuccess, recordFeedFetchFailure } from './rss';
 import { startPipelineRun, completePipelineRun, cleanupStaleRuns, getDb } from './db';
 import { runCacheCleanup } from './cacheCleanup';
+import { runDatabaseBackupSafe } from './backup';
+import { runVacuumIfDueSafe } from './vacuum';
 
 interface CronConfig {
   ingestInterval: string;  // cron expression, default: every 4 hours
@@ -18,7 +20,15 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 let currentTask: ScheduledTask | null = null;
+let backupTask: ScheduledTask | null = null;
 let isRunning = false;
+
+// Sauvegarde quotidienne (finding E1) — délibérément un calendrier séparé du
+// pipeline d'ingestion (`ingestInterval`, toutes les 4h) : découpler les deux
+// évite tout couplage accidentel, et une fois par jour suffit largement au
+// rythme de changement de données d'une équipe de 5-10 personnes. 3h du matin
+// UTC, en dehors des heures de bureau habituelles.
+const BACKUP_CRON_EXPRESSION = '0 3 * * *';
 
 async function runPipeline(): Promise<void> {
   if (isRunning) {
@@ -38,10 +48,12 @@ async function runPipeline(): Promise<void> {
       try {
         const items = await withTimeout(fetchFeed(feed), 12000);
         const { stored } = storeItems(feed.id, items);
-        updateFeedLastFetched(feed.id);
+        recordFeedFetchSuccess(feed.id);
         totalStored += stored;
       } catch (error) {
-        console.error(`[CRON] Error ingesting ${feed.name}:`, error instanceof Error ? error.message : error);
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[CRON] Error ingesting ${feed.name}:`, message);
+        recordFeedFetchFailure(feed.id, message);
       }
     }
 
@@ -50,11 +62,27 @@ async function runPipeline(): Promise<void> {
     let eventsCreated = 0;
     let scoringError: string | undefined;
     try {
-      const { embedUnprocessedItems, clusterItemsIntoEvents, calculateScores } = await import('./scoring');
+      const { embedUnprocessedItems, clusterItemsIntoEvents, calculateScores, getLastEmbeddingSkipCount } = await import('./scoring');
+      const { getEmbeddingModelStatus } = await import('./embeddings');
       const embedded = await withTimeout(embedUnprocessedItems(), 60000);
       eventsCreated = await clusterItemsIntoEvents();
       calculateScores();
       console.log(`[CRON] Embedded: ${embedded}, Events: ${eventsCreated}`);
+
+      // Finding D1 (audit 2026-09-07) : un item resté sans embedding
+      // (modèle indisponible) ne devient jamais un event — signalé ici
+      // plutôt qu'avalé, mais SANS bloquer le clustering/scoring des items
+      // déjà embeddés au-dessus (contrairement à un throw dans
+      // embedUnprocessedItems lui-même, qui aurait arrêté tout le cycle).
+      const skipped = getLastEmbeddingSkipCount();
+      if (skipped > 0) {
+        const status = getEmbeddingModelStatus();
+        const reason = status.lastFailure
+          ? `modèle d'embeddings indisponible depuis ${status.lastFailure.at} (${status.lastFailure.message})`
+          : "modèle d'embeddings indisponible";
+        scoringError = `${skipped} item(s) non embeddés — ${reason} — resteront invisibles dans la veille tant que le modèle ne recharge pas`;
+        console.error('[CRON]', scoringError);
+      }
     } catch (error) {
       // Ne pas se contenter du console.error : un échec ici laissait
       // `events.score` bloqué à 0 pour tous les événements, sans qu'aucun
@@ -165,6 +193,18 @@ export function startCron(): void {
 
   console.log(`[CRON] Scheduled with interval: ${config.ingestInterval}`);
 
+  if (backupTask) {
+    backupTask.stop();
+  }
+  backupTask = cron.schedule(BACKUP_CRON_EXPRESSION, async () => {
+    // Finding D8 : VACUUM avant la sauvegarde (pages libérées compactées
+    // d'abord, gating interne à runVacuumIfDueSafe — n'agit réellement
+    // qu'une fois par semaine, pas à chaque tick de ce cron quotidien).
+    await runVacuumIfDueSafe();
+    await runDatabaseBackupSafe();
+  });
+  console.log(`[CRON] Backup scheduled with interval: ${BACKUP_CRON_EXPRESSION}`);
+
   // node-cron n'exécute jamais immédiatement au démarrage — seulement au
   // prochain créneau (jusqu'à 4h d'attente, config.ingestInterval). Sur une
   // base tout juste réinitialisée (ou une toute première installation),
@@ -186,6 +226,10 @@ export function stopCron(): void {
     currentTask.stop();
     currentTask = null;
     console.log('[CRON] Stopped');
+  }
+  if (backupTask) {
+    backupTask.stop();
+    backupTask = null;
   }
 }
 

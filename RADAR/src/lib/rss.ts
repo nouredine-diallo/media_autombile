@@ -70,28 +70,55 @@ function extractImageUrl(item: Record<string, unknown>): string | null {
   return null;
 }
 
+/**
+ * Finding D7 (audit 2026-09-07) : cette fonction avalait ses propres erreurs
+ * réseau/parsing et retournait `[]` — indiscernable pour l'appelant d'un flux
+ * sain sans nouveau contenu. Les deux appelants (`cron.ts`, `api/ingest`) ont
+ * déjà leur propre `try/catch` autour de `fetchFeed()` : laisser l'erreur
+ * remonter permet à `recordFeedFetchFailure` d'être appelé au lieu de
+ * `recordFeedFetchSuccess`, sans changer l'architecture des deux appelants
+ * (CLAUDE.md §6, "aucune dégradation silencieuse").
+ */
 export async function fetchFeed(feed: Feed): Promise<ParsedItem[]> {
-  try {
-    console.log(`Fetching feed: ${feed.name} from ${feed.url}`);
-    const feedData = await parser.parseURL(feed.url);
-    console.log(`Feed ${feed.name} parsed, found ${(feedData.items || []).length} items`);
-    
-    return (feedData.items || []).map(item => {
-      const raw = item as unknown as Record<string, unknown>;
-      return {
-        title: item.title || 'Untitled',
-        link: item.link,
-        content: item.content || item.contentSnippet,
-        contentSnippet: item.contentSnippet,
-        isoDate: item.isoDate,
-        pubDate: item.pubDate,
-        imageUrl: extractImageUrl(raw),
-      };
-    });
-  } catch (error) {
-    console.error(`Error fetching feed ${feed.name} from ${feed.url}:`, error);
-    return [];
-  }
+  console.log(`Fetching feed: ${feed.name} from ${feed.url}`);
+  const feedData = await parser.parseURL(feed.url);
+  console.log(`Feed ${feed.name} parsed, found ${(feedData.items || []).length} items`);
+
+  return (feedData.items || []).map(item => {
+    const raw = item as unknown as Record<string, unknown>;
+    return {
+      title: item.title || 'Untitled',
+      link: item.link,
+      content: item.content || item.contentSnippet,
+      contentSnippet: item.contentSnippet,
+      isoDate: item.isoDate,
+      pubDate: item.pubDate,
+      imageUrl: extractImageUrl(raw),
+    };
+  });
+}
+
+/**
+ * Retire le pied de page WordPress standard (« The post X appeared first
+ * on Y. ») du texte source — trouvé le 2026-09-09 en creusant pourquoi deux
+ * articles générés échouaient systématiquement le contrôle qualité (score
+ * 40 et 37, très sous le seuil de 70) : ce pied de page, présent dans le
+ * flux Pebble Beach (WordPress), traversait intact jusqu'au brief où
+ * `extractFacts()` (brief.ts) l'extrayait comme un "fait" à part entière —
+ * jusqu'à 3 fois par item, quasi identiques d'un item à l'autre (seul le
+ * titre change), sans apporter aucun contenu réel. Nettoyé ici, au point
+ * d'ingestion unique, pour bénéficier aussi aux embeddings (`scoring.ts`)
+ * et au clustering, pas seulement au brief — la même chaîne "The post ...
+ * appeared first on ..." gonflait aussi la similarité calculée entre des
+ * items par ailleurs sans rapport (même pied de page = texte quasi
+ * identique). Motif générique WordPress, pas propre à Pebble Beach — tout
+ * autre flux du même moteur en bénéficie automatiquement.
+ */
+export function stripWordpressBoilerplate(text: string | null | undefined): string | null {
+  if (!text) return text ?? null;
+  return text
+    .replace(/\bThe post .+? appeared first on .+?\.?\s*$/i, '')
+    .trim() || null;
 }
 
 function normalizeTitle(title: string): string {
@@ -142,29 +169,35 @@ export function storeItems(feedId: number, items: ParsedItem[]): { stored: numbe
 
   const insertMany = db.transaction((items: ParsedItem[]) => {
     for (const item of items) {
-      // Exact duplicate (UNIQUE constraint)
+      // Finding D3 (audit 2026-09-07) : isNearDuplicate() n'était appelée
+      // qu'APRÈS l'échec de l'INSERT sur la contrainte UNIQUE(title) — donc
+      // uniquement sur des items déjà identiques au caractère près à un
+      // item existant, jamais sur les vrais quasi-doublons (même actu,
+      // titre légèrement différent entre deux sources) qui, eux, passaient
+      // l'INSERT sans jamais être comparés. Vérifié maintenant AVANT
+      // l'insertion, sur chaque item entrant.
+      if (isNearDuplicate(item.title, db)) {
+        nearDuplicates++;
+        continue;
+      }
+
       const result = insert.run(
         feedId,
         item.title,
         item.link || null,
-        item.content || null,
-        item.contentSnippet || null,
+        stripWordpressBoilerplate(item.content),
+        stripWordpressBoilerplate(item.contentSnippet),
         item.isoDate || item.pubDate || null,
         item.imageUrl || null
       );
       if (result.changes > 0) {
         stored++;
-        continue;
-      }
-
-      duplicates++;
-
-      // Near-duplicate check: same story, slightly different title
-      if (!isNearDuplicate(item.title, db)) {
-        // Not a near-duplicate of existing items — mark explicitly
-        // This is a genuine re-publish or update, not a clone
       } else {
-        nearDuplicates++;
+        // Titre strictement identique à un item déjà en base (contrainte
+        // UNIQUE) — republication légitime à l'identique ou vrai doublon,
+        // indiscernable ici sans plus de contexte ; compté séparément des
+        // quasi-doublons.
+        duplicates++;
       }
     }
   });
@@ -187,9 +220,44 @@ export function addFeed(name: string, url: string, priority: number = 1, require
   return db.prepare('SELECT * FROM feeds WHERE id = ?').get(result.lastInsertRowid) as Feed;
 }
 
-export function updateFeedLastFetched(feedId: number): void {
+// Finding D7 (audit 2026-09-07) : seuil provisoire (CLAUDE.md §4.3, à
+// calibrer sur données réelles) — ~5 jours d'échec continu à raison de 6
+// tentatives/jour (cycle 4h, `cron.ts`). Assez long pour ne pas désactiver un
+// flux en panne temporaire, assez court pour arrêter de gaspiller un cycle
+// d'ingestion sur un flux mort (timeout 12s × flux morts, répété indéfiniment).
+const MAX_CONSECUTIVE_FAILURES = 30;
+
+export function recordFeedFetchSuccess(feedId: number): void {
   const db = getDb();
-  db.prepare('UPDATE feeds SET last_fetched_at = datetime(\'now\') WHERE id = ?').run(feedId);
+  db.prepare(`
+    UPDATE feeds SET
+      last_fetched_at = datetime('now'),
+      last_fetch_status = 'ok',
+      last_fetch_error = NULL,
+      consecutive_failures = 0
+    WHERE id = ?
+  `).run(feedId);
+}
+
+export function recordFeedFetchFailure(feedId: number, errorMessage: string): void {
+  const db = getDb();
+  const feed = db.prepare('SELECT consecutive_failures, name FROM feeds WHERE id = ?').get(feedId) as { consecutive_failures: number; name: string } | undefined;
+  const consecutiveFailures = (feed?.consecutive_failures ?? 0) + 1;
+  const shouldDisable = consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
+
+  db.prepare(`
+    UPDATE feeds SET
+      last_fetched_at = datetime('now'),
+      last_fetch_status = 'error',
+      last_fetch_error = ?,
+      consecutive_failures = ?,
+      enabled = CASE WHEN ? THEN 0 ELSE enabled END
+    WHERE id = ?
+  `).run(errorMessage.slice(0, 500), consecutiveFailures, shouldDisable ? 1 : 0, feedId);
+
+  if (shouldDisable) {
+    console.error(`[RSS] Flux "${feed?.name ?? feedId}" désactivé automatiquement après ${consecutiveFailures} échecs consécutifs. Dernière erreur : ${errorMessage}`);
+  }
 }
 
 export function getItems(limit: number = 50): (Item & { feed_name: string })[] {

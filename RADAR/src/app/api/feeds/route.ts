@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const db = getDb();
     const feeds = db.prepare(
-      'SELECT id, name, url, priority, enabled, last_fetched_at FROM feeds ORDER BY priority, name'
+      'SELECT id, name, url, priority, enabled, last_fetched_at, last_fetch_status, last_fetch_error, consecutive_failures FROM feeds ORDER BY priority, name'
     ).all();
     return NextResponse.json(feeds);
   } catch (error) {

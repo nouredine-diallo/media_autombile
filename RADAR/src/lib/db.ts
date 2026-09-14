@@ -23,6 +23,25 @@ export function getDb(): any {
   return db;
 }
 
+/**
+ * Finding E6 (audit 2026-09-07) : appelée par le handler SIGTERM
+ * (`instrumentation.ts`) pour fermer proprement la connexion avant que PM2
+ * n'envoie SIGKILL. `better-sqlite3` est synchrone — `.close()` s'assure que
+ * le WAL est bien vidé sur disque plutôt que de laisser le process mourir
+ * en plein milieu d'une écriture. Ne lève jamais : c'est la dernière étape
+ * d'un arrêt, il n'y a plus rien à tenter en cas d'échec.
+ */
+export function closeDb(): void {
+  if (db) {
+    try {
+      db.close();
+    } catch {
+      // Rien de plus à faire — le process va de toute façon se terminer.
+    }
+    db = null;
+  }
+}
+
 function initializeDb(db: any) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS feeds (
@@ -246,6 +265,22 @@ function initializeDb(db: any) {
     db.exec("ALTER TABLE feeds ADD COLUMN enabled INTEGER DEFAULT 1");
   }
 
+  // Migration : suivi d'échec par flux — finding D7 (audit 2026-09-07).
+  // Avant ce correctif, `last_fetched_at` était mis à jour même quand
+  // `fetchFeed()` échouait silencieusement (erreur réseau avalée, retournait
+  // []) : un flux mort pour toujours restait indiscernable d'un flux sain
+  // sans nouveau contenu. `consecutive_failures` permet la désactivation
+  // automatique dans rss.ts (voir MAX_CONSECUTIVE_FAILURES, seuil provisoire).
+  if (!feedColumns.some(col => col.name === 'last_fetch_status')) {
+    db.exec("ALTER TABLE feeds ADD COLUMN last_fetch_status TEXT");
+  }
+  if (!feedColumns.some(col => col.name === 'last_fetch_error')) {
+    db.exec("ALTER TABLE feeds ADD COLUMN last_fetch_error TEXT");
+  }
+  if (!feedColumns.some(col => col.name === 'consecutive_failures')) {
+    db.exec("ALTER TABLE feeds ADD COLUMN consecutive_failures INTEGER DEFAULT 0");
+  }
+
   // Migration: add is_cloud to drive_files if missing
   const driveColumns = db.prepare("PRAGMA table_info(drive_files)").all() as { name: string }[];
   if (!driveColumns.some(col => col.name === 'is_cloud')) {
@@ -357,6 +392,15 @@ function initializeDb(db: any) {
   }
   if (!articleColumns2.some(col => col.name === 'auto_preview_error')) {
     db.exec("ALTER TABLE articles ADD COLUMN auto_preview_error TEXT");
+  }
+  // Finding D4 (audit 2026-09-07) : `runAutoGenerate` (STUDIO) jetait le
+  // flag `fallbackToCenter` renvoyé par `cropToAspectSmart` — le chemin
+  // auto-généré utilisait donc parfois un recadrage centré dégradé (pas de
+  // détection de sujet, détourage indisponible) sans que RADAR ne le sache
+  // jamais, contrairement au chemin d'upload manuel qui, lui, le propage
+  // déjà. Colonne ajoutée pour fermer cet écart d'intégration.
+  if (!articleColumns2.some(col => col.name === 'auto_preview_fallback_crop')) {
+    db.exec("ALTER TABLE articles ADD COLUMN auto_preview_fallback_crop INTEGER DEFAULT 0");
   }
 
   // Migration: add image_url to items for Mission 2 (visual search pipeline)
@@ -488,6 +532,9 @@ export interface Feed {
   requires_scraping: number;
   enabled: number;
   last_fetched_at: string | null;
+  last_fetch_status: string | null;
+  last_fetch_error: string | null;
+  consecutive_failures: number;
   created_at: string;
 }
 
@@ -638,7 +685,15 @@ export function getDashboardAgenda() {
   const inProgress = allInProgress.slice(0, IN_PROGRESS_LIMIT);
   const hiddenInProgressCount = Math.max(0, allInProgress.length - IN_PROGRESS_LIMIT);
 
-  // 🟢 Prêt : articles validés, prêts pour STUDIO
+  // 🟢 Prêt : articles validés, prêts pour STUDIO — historique cumulatif
+  // (voir le commentaire sur /page.tsx : reste affiché après export, ce
+  // n'est pas une file qui se vide). Finding D6 (audit 2026-09-07) : cette
+  // requête n'avait aucun LIMIT — sur plusieurs mois d'usage, un
+  // `ORDER BY ... DESC` sans borne devient de plus en plus coûteux. Plafond
+  // généreux (200 — plusieurs mois de production à ce rythme) plutôt qu'un
+  // vrai plafond fonctionnel : /ready reste la page qui montre l'historique
+  // complet sans aucune limite, rien n'est réellement perdu au-delà.
+  const READY_LIMIT = 200;
   const ready = db.prepare(`
     SELECT a.id, a.title, a.content_id, a.validated_at, a.chapeau,
       a.exported_at, a.drive_url,
@@ -657,6 +712,7 @@ export function getDashboardAgenda() {
     FROM articles a
     WHERE a.status = 'validated'
     ORDER BY a.validated_at DESC
+    LIMIT ${READY_LIMIT}
   `).all() as { id: number; title: string; content_id: string | null; validated_at: string | null; chapeau: string | null; image_url: string | null; exported_at: string | null; drive_url: string | null }[];
 
   // 🤝 Partenaires : rapports à envoyer
