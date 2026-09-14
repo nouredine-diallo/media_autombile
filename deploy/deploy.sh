@@ -58,7 +58,7 @@ chmod +x /opt/media-labs/start-radar.sh /opt/media-labs/start-studio.sh
 # HTTPS — le déploiement suivant aurait silencieusement désactivé le SSL
 # fraîchement obtenu. Copie la conf SSL finale si un certificat existe déjà
 # pour ce domaine, sinon le bootstrap (premier déploiement, avant SSL).
-if [ -d "/etc/letsencrypt/live/89.168.53.133.nip.io" ]; then
+if sudo test -d "/etc/letsencrypt/live/89.168.53.133.nip.io"; then
     sudo cp "$REPO_DIR/nginx/media-labs-ssl.conf" /etc/nginx/sites-available/media-labs.conf
 else
     sudo cp "$REPO_DIR/nginx/media-labs.conf" /etc/nginx/sites-available/media-labs.conf
