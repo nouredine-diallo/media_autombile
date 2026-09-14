@@ -8,7 +8,7 @@ export DB_PATH=/opt/media-labs/data/radar.db
 # STUDIO_IMPORT_URL reste local pour l'appel serveur-à-serveur (visualSearch.ts:11-12).
 # Bug corrigé le 2026-08-27 : cette ligne écrasait STUDIO_URL avec 127.0.0.1,
 # ce qui aurait cassé "Créer un post" pour tout utilisateur distant en prod.
-export STUDIO_URL="http://studio.89.168.53.133.nip.io"
+export STUDIO_URL="https://studio.89.168.53.133.nip.io"
 export STUDIO_IMPORT_URL="http://127.0.0.1:3002"
 export NODE_ENV=production
 # Finding E6 (audit 2026-09-07) : `exec npm start` remplaçait bien ce script

@@ -45,7 +45,14 @@ build_app() {
     echo "  ✅ Build $label OK ($(cat .next/BUILD_ID))"
 }
 
-build_app "$REPO_DIR/RADAR" "RADAR" env NEXT_PUBLIC_STUDIO_URL="http://studio.89.168.53.133.nip.io" npm run build
+# NEXT_PUBLIC_STUDIO_URL est inlinée dans le bundle CLIENT au build — c'est
+# elle, pas la variable d'environnement runtime STUDIO_URL de start-radar.sh,
+# qui détermine réellement les liens "Carrousel"/"Slide unique" cliqués
+# depuis le navigateur (studio-prefill.ts:78, priorité NEXT_PUBLIC_* > runtime
+# > fallback). Laissée en http:// après l'activation HTTPS du 14 sept. 2026
+# aurait continué à générer des liens non sécurisés malgré le certificat
+# actif, sans qu'aucune variable runtime ne puisse le corriger après coup.
+build_app "$REPO_DIR/RADAR" "RADAR" env NEXT_PUBLIC_STUDIO_URL="https://studio.89.168.53.133.nip.io" npm run build
 build_app "$REPO_DIR/studio" "STUDIO" npm run build
 
 # 3. Copy start scripts + nginx
@@ -98,6 +105,10 @@ echo "[5/6] Opening ports..."
 sudo iptables -C INPUT -p tcp --dport 3000 -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 1 -p tcp --dport 3000 -j ACCEPT
 sudo iptables -C INPUT -p tcp --dport 3002 -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 1 -p tcp --dport 3002 -j ACCEPT
 sudo iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT
+# 443 géré à l'origine par setup-ssl.sh (une fois HTTPS activé) — ajouté ici
+# aussi en idempotent, pour qu'un futur déploiement ne dépende pas d'une
+# règle iptables déjà posée ailleurs sans jamais la reposer lui-même.
+sudo iptables -C INPUT -p tcp --dport 443 -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT
 sudo netfilter-persistent save 2>/dev/null || true
 
 # 6. Vérification post-déploiement — BLOQUANTE (finding F3). L'ancien script
@@ -140,7 +151,7 @@ fi
 
 echo ""
 echo "=== DONE ==="
-echo "  http://89.168.53.133.nip.io/        → RADAR  (via nginx, port 80)"
-echo "  http://studio.89.168.53.133.nip.io/ → STUDIO (via nginx, port 80)"
+echo "  https://89.168.53.133.nip.io/        → RADAR  (via nginx, HTTPS)"
+echo "  https://studio.89.168.53.133.nip.io/ → STUDIO (via nginx, HTTPS)"
 echo "  http://89.168.53.133:3000 → RADAR direct (debug uniquement)"
 echo "  http://89.168.53.133:3002 → bloqué par la Security List Oracle Cloud, ne pas utiliser publiquement"
