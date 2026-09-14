@@ -8,10 +8,11 @@ Ce fichier est le point d'entrée pour tout agent OpenCode travaillant sur ce pr
 
 | Fichier | Portée | Rôle |
 |---------|--------|------|
+| `ECOSYSTEM.md` |全局 | **Comportement réel vérifié** — ports, session partagée, assistant, mascotte, brouillons IA, empty states |
 | `ONBOARDING.md` |全局 | **POINT D'ENTRÉE** — état actuel, workflow, fichiers à lire, architecture |
 | `RADAR/CLAUDE.md` | RADAR | Constitution du projet RADAR — interdits, stack, anti-hallucination, qualité |
 | `studio/CLAUDE.md` | STUDIO | Constitution du projet STUDIO — décisions visuelles, gabarits, auth |
-| `CLAUDE_DASHBOARD.md` |全局 | Vue d'ensemble — parcours utilisateur, architecture, statut modules |
+| `RADAR/CLAUDE_DASHBOARD.md` |全局 | Vue d'ensemble — parcours utilisateur, architecture, statut modules |
 | `TODO.md` |全局 | Toutes les tâches, statuts, blocages, priorités |
 
 **Règle** : en cas de conflit entre ce fichier et un CLAUDE.md, le CLAUDE.md du dossier concerné gagne.

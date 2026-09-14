@@ -8,7 +8,7 @@
 ## 1. État actuel du projet (26 août 2026)
 
 ### Ce qui fonctionne
-- **RADAR** (port 3001) : dashboard, liste événements, détail événement, page Ready
+- **RADAR** (port 3000 en dev ; 3001 en prod Docker) : dashboard, liste événements, détail événement, page Ready
 - **STUDIO** (port 3002) : création de posts, 6 gabarits, export Google Drive
 - **Pipeline RSS** : ingestion, scoring, clustering, fact-checking
 - **Workflow RADAR → STUDIO** : prefill complet (titre, image, source, chapeau) + auto-génération des titres
@@ -163,6 +163,7 @@ Voir `TODO.md` pour la liste complète. Priorités :
 | u2net.onnx non installé | Détourage bloqué en prod | Télécharger 176 Mo |
 | realesrgan non acquis | Upscale HD bloqué | Acquérir fichiers .param/.bin |
 | RSS feeds non configurés | Pipeline ingère du contenu général | ✅ Désactiver designboom/dezeen |
+| Pare-feu à deux niveaux (iptables + Security List Oracle Cloud) | Un port ouvert côté VM peut rester inaccessible publiquement | Voir ECOSYSTEM.md §8.1 — vérifier les deux niveaux, pas seulement `iptables` |
 
 ---
 
