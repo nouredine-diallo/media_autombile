@@ -20,6 +20,25 @@ export interface ArticleCheck {
   verificationResult: VerificationResult;
 }
 
+/**
+ * Nombres français écrits en toutes lettres (2 à 20) — trouvé en creusant un
+ * échec réel de vérification (analyse "post garanti", 2026-09-09) : un
+ * article correct disait « trois sources confirment » (convention
+ * journalistique française usuelle pour les petits nombres), le brief
+ * disait « 3 sources » en chiffre — deux formes du même fait, jamais
+ * rapprochées par cette fonction, qui ne cherchait que des chiffres.
+ * "un/une" et "neuf" volontairement exclus : le premier est l'article
+ * indéfini le plus fréquent du français (faux positifs constants, "un SUV",
+ * "une voiture"...), le second est l'adjectif "neuf/neuve" (véhicule neuf)
+ * bien plus fréquent dans ce contexte automobile que le nombre neuf — deux
+ * homographes trop risqués pour ce qu'ils apporteraient.
+ */
+const FRENCH_NUMBER_WORDS: Record<string, number> = {
+  deux: 2, trois: 3, quatre: 4, cinq: 5, six: 6, sept: 7, huit: 8, dix: 10,
+  onze: 11, douze: 12, treize: 13, quatorze: 14, quinze: 15, seize: 16,
+  'dix-sept': 17, 'dix-huit': 18, 'dix-neuf': 19, vingt: 20,
+};
+
 export function extractNumbers(text: string): number[] {
   const numbers: number[] = [];
   const patterns = [
@@ -39,6 +58,14 @@ export function extractNumbers(text: string): number[] {
       if (!isNaN(num)) {
         numbers.push(num);
       }
+    }
+  }
+
+  const lower = text.toLowerCase();
+  for (const [word, value] of Object.entries(FRENCH_NUMBER_WORDS)) {
+    const wordPattern = new RegExp(`\\b${word}\\b`, 'g');
+    if (wordPattern.test(lower)) {
+      numbers.push(value);
     }
   }
 

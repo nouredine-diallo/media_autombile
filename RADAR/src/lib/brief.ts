@@ -1,6 +1,7 @@
 import { getDb, Item, Event } from './db';
 import { generateCarouselParagraphs } from './llm';
 import { translateTextLocal } from './translateLocal';
+import { isMostlyFrench } from './translate';
 
 /**
  * Retire les balises HTML (et leurs attributs) d'un texte source RSS.
@@ -46,6 +47,29 @@ export interface Brief {
 }
 
 /**
+ * Traduit un texte vers le français SEULEMENT s'il ne l'est pas déjà.
+ *
+ * Finding critique (analyse 2026-09-09, /loop "post garanti") : sans ce
+ * garde-fou, un item déjà en français (L'Argus, Caradisiac, LeBlogAuto)
+ * passait quand même par le modèle de traduction local anglais→français
+ * (`opus-mt-en-fr`), qui produit du charabia sur du français en entrée —
+ * hors de sa distribution d'entraînement. Vérifié sur un cas réel : la
+ * phrase source « Ce SUV électrique concurrent du Peugeot e-5008 affiche
+ * une allure bien à lui et mise sur un équipement cossu... » ressortait
+ * « Ce SUVette concurrent du Peugeot e-5008 affiche une pratique bien à
+ * lui et mise sur un énième cossu... » — un brief construit sur ce texte
+ * ne peut satisfaire aucun contrôle qualité, quelle que soit la qualité du
+ * LLM de rédaction en aval. `isMostlyFrench()` (translate.ts) protégeait
+ * déjà la traduction des events (pipeline cron) contre exactement ce cas —
+ * jamais appliquée ici, sur la traduction des items qui alimente le brief.
+ * Même heuristique réutilisée, pas dupliquée.
+ */
+function translateIfNeeded(text: string): Promise<string | null> {
+  if (isMostlyFrench(text)) return Promise.resolve(text);
+  return translateTextLocal(text);
+}
+
+/**
  * Traduit et met en cache une fois par item (title_fr/summary_fr/content_fr,
  * colonnes nullable — voir migration db.ts). extractFacts()/generateBody()
  * recopiaient ces champs RSS bruts tels quels, jamais traduits : seul le
@@ -62,9 +86,9 @@ async function ensureItemTranslated(db: ReturnType<typeof getDb>, item: Item): P
   }
 
   const [titleFr, summaryFr, contentFr] = await Promise.all([
-    item.title_fr ?? translateTextLocal(item.title),
-    item.summary_fr ?? (item.summary ? translateTextLocal(item.summary) : Promise.resolve(null)),
-    item.content_fr ?? (item.content ? translateTextLocal(item.content) : Promise.resolve(null)),
+    item.title_fr ?? translateIfNeeded(item.title),
+    item.summary_fr ?? (item.summary ? translateIfNeeded(item.summary) : Promise.resolve(null)),
+    item.content_fr ?? (item.content ? translateIfNeeded(item.content) : Promise.resolve(null)),
   ]);
 
   db.prepare('UPDATE items SET title_fr = ?, summary_fr = ?, content_fr = ? WHERE id = ?')

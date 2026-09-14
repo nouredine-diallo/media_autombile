@@ -74,7 +74,18 @@ export async function generateArticle(eventId: number, provenance: string = 'ass
   }
 
   let parsed = parseGeneratedArticle(response.content);
-  if (parsed.wordCount < 10 && response.content.length < 100) {
+  if (parsed.wordCount < 10) {
+    // Finding "post garanti" (analyse 2026-09-09) : le garde-fou vérifiait
+    // AUSSI `response.content.length < 100` — mais `response.content` est
+    // l'enveloppe JSON BRUTE (titre+chapeau+contenu+meta), jamais juste le
+    // corps de l'article. Un titre et un chapeau réels dépassent presque
+    // toujours 100 caractères à eux seuls, même quand `contenu` (le champ
+    // réellement vérifié plus bas par verifyArticleAgainstBrief) est vide —
+    // condition ET qui ne se déclenchait donc quasiment jamais. Reproduit
+    // en vrai : un article avec titre+chapeau corrects mais `contenu` vide
+    // (`parsed.wordCount` à 0, calculé sur le VRAI champ contenu) a traversé
+    // ce garde-fou sans jamais relancer. `wordCount` seul est déjà le bon
+    // signal, calculé sur le contenu réel — pas besoin de la 2e condition.
     // Model returned empty/buggy content — retry once with direct generation
     response = await generateArticleSmart(briefData, extraStyleRules || undefined);
     parsed = parseGeneratedArticle(response.content);
@@ -126,7 +137,17 @@ export async function generateAndVerifyArticle(
   const brief = getBrief(eventId);
   if (!brief) return { article, verification: { numbersVerified: [], numbersMissing: [], numbersAdded: [], confidenceScore: 0, issues: [] } };
 
-  const verification = verifyArticleAgainstBrief(brief, article.content, article.title);
+  // Finding "post garanti" (analyse 2026-09-09) : le chapeau n'était jamais
+  // inclus dans le texte vérifié (seuls `title` et `content` l'étaient) —
+  // reproduit en vrai : un article dont le chapeau contenait correctement
+  // "16 août 2026" et "trois sources" (des faits réels du brief, juste posés
+  // dans le chapeau plutôt que répétés dans le corps, ce qui est une
+  // structure d'article tout à fait normale) se faisait quand même signaler
+  // ces chiffres comme "absents" — alors qu'ils sont bien publiés, juste pas
+  // regardés par le contrôle. Le chapeau fait partie du texte réellement
+  // livré à la revue humaine, il doit compter comme tel.
+  const contentWithChapeau = article.chapeau ? `${article.chapeau}\n\n${article.content}` : article.content;
+  const verification = verifyArticleAgainstBrief(brief, contentWithChapeau, article.title);
   const db = getDb();
   db.prepare(`UPDATE articles SET verification_score = ?, verification_issues = ? WHERE id = ?`)
     .run(verification.confidenceScore, JSON.stringify(verification.issues), article.id);
@@ -189,9 +210,14 @@ function parseGeneratedArticle(content: string): {
     const parsed = JSON.parse(content);
     if (parsed && typeof parsed === 'object' && typeof parsed.titre === 'string' && typeof parsed.contenu === 'string') {
       const bodyContent = parsed.contenu.trim();
-      const wordCount = typeof parsed.word_count === 'number'
-        ? parsed.word_count
-        : bodyContent.split(/\s+/).filter((w: string) => w.length > 0).length;
+      // Finding "post garanti" (analyse 2026-09-09) : toujours recalculé sur
+      // le VRAI contenu, jamais sur `parsed.word_count` (auto-déclaré par le
+      // LLM dans sa propre réponse JSON). Reproduit en vrai : un article
+      // reçu avec `contenu` vide mais `word_count` non nul (le LLM se
+      // contredit dans sa propre réponse) faisait passer le garde-fou
+      // anti-contenu-vide de `generateArticle()` (`wordCount < 10`) sans
+      // jamais se déclencher, malgré un article réellement inexploitable.
+      const wordCount = bodyContent.split(/\s+/).filter((w: string) => w.length > 0).length;
       return {
         title: parsed.titre.trim() || 'Titre non généré',
         chapeau: typeof parsed.chapeau === 'string' ? parsed.chapeau.trim() : null,
@@ -280,19 +306,30 @@ export function getArticle(id: number): Article | null {
   return db.prepare('SELECT * FROM articles WHERE id = ?').get(id) as Article | null;
 }
 
-export function updateArticleStatus(id: number, status: string): void {
+/**
+ * Retourne `true` si la mise à jour a réellement eu lieu, `false` si elle a
+ * été ignorée (déjà dans l'état cible) — finding D5 (audit 2026-09-07) :
+ * l'UPDATE vers 'validated' n'avait aucune clause `WHERE status != ...`, donc
+ * deux clics "Confirmer" à quelques centaines de ms d'écart réussissaient
+ * tous les deux et déclenchaient chacun leur propre export Drive
+ * (finalizeArticleValidation). `busy_timeout` sérialise les écritures SQLite
+ * mais ne détecte aucun conflit logique — c'est cette clause qui le fait.
+ */
+export function updateArticleStatus(id: number, status: string): boolean {
   const db = getDb();
 
   if (status === 'validated') {
     // Un article "assisté" (généré par LLM) devient "généré-relu" une fois
     // validé par un humain — traçabilité de provenance exigée par CLAUDE.md §6.
-    db.prepare(`
+    const result = db.prepare(`
       UPDATE articles
       SET status = ?, validated_at = datetime('now'),
           provenance = CASE WHEN provenance = 'assisté' THEN 'généré-relu' ELSE provenance END
-      WHERE id = ?
+      WHERE id = ? AND status != 'validated'
     `).run(status, id);
+    return result.changes > 0;
   } else {
-    db.prepare('UPDATE articles SET status = ? WHERE id = ?').run(status, id);
+    const result = db.prepare('UPDATE articles SET status = ? WHERE id = ?').run(status, id);
+    return result.changes > 0;
   }
 }

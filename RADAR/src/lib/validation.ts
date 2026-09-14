@@ -13,14 +13,23 @@ import { triggerAutoGenerate } from './studioAutoGenerate';
  * que par `method` — tout le reste (créneau, déclenchement du visuel STUDIO)
  * est rigoureusement identique, pour que l'écran de confirmation se comporte
  * pareil quel que soit qui a validé.
+ *
+ * Retourne `true` si cet appel a réellement effectué la validation, `false`
+ * si l'article était déjà validé (finding D5, audit 2026-09-07) — dans ce
+ * cas tous les effets de bord ci-dessous (décision, créneau, déclenchement
+ * STUDIO) sont sautés : les avoir déjà exécutés une première fois suffit,
+ * les rejouer produirait un second export Drive du même article.
  */
 export function finalizeArticleValidation(
   articleId: number,
   method: 'humain' | 'auto_score',
-): void {
+): boolean {
   const db = getDb();
 
-  updateArticleStatus(articleId, 'validated');
+  const applied = updateArticleStatus(articleId, 'validated');
+  if (!applied) {
+    return false;
+  }
   recordDecision(articleId, 'validated', method);
   db.prepare(`UPDATE articles SET validated_by = ? WHERE id = ?`).run(method, articleId);
 
@@ -43,4 +52,6 @@ export function finalizeArticleValidation(
       });
     }
   }
+
+  return true;
 }

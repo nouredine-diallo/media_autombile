@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
-import { Agent } from 'undici';
+import { Agent, fetch as undiciFetch } from 'undici';
 
 /**
  * Dispatcher undici dédié à Ollama, avec headers/body timeout élargis —
@@ -12,6 +12,18 @@ import { Agent } from 'undici';
  * premier token) peut dépasser 5 min pour un prompt volumineux — d'où
  * l'échec identique malgré le passage en streaming. `undici` ajoutée en
  * dépendance directe (MIT) pour ce seul besoin de configuration.
+ *
+ * Bug trouvé le 2026-09-08 en vérifiant le fallback automatique (finding D2
+ * de l'audit) : passer ce `dispatcher` au `fetch` global de Node échouait
+ * silencieusement ("fetch failed", sans autre détail) — reproduit à la fois
+ * en script isolé et dans le vrai serveur Next.js dev. Cause confirmée :
+ * `process.versions.undici` (le undici interne à Node 22, v6.28.0) et le
+ * paquet npm `undici` installé ici (v8.10.0, `node_modules/undici/package.json`)
+ * sont deux versions majeures différentes — le `fetch` global de Node
+ * n'accepte pas un dispatcher construit par une autre version d'undici que
+ * la sienne. Corrigé en utilisant aussi le `fetch` du paquet npm `undici`
+ * (même version que l'`Agent`) au lieu du `fetch` global — vérifié par appel
+ * réel contre l'instance Ollama locale de cette machine (200, contenu reçu).
  */
 const ollamaDispatcher = new Agent({ headersTimeout: 20 * 60 * 1000, bodyTimeout: 20 * 60 * 1000 });
 
@@ -161,7 +173,11 @@ const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
  * se déclenche jamais, peu importe la durée totale de génération.
  */
 async function callOllama(params: ChatCompleteParams): Promise<ChatCompleteResult> {
-  const res = await fetch(`${OLLAMA_URL}/api/chat`, {
+  // `undiciFetch` (pas le `fetch` global) — voir le commentaire sur
+  // `ollamaDispatcher` plus haut : mélanger le fetch global de Node avec un
+  // dispatcher construit par une autre version d'undici échoue
+  // silencieusement ("fetch failed").
+  const res = await undiciFetch(`${OLLAMA_URL}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -173,8 +189,6 @@ async function callOllama(params: ChatCompleteParams): Promise<ChatCompleteResul
       options: { temperature: params.temperature, num_predict: params.maxTokens },
       stream: true,
     }),
-    // @ts-expect-error -- `dispatcher` est une extension undici de fetch,
-    // absente des types DOM standards mais bien supportée au runtime Node.
     dispatcher: ollamaDispatcher,
   });
   if (!res.ok || !res.body) {
@@ -212,21 +226,12 @@ async function callOllama(params: ChatCompleteParams): Promise<ChatCompleteResul
 }
 
 /**
- * Point d'entrée unique pour tout appel de complétion de chat, quel que soit
- * le fournisseur actif. Le chemin Groq ci-dessous est un copier strict du
- * code qui tournait déjà avant cette bascule (même messages, mêmes
- * paramètres, même parsing) — comportement inchangé tant que
- * `LLM_PROVIDER` reste sur 'groq' (le défaut).
+ * Chemin Groq — copier strict du code qui tournait déjà avant l'extraction
+ * en fonction dédiée (même messages, mêmes paramètres, même parsing).
+ * Extrait de `chatComplete()` pour le finding D2 (audit 2026-09-07, voir
+ * plus bas) sans changer une seule ligne de sa logique.
  */
-export async function chatComplete(params: ChatCompleteParams): Promise<ChatCompleteResult> {
-  const provider = getLLMProvider();
-  if (provider === 'claude') {
-    return callClaude(params);
-  }
-  if (provider === 'ollama') {
-    return callOllama(params);
-  }
-
+async function callGroq(params: ChatCompleteParams): Promise<ChatCompleteResult> {
   const completion = await getGroqClient().chat.completions.create(
     {
       messages: [
@@ -271,4 +276,63 @@ export async function chatComplete(params: ChatCompleteParams): Promise<ChatComp
     tokensUsed: completion.usage?.total_tokens || 0,
     provider: 'groq',
   };
+}
+
+/**
+ * Point d'entrée unique pour tout appel de complétion de chat.
+ *
+ * Finding D2 (audit 2026-09-07) : RADAR/CLAUDE.md §3.1 documente un
+ * "routeur LLM multi-fournisseur" (Groq → 2e fournisseur cloud → local en
+ * dernier repli) comme une exigence de résilience — mais `LLM_PROVIDER`
+ * n'était qu'un switch manuel, jamais une bascule automatique. Un 429/quota
+ * dépassé côté Groq faisait échouer tout l'appel, sans jamais essayer
+ * l'alternative déjà câblée dans ce même fichier (`callClaude`).
+ *
+ * Comportement : si `LLM_PROVIDER` demande explicitement 'claude' ou
+ * 'ollama' (test manuel, dev local), aucun repli — c'est un choix assumé,
+ * pas un défaut à contourner. Sur le chemin par défaut ('groq', celui
+ * réellement utilisé en prod), un échec bascule automatiquement en cascade :
+ * Claude si `ANTHROPIC_API_KEY` est configurée, puis Ollama si joignable —
+ * jamais l'inverse d'ordre, jamais Ollama en premier (§3.1 : local = dernier
+ * repli hors-ligne uniquement, pas un fournisseur principal). Si les deux
+ * replis échouent aussi, l'erreur Groq d'origine remonte (la plus
+ * significative pour l'appelant, pas celle du dernier repli tenté).
+ *
+ * Réserve honnête (protocole anti-hallucination, RADAR/CLAUDE.md §4.1) :
+ * le chemin Claude est implémenté contre la documentation officielle mais
+ * jamais vérifié par un appel réel — aucune `ANTHROPIC_API_KEY` n'est
+ * disponible dans cet environnement au moment d'écrire ceci. Le chemin
+ * Ollama, lui, a été vérifié par un appel réel (le service tourne en local
+ * sur cette machine).
+ */
+export async function chatComplete(params: ChatCompleteParams): Promise<ChatCompleteResult> {
+  const provider = getLLMProvider();
+  if (provider === 'claude') {
+    return callClaude(params);
+  }
+  if (provider === 'ollama') {
+    return callOllama(params);
+  }
+
+  try {
+    return await callGroq(params);
+  } catch (groqError) {
+    console.error('[llmProvider] Groq a échoué, tentative de repli:', groqError instanceof Error ? groqError.message : groqError);
+
+    if (process.env.ANTHROPIC_API_KEY) {
+      try {
+        return await callClaude(params);
+      } catch (claudeError) {
+        console.error('[llmProvider] Repli Claude aussi échoué:', claudeError instanceof Error ? claudeError.message : claudeError);
+      }
+    }
+
+    try {
+      return await callOllama(params);
+    } catch (ollamaError) {
+      console.error('[llmProvider] Repli Ollama aussi échoué:', ollamaError instanceof Error ? ollamaError.message : ollamaError);
+    }
+
+    throw groqError;
+  }
 }

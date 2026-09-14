@@ -10,13 +10,27 @@ import { getAutoValidateConfig } from './autoValidateConfig';
 /**
  * TODO: seuils provisoires (RADAR/CLAUDE.md §4.3 — jamais un seuil métier
  * définitif sans données réelles) :
- * - Heure fixée arbitrairement à 8h ("le matin", demande utilisateur) —
+ * - Fenêtre fixée arbitrairement à 8h-12h ("le matin", demande utilisateur) —
  *   à ajuster une fois un rythme de revue réel observé.
  * - Score de confiance minimal 70 pour laisser passer un brouillon
  *   auto-généré à la revue humaine — aucune donnée réelle pour le calibrer
  *   encore, posé au-dessus de la moitié de l'échelle 0-100 par prudence.
+ *
+ * Bug réel trouvé et corrigé (analyse 2026-09-09, /loop "post garanti") :
+ * la ligne précédente (`new Date().getHours()`) capturait l'heure de
+ * DÉMARRAGE DU PROCESS au chargement du module, pas 8h comme le
+ * commentaire au-dessus l'affirmait ("TEMP-RESEARCH-FORCE" jamais
+ * réellement annulé). Conséquence observée en conditions réelles : un
+ * cycle démarré à 12h42 a pris 34 minutes pour la traduction, l'heure
+ * système est passée à 13h avant d'atteindre cette fonction, et l'étape
+ * auto-génération a été sautée en silence (aucune ligne [AUTO-GEN] dans
+ * les logs de ce cycle). Une heure exacte reste fragile au même problème
+ * si un cycle démarre en fin d'heure — remplacée par une fenêtre de 4h
+ * (couvre largement les ~39min de traduction déjà mesurées comme pire cas),
+ * alignée sur le cycle d'ingestion cron.ts (toutes les 4 heures).
  */
-const AUTO_GEN_HOUR = 8;
+const AUTO_GEN_HOUR_START = 8;
+const AUTO_GEN_HOUR_END = 12; // exclusif
 const MIN_VERIFICATION_SCORE = 70;
 
 /**
@@ -42,7 +56,7 @@ const MIN_VERIFICATION_SCORE = 70;
  */
 export async function runMorningAutoGeneration(runId: number): Promise<void> {
   const now = new Date();
-  if (now.getHours() !== AUTO_GEN_HOUR) return;
+  if (now.getHours() < AUTO_GEN_HOUR_START || now.getHours() >= AUTO_GEN_HOUR_END) return;
 
   const db = getDb();
   const today = now.toISOString().slice(0, 10);

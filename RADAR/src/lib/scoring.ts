@@ -3,7 +3,45 @@ import { getEmbedding, cosineSimilarity, serializeEmbedding, deserializeEmbeddin
 import { autoTagEvent } from './auto-tag';
 import { translateEvents } from './translate';
 
-const SIMILARITY_THRESHOLD = 0.88;
+/**
+ * Recalibré 0.88 → 0.955 le 2026-09-14 (analyse "clustering — vraie source du
+ * problème") : 0.88 n'avait jamais été recalibré sur données réelles depuis le
+ * tout premier commit (`git log -S SIMILARITY_THRESHOLD`, un seul résultat) —
+ * un seuil "par défaut" jamais vérifié, exactement ce que CLAUDE.md §4.3
+ * interdit.
+ *
+ * Cause racine identifiée (pas supposée) : `Xenova/multilingual-e5-small` sur
+ * du texte court, même domaine (actu auto/moto), même langue, produit une
+ * similarité cosinus compressée dans une plage haute — même DEUX sujets sans
+ * aucun rapport (ex. offres portes-ouvertes vs forum emploi FFVE) obtiennent
+ * ~0.90-0.92. 0.88 se situe DANS ce plancher de bruit, donc ne filtre
+ * quasiment rien — vérifié sur des faux positifs réels déjà fusionnés en
+ * base : deals gadgets (event 110597, tondeuse robot + batteries + vélo
+ * électrique), MotoGP fusionné avec F1 (events 110758/110731), listicles
+ * "voitures marquantes de tel salon" fusionnant des enchères différentes
+ * (event 110980) — un problème bien plus large que les 2 flux (Bring a
+ * Trailer, L'Argus) documentés lors de la précédente analyse.
+ *
+ * Hypothèse testée et INFIRMÉE (`scripts/test-e5-prefix.ts`, jamais présumée
+ * vraie) : la fiche officielle du modèle (huggingface.co/intfloat/
+ * multilingual-e5-small) exige un préfixe "query: "/"passage: " sur le texte
+ * — absent ici. Réappliqué et re-testé sur 4 paires réelles : la similarité
+ * des faux positifs augmente LÉGÈREMENT avec le préfixe (ex. 0.8959→0.9130),
+ * ne resserre pas l'écart. Le préfixe n'est donc pas la cause — pas appliqué.
+ *
+ * Calibré sur 19 paires réelles tirées de la base de production (9 vrais
+ * positifs confirmés manuellement — même sujet, sources différentes — et 10
+ * faux positifs déjà fusionnés à tort) : vrais positifs 0.9621-0.9904, faux
+ * positifs 0.8947-0.9483. Écart net et sans chevauchement sur cet
+ * échantillon → seuil posé au milieu (0.955). TODO: seuil provisoire
+ * (CLAUDE.md §4.3) — 19 paires, pas des centaines ; à resurveiller sur les
+ * prochains cycles réels. Un flux au gabarit très répétitif et proche du
+ * plancher de faux positifs (Bring a Trailer, mesuré à 0.978 en interne, soit
+ * AU-DESSUS de ce nouveau seuil) resterait mal filtré par ce changement seul —
+ * désactivé séparément (feeds.enabled=0), ne pas réactiver sur la seule foi
+ * de ce correctif.
+ */
+const SIMILARITY_THRESHOLD = 0.955;
 
 // Hybrid clustering: embedding similarity + title word overlap
 // Prevents all articles from the same feed collapsing into one event
@@ -28,13 +66,87 @@ function tokenize(s: string): string[] {
     .filter(w => w.length > 3);
 }
 
-export function titleOverlap(a: string, b: string): number {
-  const wordsA = new Set(tokenize(a));
-  const wordsB = new Set(tokenize(b));
+/**
+ * `excludeWords` (optionnel, vide par défaut — aucun changement de
+ * comportement pour les appelants existants comme `carousel-package/route.ts`) :
+ * mots à retirer avant de comparer, voir `computeFeedTemplateWords()`
+ * ci-dessous pour le cas d'usage (gabarit de titre répété au sein d'un même
+ * flux).
+ */
+export function titleOverlap(a: string, b: string, excludeWords: ReadonlySet<string> = EMPTY_WORD_SET): number {
+  const wordsA = new Set(tokenize(a).filter(w => !excludeWords.has(w)));
+  const wordsB = new Set(tokenize(b).filter(w => !excludeWords.has(w)));
   if (wordsA.size === 0 || wordsB.size === 0) return 0;
   let common = 0;
   for (const w of wordsA) { if (wordsB.has(w)) common++; }
   return common / Math.max(wordsA.size, wordsB.size);
+}
+
+const EMPTY_WORD_SET: ReadonlySet<string> = new Set();
+
+/**
+ * Finding "post garanti" (analyse 2026-09-09) : les deux événements aux
+ * meilleurs scores du jour (72 et 67, les deux seuls candidats testés par
+ * l'auto-génération matinale) se sont révélés être des faux positifs de
+ * clustering, vérifiés sur les vraies données — pas une supposition :
+ * - Flux Pebble Beach (WordPress) : 10 annonces de voitures DIFFÉRENTES
+ *   (Aston Martin, Acura, Audi, Bentley, BMW ×2, Bugatti, Eccentrica, Karma,
+ *   Ken Okuyama) fusionnées en un seul "événement", uniquement parce que
+ *   chaque titre suit le gabarit "<Marque> – <Modèle>: See it on our 2026
+ *   Concept Lawn" — "2026", "Concept", "Lawn" passent le seuil de
+ *   chevauchement (0.35) alors qu'ils ne distinguent RIEN entre les items.
+ * - Flux Bring a Trailer (annonces de vente aux enchères, pas des news) : 5
+ *   Corvette de DIFFÉRENTES années (1964/1993/1967/1996/1966) fusionnées en
+ *   un seul "événement" pour la même raison structurelle (gabarit d'annonce
+ *   répété : "This <year> Chevrolet Corvette convertible...").
+ *
+ * Conséquence directe mesurée : les 2 événements aux scores artificiellement
+ * gonflés (nombre de sources trompeur) sont systématiquement les 2 candidats
+ * choisis par `runMorningAutoGeneration()` (top score), avec un brief
+ * incohérent (plusieurs sujets mélangés) qui ne peut satisfaire le contrôle
+ * qualité — d'où l'échec systématique observé, sans lien avec la traduction
+ * ni avec un manque d'actualité intéressante.
+ *
+ * Correctif : les mots présents dans une grande part des titres d'UN MÊME
+ * flux, dans le même cycle, sont un gabarit de ce flux — pas un sujet
+ * distinctif — et sont retirés du calcul de chevauchement UNIQUEMENT entre
+ * items du même flux (le rapprochement inter-flux, qui capture la vraie
+ * corroboration multi-source, garde son comportement actuel inchangé).
+ * TODO: seuil provisoire (RADAR/CLAUDE.md §4.3) — 40% choisi par analogie
+ * avec la marge déjà mesurée pour TITLE_OVERLAP_THRESHOLD (écart net entre
+ * les gabarits confirmés ci-dessus, à ~90-100% de récurrence dans leur
+ * flux, et un mot réellement distinctif qui ne devrait apparaître que dans
+ * une minorité des titres d'un flux) ; à recalibrer si un vrai flux à
+ * faible volume se retrouve sur-filtré.
+ */
+const FEED_TEMPLATE_WORD_RATIO = 0.4;
+const MIN_ITEMS_FOR_TEMPLATE_DETECTION = 3;
+
+function computeFeedTemplateWords(items: { feed_id: number; title: string }[]): Map<number, Set<string>> {
+  const byFeed = new Map<number, string[]>();
+  for (const item of items) {
+    if (!byFeed.has(item.feed_id)) byFeed.set(item.feed_id, []);
+    byFeed.get(item.feed_id)!.push(item.title);
+  }
+
+  const templateWordsByFeed = new Map<number, Set<string>>();
+  for (const [feedId, titles] of byFeed) {
+    if (titles.length < MIN_ITEMS_FOR_TEMPLATE_DETECTION) continue;
+
+    const docFrequency = new Map<string, number>();
+    for (const title of titles) {
+      for (const word of new Set(tokenize(title))) {
+        docFrequency.set(word, (docFrequency.get(word) || 0) + 1);
+      }
+    }
+
+    const templateWords = new Set<string>();
+    for (const [word, count] of docFrequency) {
+      if (count / titles.length >= FEED_TEMPLATE_WORD_RATIO) templateWords.add(word);
+    }
+    if (templateWords.size > 0) templateWordsByFeed.set(feedId, templateWords);
+  }
+  return templateWordsByFeed;
 }
 
 /**
@@ -52,32 +164,62 @@ export function titleOverlap(a: string, b: string): number {
  */
 const TITLE_OVERLAP_THRESHOLD = 0.35;
 
-function shouldCluster(a: { embedding: number[]; title: string }, b: { embedding: number[]; title: string }): boolean {
+function shouldCluster(
+  a: { embedding: number[]; title: string; feed_id: number },
+  b: { embedding: number[]; title: string; feed_id: number },
+  templateWordsByFeed: Map<number, Set<string>>,
+): boolean {
   const sim = cosineSimilarity(a.embedding, b.embedding);
-  const title = titleOverlap(a.title, b.title);
+  // Le gabarit d'un flux (ex. Pebble Beach : "... : See it on our 2026
+  // Concept Lawn") n'a de sens à retirer QUE lorsqu'on compare deux items du
+  // MÊME flux — c'est précisément là qu'il pollue le chevauchement sans
+  // rien distinguer. Entre deux flux différents, un mot commun reste un
+  // signal valide (corroboration multi-source), comportement inchangé.
+  const excludeWords = a.feed_id === b.feed_id ? (templateWordsByFeed.get(a.feed_id) ?? EMPTY_WORD_SET) : EMPTY_WORD_SET;
+  const title = titleOverlap(a.title, b.title, excludeWords);
   // Both high → cluster. High embedding + low title → don't cluster (different topics, same source)
   return sim >= SIMILARITY_THRESHOLD && title >= TITLE_OVERLAP_THRESHOLD;
+}
+
+/**
+ * Nombre d'items non embeddés au dernier appel de `embedUnprocessedItems()`
+ * faute de modèle disponible — lu par cron.ts pour remonter un signal
+ * visible dans `pipeline_runs.error` (finding D1) SANS bloquer le
+ * clustering/scoring des items déjà embeddés lors de cycles précédents :
+ * un throw ici arrêterait aussi `clusterItemsIntoEvents()` pour le cycle en
+ * cours même si la grande majorité des items ont un embedding valide —
+ * remplacerait une dégradation silencieuse par une régression différente.
+ */
+let lastEmbeddingSkipCount = 0;
+
+export function getLastEmbeddingSkipCount(): number {
+  return lastEmbeddingSkipCount;
 }
 
 export async function embedUnprocessedItems(): Promise<number> {
   const db = getDb();
   const items = db.prepare('SELECT * FROM items WHERE embedding IS NULL AND is_duplicate = 0').all() as Item[];
-  
+
   let embedded = 0;
+  let skipped = 0;
   for (const item of items) {
     const text = `${item.title} ${item.summary || ''}`.trim();
     if (!text) continue;
-    
+
     try {
       const embedding = await getEmbedding(text);
-      if (!embedding) continue;
+      if (!embedding) {
+        skipped++;
+        continue;
+      }
       db.prepare('UPDATE items SET embedding = ? WHERE id = ?').run(serializeEmbedding(embedding), item.id);
       embedded++;
     } catch (error) {
       console.error(`Error embedding item ${item.id}:`, error);
     }
   }
-  
+
+  lastEmbeddingSkipCount = skipped;
   return embedded;
 }
 
@@ -139,29 +281,32 @@ export async function clusterItemsIntoEvents(): Promise<number> {
   }
   db.pragma('foreign_keys = ON');
 
+  const templateWordsByFeed = computeFeedTemplateWords(clusterableItems);
+
   const events: { title: string; summary: string; itemIds: number[]; score: number }[] = [];
   const assigned = new Set<number>();
 
   for (const item of clusterableItems) {
     if (assigned.has(item.id)) continue;
-    
+
     const itemEmbedding = deserializeEmbedding(item.embedding);
     const cluster = { title: item.title, summary: item.summary || '', itemIds: [item.id], score: 0 };
     assigned.add(item.id);
-    
+
     for (const other of clusterableItems) {
       if (assigned.has(other.id)) continue;
-      
+
       const otherEmbedding = deserializeEmbedding(other.embedding);
       if (shouldCluster(
-        { embedding: itemEmbedding, title: item.title },
-        { embedding: otherEmbedding, title: other.title }
+        { embedding: itemEmbedding, title: item.title, feed_id: item.feed_id },
+        { embedding: otherEmbedding, title: other.title, feed_id: other.feed_id },
+        templateWordsByFeed,
       )) {
         cluster.itemIds.push(other.id);
         assigned.add(other.id);
       }
     }
-    
+
     events.push(cluster);
   }
   

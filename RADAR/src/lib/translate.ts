@@ -36,8 +36,20 @@ export async function translateToFrench(
 
 /**
  * Quick check if a string is mostly French (heuristic).
+ *
+ * Exportée (2026-09-09) pour être réutilisée par `brief.ts` — trouvé en
+ * creusant pourquoi un article généré sur une source déjà française
+ * (L'Argus) échouait systématiquement le contrôle qualité : le texte
+ * original était du français correct, mais `ensureItemTranslated()`
+ * (brief.ts) le faisait quand même passer par le modèle de traduction
+ * local anglais→français, qui produit du charabia sur du français en
+ * entrée (hors de sa distribution d'entraînement — vérifié sur un cas réel,
+ * "allure" devenait "pratique", "équipement" devenait "énième", etc.). Ce
+ * garde-fou existait déjà ici pour la traduction des events (pipeline cron)
+ * mais pas pour celle des items (brief) — même heuristique réutilisée
+ * plutôt que dupliquée.
  */
-function isMostlyFrench(text: string): boolean {
+export function isMostlyFrench(text: string): boolean {
   const frenchIndicators = [
     /\b(le|la|les|un|une|des|du|de|et|en|est|pour|avec|sur|pas|plus|cette|ces|aux|par|qui|que|dans|fait|mais|tout|être|avoir|son|ses|leur|leurs|nous|vous|ils|elles|on|se|ne|je|tu|il|elle|nous|vous|ils|elles)\b/gi,
   ];
