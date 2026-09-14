@@ -1,0 +1,11 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+page.on('console', m => console.log('[console]', m.type(), m.text().slice(0,200)));
+page.on('response', r => { if (r.status() >= 300) console.log('[resp]', r.status(), r.url()); });
+await page.goto('http://localhost:3000/login', { waitUntil: 'load', timeout: 20000 });
+console.log('URL:', page.url());
+console.log('title:', await page.title());
+await page.screenshot({ path: '/home/land/media_autombile/RADAR/scripts/e2e-test/output-visuels/debug-prod-login.png' });
+console.log((await page.locator('body').innerText()).slice(0, 500));
+await browser.close();

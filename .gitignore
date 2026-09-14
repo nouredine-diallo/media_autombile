@@ -8,6 +8,7 @@ node_modules
 RADAR/radar.db
 RADAR/radar.db-wal
 RADAR/radar.db-shm
+RADAR/backups/
 
 # Studio uploads (too large for git)
 studio/uploads/
@@ -58,3 +59,14 @@ _agents/
 # SSH private keys
 *.key
 *.key:Zone.Identifier
+
+# Config d'outils locaux — pas du code projet
+.claude/
+.opencode/
+.opencode.backup/
+
+# Aperçus générés localement pendant le développement (STUDIO)
+studio/previews/
+
+# Artefacts générés par les scripts e2e (zip/pdf téléchargés en test)
+RADAR/scripts/e2e-test/output-visuels/

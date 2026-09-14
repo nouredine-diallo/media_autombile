@@ -45,7 +45,17 @@ interface ChatMessage {
   text?: string;
   reply?: Reply;
   starters?: Fiche[];
+  /** Panne réseau/timeout distincte d'un vrai "pas de correspondance" —
+   * finding C6/C2 (audit 2026-09-07) : avant ce correctif, les deux cas
+   * produisaient le même message "je n'ai pas compris", ce qui masquait
+   * les coupures réseau derrière un faux diagnostic de l'assistant. */
+  networkError?: boolean;
 }
+
+// Aligné sur la doc du moteur (ECOSYSTEM.md §3.3) : résolution TF-IDF pure
+// TS, < 1ms server-side — 12s laisse une large marge pour une connexion
+// mobile dégradée sans faire attendre indéfiniment sur une vraie coupure.
+const ASSISTANT_TIMEOUT_MS = 12_000;
 
 const GREETING =
   "Salut ! Je suis l'assistante du Média Automobile. Pose-moi une question sur l'outil : créer un post, valider un article, planifier une campagne, comprendre le pipeline… Je t'explique tout, pas à pas.";
@@ -66,7 +76,7 @@ export function AssistantWidget({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/assistant")
+    fetch("/api/assistant", { signal: AbortSignal.timeout(ASSISTANT_TIMEOUT_MS) })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: StartersResponse) => {
         if (!cancelled) {
@@ -75,6 +85,8 @@ export function AssistantWidget({ onClose }: { onClose: () => void }) {
         }
       })
       .catch(() => {
+        // Chargement initial des starters — pas critique, le message
+        // d'accueil s'affiche quand même sans eux plutôt que de bloquer.
         if (!cancelled) {
           setMessages([{ role: "welcome", text: GREETING }]);
         }
@@ -102,18 +114,23 @@ export function AssistantWidget({ onClose }: { onClose: () => void }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ q }),
+          signal: AbortSignal.timeout(ASSISTANT_TIMEOUT_MS),
         });
         if (!res.ok) throw new Error(String(res.status));
         const data: AssistantResponse = await res.json();
         setMascot(data.reply.match ? "happy" : "perplexed");
         setMessages((prev) => [...prev, { role: "assistant", reply: data.reply }]);
       } catch {
+        // Finding C6 (audit 2026-09-07) : avant, une panne réseau tombait
+        // ici exactement comme un "pas de correspondance" légitime — le
+        // networkError distingue les deux côté rendu.
         setMascot("perplexed");
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
             reply: { match: null, matchRelated: [], suggestions: [], directory: [], confidence: 0 },
+            networkError: true,
           },
         ]);
       } finally {
@@ -136,7 +153,9 @@ export function AssistantWidget({ onClose }: { onClose: () => void }) {
       setBusy(true);
       setMascot("thinking");
       try {
-        const res = await fetch(`/api/assistant?id=${encodeURIComponent(id)}`);
+        const res = await fetch(`/api/assistant?id=${encodeURIComponent(id)}`, {
+          signal: AbortSignal.timeout(ASSISTANT_TIMEOUT_MS),
+        });
         if (!res.ok) throw new Error(String(res.status));
         const data: AssistantResponse = await res.json();
         setMascot("happy");
@@ -148,6 +167,7 @@ export function AssistantWidget({ onClose }: { onClose: () => void }) {
           {
             role: "assistant",
             reply: { match: null, matchRelated: [], suggestions: [], directory: [], confidence: 0 },
+            networkError: true,
           },
         ]);
       } finally {
@@ -158,7 +178,7 @@ export function AssistantWidget({ onClose }: { onClose: () => void }) {
   );
 
   const reset = useCallback(() => {
-    fetch("/api/assistant")
+    fetch("/api/assistant", { signal: AbortSignal.timeout(ASSISTANT_TIMEOUT_MS) })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: StartersResponse) => {
         setMessages([{ role: "welcome", text: GREETING, starters: data.starters }]);
@@ -223,7 +243,7 @@ export function AssistantWidget({ onClose }: { onClose: () => void }) {
                   <Mascot state="idle" variant="face" />
                 </div>
                 <div className="lma-bubble" style={{ padding: 8 }}>
-                  <AssistantCard reply={m.reply} onAskById={loadById} />
+                  <AssistantCard reply={m.reply} onAskById={loadById} networkError={m.networkError} />
                 </div>
               </div>
             )}
@@ -281,9 +301,11 @@ export function AssistantWidget({ onClose }: { onClose: () => void }) {
 function AssistantCard({
   reply,
   onAskById,
+  networkError,
 }: {
   reply: Reply;
   onAskById: (id: string, title: string) => void;
+  networkError?: boolean;
 }) {
   if (reply.match) {
     const f = reply.match;
@@ -334,6 +356,17 @@ function AssistantCard({
             ))}
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (networkError) {
+    return (
+      <div className="lma-card">
+        <div className="lma-card-title">Connexion perdue</div>
+        <div className="lma-fallback">
+          La question n&apos;a pas pu être envoyée — vérifie ta connexion et réessaie.
+        </div>
       </div>
     );
   }

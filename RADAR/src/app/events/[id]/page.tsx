@@ -25,6 +25,7 @@ import { FactHighlighter } from '@/components/FactHighlighter';
 import { LockBadge } from '@/components/LockBadge';
 import { AssociatePartnerButton } from '@/components/AssociatePartnerButton';
 import { buildStudioLink, buildCarouselStudioLink } from '@/lib/studio-prefill';
+import { apiFetch } from '@/lib/apiFetch';
 
 function getUsername(): string {
   if (typeof window === 'undefined') return 'unknown';
@@ -156,10 +157,15 @@ export default function EventDetail() {
       // Release locks on unmount
       if (selectedArticle) {
         const username = getUsername();
+        // Finding "F6" (audit 2026-09-07) : sans keepalive, un déchargement
+        // de page en cours (clic vers STUDIO, fermeture d'onglet) peut
+        // annuler cette requête avant qu'elle ne parte — verrou zombie
+        // jusqu'à expiration du TTL (2 min, locks.ts).
         fetch('/api/locks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'release', article_id: selectedArticle.id, username }),
+          keepalive: true,
         }).catch(() => {});
       }
     };
@@ -167,7 +173,7 @@ export default function EventDetail() {
 
   const fetchSystemStatus = async () => {
     try {
-      const response = await fetch('/api/system/status');
+      const response = await apiFetch('/api/system/status');
       if (response.ok) {
         const data = await response.json();
         setDegraded(!!data.degraded);
@@ -205,23 +211,52 @@ export default function EventDetail() {
     }
   }, [selectedArticle?.status]);
 
-  // Heartbeat: ping server every 30s to keep lock alive
+  // Heartbeat: ping server every 30s to keep lock alive.
+  // Finding "F5" (audit 2026-09-07) : un `.catch(() => {})` muet laissait le
+  // verrou expirer (TTL 2 min, 4 heartbeats ratés) sans jamais prévenir
+  // l'utilisateur d'une coupure réseau — un collègue pouvait reprendre
+  // l'édition sans que ni l'un ni l'autre ne le sache. Averti après 3
+  // échecs consécutifs (~90s), pas sur le premier (blip normal en 5G).
   useEffect(() => {
     if (!selectedArticle) return;
     const username = getUsername();
+    let consecutiveFailures = 0;
+    let warned = false;
     const interval = setInterval(() => {
       fetch('/api/locks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'heartbeat', article_id: selectedArticle.id, username }),
-      }).catch(() => {});
+        signal: AbortSignal.timeout(10_000),
+      })
+        .then((res) => {
+          if (res.ok) {
+            consecutiveFailures = 0;
+            warned = false;
+          } else {
+            consecutiveFailures++;
+          }
+        })
+        .catch(() => {
+          consecutiveFailures++;
+        })
+        .finally(() => {
+          if (consecutiveFailures >= 3 && !warned) {
+            warned = true;
+            addToast({
+              type: 'warning',
+              title: 'Connexion instable',
+              message: "Le verrou d'édition n'a pas pu être renouvelé — un collègue pourrait reprendre cet article.",
+            });
+          }
+        });
     }, 30000);
     return () => clearInterval(interval);
-  }, [selectedArticle]);
+  }, [selectedArticle, addToast]);
 
   const fetchEvent = async () => {
     try {
-      const response = await fetch('/api/events');
+      const response = await apiFetch('/api/events');
       const data = await response.json();
       const found = data.events?.find((e: Event) => e.id === parseInt(eventId));
       setEvent(found || null);
@@ -238,7 +273,7 @@ export default function EventDetail() {
 
   const fetchTags = async () => {
     try {
-      const response = await fetch(`/api/events/tags?event_id=${eventId}`);
+      const response = await apiFetch(`/api/events/tags?event_id=${eventId}`);
       if (response.ok) {
         const data = await response.json();
         setTags(data.tags || []);
@@ -250,7 +285,7 @@ export default function EventDetail() {
 
   const fetchBrief = async (autoGenerate = false) => {
     try {
-      const response = await fetch(`/api/brief?event_id=${eventId}`);
+      const response = await apiFetch(`/api/brief?event_id=${eventId}`);
       if (response.ok) {
         const data = await response.json();
         if (data.brief) {
@@ -269,7 +304,7 @@ export default function EventDetail() {
 
   const fetchArticles = async () => {
     try {
-      const response = await fetch(`/api/generate?event_id=${eventId}`);
+      const response = await apiFetch(`/api/generate?event_id=${eventId}`);
       if (response.ok) {
         const data = await response.json();
         setArticles(data.articles || []);
@@ -284,7 +319,7 @@ export default function EventDetail() {
     setError(null);
     
     try {
-      const response = await fetch('/api/brief', {
+      const response = await apiFetch('/api/brief', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: parseInt(eventId) }),
@@ -312,7 +347,7 @@ export default function EventDetail() {
 
     try {
       // Step 1: Generate brief
-      const briefRes = await fetch('/api/brief', {
+      const briefRes = await apiFetch('/api/brief', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: parseInt(eventId) }),
@@ -325,7 +360,7 @@ export default function EventDetail() {
       setBrief(briefData.brief);
 
       // Step 2: Generate article immediately
-      const artRes = await fetch('/api/generate', {
+      const artRes = await apiFetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: parseInt(eventId) }),
@@ -352,7 +387,7 @@ export default function EventDetail() {
     setError(null);
 
     try {
-      const response = await fetch('/api/generate', {
+      const response = await apiFetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: parseInt(eventId) }),
@@ -382,7 +417,7 @@ export default function EventDetail() {
     setError(null);
 
     try {
-      const response = await fetch('/api/generate', {
+      const response = await apiFetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: parseInt(eventId), manual: true }),
@@ -411,7 +446,7 @@ export default function EventDetail() {
     setError(null);
     
     try {
-      const response = await fetch(`/api/generate?id=${article.id}&verify=true`);
+      const response = await apiFetch(`/api/generate?id=${article.id}&verify=true`);
       if (response.ok) {
         const data = await response.json();
         setVerification(data.verification);
@@ -425,7 +460,7 @@ export default function EventDetail() {
 
   const handleUpdateStatus = async (articleId: number, status: string) => {
     try {
-      const response = await fetch('/api/generate', {
+      const response = await apiFetch('/api/generate', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: articleId, status }),
@@ -456,7 +491,7 @@ export default function EventDetail() {
     
     setRefining(true);
     try {
-      const response = await fetch('/api/generate/refine', {
+      const response = await apiFetch('/api/generate/refine', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -490,7 +525,7 @@ export default function EventDetail() {
     setSelectedArticle(prev => (prev ? { ...prev, content: newContent } : null));
 
     try {
-      await fetch('/api/generate', {
+      await apiFetch('/api/generate', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: selectedArticle.id, content: newContent }),
@@ -504,7 +539,7 @@ export default function EventDetail() {
     if (editingContent === null || !editedText.trim()) return;
     
     try {
-      const response = await fetch('/api/generate', {
+      const response = await apiFetch('/api/generate', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: editingContent, content: editedText }),
@@ -525,7 +560,7 @@ export default function EventDetail() {
 
   const handleRemoveTag = async (tag: string) => {
     try {
-      await fetch(`/api/events/tags?event_id=${eventId}&tag=${encodeURIComponent(tag)}`, {
+      await apiFetch(`/api/events/tags?event_id=${eventId}&tag=${encodeURIComponent(tag)}`, {
         method: 'DELETE',
       });
       setTags(prev => prev.filter(t => t !== tag));
@@ -540,7 +575,7 @@ export default function EventDetail() {
     const newAssigned = currentAssigned === username ? null : username;
 
     try {
-      await fetch('/api/events', {
+      await apiFetch('/api/events', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: parseInt(eventId), assigned_to: newAssigned }),
@@ -552,7 +587,7 @@ export default function EventDetail() {
   // C3: Reject auto-found visual — clear it + re-scrape with blacklist in one call
   const handleRejectImage = async (itemId: number, currentImageUrl: string) => {
     try {
-      const res = await fetch('/api/visual-search/reject', {
+      const res = await apiFetch('/api/visual-search/reject', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item_id: itemId, rejected_url: currentImageUrl, reason: 'unsuitable' }),
@@ -596,7 +631,7 @@ export default function EventDetail() {
   const handleAcquireLock = async (articleId: number) => {
     const username = getUsername();
     try {
-      const res = await fetch('/api/locks', {
+      const res = await apiFetch('/api/locks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'acquire', article_id: articleId, username }),
@@ -611,7 +646,7 @@ export default function EventDetail() {
 
   const handleForceUnlock = async (articleId: number) => {
     try {
-      await fetch('/api/locks', {
+      await apiFetch('/api/locks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'force-unlock', article_id: articleId, username: getUsername() }),
@@ -830,12 +865,17 @@ export default function EventDetail() {
                         loading="lazy"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
-                      {/* Reject button — always visible on the thumbnail, not hidden in a menu */}
+                      {/* Reject button — always visible on the thumbnail, not hidden in a menu.
+                          Finding B1 (audit 2026-09-07) : opacity-0 + hover seul rendait ce bouton
+                          invisible et impossible à atteindre au doigt (pas de :hover persistant sur
+                          tactile, :focus-visible au tap non fiable sur iOS Safari) — [@media(hover:none)]
+                          le garde visible en permanence sur les appareils sans souris. */}
                       <button
                         onClick={() => handleRejectImage(item.id, item.image_url!)}
                         className="absolute right-1.5 top-1.5 z-10 inline-flex cursor-pointer items-center gap-1
                           rounded-[var(--radius-sm)] bg-[var(--danger)] px-2 py-1 text-[10px] font-medium text-white
-                          opacity-0 transition-opacity duration-[var(--dur-fast)] group-hover:opacity-100 focus-visible:opacity-100"
+                          opacity-0 transition-opacity duration-[var(--dur-fast)] group-hover:opacity-100 focus-visible:opacity-100
+                          [@media(hover:none)]:opacity-100"
                         title="Ce visuel ne convient pas — cliquer pour chercher un alternatif"
                       >
                         <IconClose size={10} strokeWidth={2.5} />
@@ -1483,7 +1523,7 @@ function CorrectionInterface({ articleId }: { articleId: number }) {
 
     setSubmitting(true);
     try {
-      const response = await fetch('/api/corrections', {
+      const response = await apiFetch('/api/corrections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1518,7 +1558,7 @@ function CorrectionInterface({ articleId }: { articleId: number }) {
     if (!lastCorrection || addingToStyleGuide) return;
     setAddingToStyleGuide(true);
     try {
-      const response = await fetch('/api/style-rules', {
+      const response = await apiFetch('/api/style-rules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ banned: lastCorrection.generated, expected: lastCorrection.corrected }),

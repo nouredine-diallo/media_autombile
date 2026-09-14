@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge, EmptyState, SkeletonRows } from '@/components/ui';
+import { useToast } from '@/components/Toast';
+import { apiFetch } from '@/lib/apiFetch';
 import {
   IconAlert,
   IconArrowRight,
@@ -36,6 +38,7 @@ export default function EventsPage() {
   const [tagsMap, setTagsMap] = useState<Record<number, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchEvents();
@@ -43,7 +46,7 @@ export default function EventsPage() {
 
   const fetchEvents = async () => {
     try {
-      const response = await fetch('/api/events');
+      const response = await apiFetch('/api/events');
       const data = await response.json();
       const fetchedEvents: Event[] = data.events || [];
       setEvents(fetchedEvents);
@@ -70,11 +73,18 @@ export default function EventsPage() {
       new Date(events.find(ev => ev.id === eventId)!.urgent_until!) > new Date();
 
     try {
-      await fetch('/api/events', {
+      const res = await apiFetch('/api/events', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: eventId, force_urgent: !isCurrentlyUrgent }),
       });
+      // Finding B2 (audit 2026-09-07) : sans vérifier `response.ok`, un 401
+      // (session expirée) ou un 500 mettait quand même à jour l'écran comme
+      // si le clic avait réussi — désynchro invisible entre l'UI et la BDD.
+      if (!res.ok) {
+        toast("Échec de la mise à jour — réessaie", 'error');
+        return;
+      }
 
       setEvents(prev => prev.map(ev =>
         ev.id === eventId ? {
@@ -83,21 +93,25 @@ export default function EventsPage() {
         } : ev
       ));
     } catch {
-      // Silent fail
+      toast("Connexion perdue — la modification n'a pas été enregistrée", 'error');
     }
   };
 
   const handleRemoveTag = async (eventId: number, tag: string) => {
     try {
-      await fetch(`/api/events/tags?event_id=${eventId}&tag=${encodeURIComponent(tag)}`, {
+      const res = await apiFetch(`/api/events/tags?event_id=${eventId}&tag=${encodeURIComponent(tag)}`, {
         method: 'DELETE',
       });
+      if (!res.ok) {
+        toast("Échec de la suppression du tag — réessaie", 'error');
+        return;
+      }
       setTagsMap(prev => ({
         ...prev,
         [eventId]: (prev[eventId] || []).filter(t => t !== tag),
       }));
     } catch {
-      // Silent fail
+      toast("Connexion perdue — le tag n'a pas été retiré", 'error');
     }
   };
 
@@ -109,15 +123,21 @@ export default function EventsPage() {
     const newAssigned = event?.assigned_to === username ? null : username;
 
     try {
-      await fetch('/api/events', {
+      const res = await apiFetch('/api/events', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: eventId, assigned_to: newAssigned }),
       });
+      if (!res.ok) {
+        toast("Échec de l'assignation — réessaie", 'error');
+        return;
+      }
       setEvents(prev => prev.map(ev =>
         ev.id === eventId ? { ...ev, assigned_to: newAssigned } : ev
       ));
-    } catch {}
+    } catch {
+      toast("Connexion perdue — l'assignation n'a pas été enregistrée", 'error');
+    }
   };
 
   /** Le score pilote la hiérarchie : au-delà de 60, la donnée est mise en avant. */
@@ -222,7 +242,7 @@ export default function EventsPage() {
                         className={`flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] transition-colors duration-[var(--dur-fast)] focus-visible:opacity-100 ${
                           isUrgent
                             ? 'text-[var(--warn)] hover:bg-[var(--warn-soft)]'
-                            : 'text-[var(--text-faint)] opacity-0 hover:bg-[var(--surface-hover)] hover:text-[var(--warn)] group-hover:opacity-100'
+                            : 'text-[var(--text-faint)] opacity-0 hover:bg-[var(--surface-hover)] hover:text-[var(--warn)] group-hover:opacity-100 [@media(hover:none)]:opacity-100'
                         }`}
                       >
                         <IconUrgent size={14} strokeWidth={2} />
@@ -268,7 +288,7 @@ export default function EventsPage() {
                         className={`inline-flex h-6 items-center gap-1 rounded-[var(--radius-sm)] px-2 text-[11px] font-medium transition-colors duration-[var(--dur-fast)] focus-visible:opacity-100 ${
                           event.assigned_to
                             ? 'text-[var(--accent)] hover:bg-[var(--accent-soft)]'
-                            : 'text-[var(--text-muted)] opacity-0 hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] group-hover:opacity-100'
+                            : 'text-[var(--text-muted)] opacity-0 hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] group-hover:opacity-100 [@media(hover:none)]:opacity-100'
                         }`}
                       >
                         {event.assigned_to ? (

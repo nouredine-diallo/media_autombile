@@ -20,6 +20,10 @@ export async function POST(
   const ok = body?.ok === true;
   const previewDataUrl = body?.previewDataUrl as string | undefined;
   const error = body?.error as string | undefined;
+  // Finding D4 (audit 2026-09-07) : sans ce champ, un recadrage dégradé
+  // (détourage indisponible) était invisible côté RADAR — voir db.ts pour
+  // le détail de la migration.
+  const fallbackCrop = body?.fallbackCrop === true;
 
   try {
     const db = getDb();
@@ -28,13 +32,15 @@ export async function POST(
         `UPDATE articles
          SET auto_preview_status = ?,
              auto_preview_data_url = ?,
-             auto_preview_error = ?
+             auto_preview_error = ?,
+             auto_preview_fallback_crop = ?
          WHERE content_id = ?`,
       )
       .run(
         ok ? 'ready' : 'failed',
         ok ? (previewDataUrl ?? null) : null,
         ok ? null : (error ?? 'Erreur inconnue côté STUDIO'),
+        ok && fallbackCrop ? 1 : 0,
         contentId,
       );
 

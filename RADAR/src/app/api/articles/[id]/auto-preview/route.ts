@@ -22,11 +22,16 @@ export async function GET(
   const db = getDb();
   const article = db
     .prepare(
-      `SELECT auto_preview_status, auto_preview_data_url, auto_preview_error
+      `SELECT auto_preview_status, auto_preview_data_url, auto_preview_error, auto_preview_fallback_crop
        FROM articles WHERE id = ?`,
     )
     .get(articleId) as
-    | { auto_preview_status: string | null; auto_preview_data_url: string | null; auto_preview_error: string | null }
+    | {
+        auto_preview_status: string | null;
+        auto_preview_data_url: string | null;
+        auto_preview_error: string | null;
+        auto_preview_fallback_crop: number | null;
+      }
     | undefined;
 
   if (!article) {
@@ -37,5 +42,6 @@ export async function GET(
     status: article.auto_preview_status,
     dataUrl: article.auto_preview_data_url,
     error: article.auto_preview_error,
+    fallbackCrop: !!article.auto_preview_fallback_crop,
   });
 }

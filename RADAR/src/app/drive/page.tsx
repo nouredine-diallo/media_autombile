@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import type { ElementType } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { Badge, Button, EmptyState } from '@/components/ui';
+import { apiFetch } from '@/lib/apiFetch';
 import {
   IconDrive,
   IconFile,
@@ -114,7 +115,7 @@ function DrivePageInner() {
 
   const fetchDriveStatus = useCallback(async () => {
     try {
-      const response = await fetch('/api/drive/google?status=true');
+      const response = await apiFetch('/api/drive/google?status=true');
       const data = await response.json();
       setDriveStatus(data);
     } catch {
@@ -140,7 +141,7 @@ function DrivePageInner() {
         url += `?${params.toString()}`;
       }
 
-      const response = await fetch(url);
+      const response = await apiFetch(url);
       const data = await response.json();
 
       if (!data.success && data.error) throw new Error(data.error);
@@ -156,7 +157,7 @@ function DrivePageInner() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/drive?stats=true');
+      const response = await apiFetch('/api/drive?stats=true');
       const data = await response.json();
       if (data.success) {
         setStats(data.stats);
@@ -179,12 +180,12 @@ function DrivePageInner() {
     try {
       if (driveStatus?.connected) {
         // Sync from Google Drive
-        const response = await fetch('/api/drive/google?sync=true');
+        const response = await apiFetch('/api/drive/google?sync=true');
         const data = await response.json();
         if (!data.success) throw new Error(data.error || 'Sync failed');
       } else {
         // Sync local
-        const response = await fetch('/api/drive?sync=true');
+        const response = await apiFetch('/api/drive?sync=true');
         const data = await response.json();
         if (!data.success) throw new Error(data.error || 'Sync failed');
       }
@@ -225,7 +226,7 @@ function DrivePageInner() {
 
   const handleDisconnect = async () => {
     try {
-      await fetch('/api/drive/google?disconnect=true');
+      await apiFetch('/api/drive/google?disconnect=true');
       setDriveStatus({ configured: false, connected: false, email: null });
       fetchFiles();
     } catch (err) {
@@ -414,7 +415,11 @@ function DrivePageInner() {
 
         {/* File List */}
         {files.length > 0 && (
-          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] overflow-hidden">
+          // Finding B4 (audit 2026-09-07) : overflow-hidden coupait purement
+          // et simplement la colonne Actions sur petit écran (rien à faire
+          // défiler) — overflow-x-auto la rend accessible en swipe, comme
+          // déjà fait sur /stats et /calendrier.
+          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--border-subtle)] bg-[var(--surface-base)] text-left text-xs text-[var(--text-muted)]">
@@ -491,7 +496,11 @@ function DrivePageInner() {
                       {new Date(file.modified_at).toLocaleDateString('fr-FR')}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {/* Finding B1 (audit 2026-09-07) : "Utiliser cette image" était
+                          invisible en permanence sur tactile (hover-only, pas de
+                          focus-visible en repli) — l'action était de fait inatteignable
+                          au doigt. Ajout de focus-visible et de [@media(hover:none)]. */}
+                      <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
                         {isImageType(file.mime_type) && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleSelectForArticle(file); }}

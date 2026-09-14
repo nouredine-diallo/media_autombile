@@ -126,7 +126,17 @@ export async function PATCH(request: Request) {
       // STUDIO) vit dans finalizeArticleValidation — réutilisée telle
       // quelle par l'auto-validation du matin (autoGenerate.ts), pour que
       // les deux voies produisent exactement le même résultat.
-      finalizeArticleValidation(id, 'humain');
+      //
+      // Finding D5 (audit 2026-09-07) : deux clics "Confirmer" à quelques
+      // centaines de ms d'écart pouvaient chacun réussir et déclencher leur
+      // propre export Drive du même article. `applied` est `false` quand
+      // l'article était déjà validé — les effets de bord (dont l'export)
+      // ne sont alors pas rejoués, et on le dit explicitement au client
+      // plutôt que de laisser croire à un second succès silencieux.
+      const applied = finalizeArticleValidation(id, 'humain');
+      if (!applied) {
+        return NextResponse.json({ success: true, alreadyValidated: true });
+      }
     } else if (status) {
       updateArticleStatus(id, status);
       if (status === 'rejected') {

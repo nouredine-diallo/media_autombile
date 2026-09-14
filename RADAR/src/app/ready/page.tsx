@@ -32,6 +32,7 @@ interface Article {
   auto_preview_status: 'pending' | 'ready' | 'failed' | null;
   auto_preview_data_url: string | null;
   auto_preview_error: string | null;
+  auto_preview_fallback_crop: number | null;
   validated_by: 'humain' | 'auto_score' | null;
   verification_score: number | null;
 }
@@ -61,7 +62,7 @@ export default function ReadyForInstagram() {
         SELECT 1 FROM calendar_events ce
         WHERE ce.article_id = a.id AND ce.event_type = 'publication_instagram'
       ) as is_scheduled,
-      a.auto_preview_status, a.auto_preview_data_url, a.auto_preview_error
+      a.auto_preview_status, a.auto_preview_data_url, a.auto_preview_error, a.auto_preview_fallback_crop
     FROM articles a
     LEFT JOIN events e ON a.event_id = e.id
     WHERE a.status = 'validated'
@@ -113,6 +114,7 @@ export default function ReadyForInstagram() {
                   status={article.auto_preview_status}
                   dataUrl={article.auto_preview_data_url}
                   error={article.auto_preview_error}
+                  fallbackCrop={!!article.auto_preview_fallback_crop}
                   alreadyScheduled={!!article.is_scheduled}
                   validatedBy={article.validated_by}
                   verificationScore={article.verification_score}

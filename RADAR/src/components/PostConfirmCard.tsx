@@ -21,6 +21,9 @@ interface Props {
   status: 'pending' | 'ready' | 'failed' | null;
   dataUrl: string | null;
   error: string | null;
+  /** Finding D4 (audit 2026-09-07) : recadrage centré dégradé (détourage
+   * indisponible côté STUDIO) — auparavant jamais remonté jusqu'ici. */
+  fallbackCrop: boolean;
   alreadyScheduled: boolean;
   studioModifyHref: string;
   /** 'auto_score' = personne n'a relu le texte, seul un seuil de confiance l'a laissé passer. */
@@ -45,6 +48,7 @@ export function PostConfirmCard({
   status: initialStatus,
   dataUrl: initialDataUrl,
   error: initialError,
+  fallbackCrop: initialFallbackCrop,
   alreadyScheduled,
   studioModifyHref,
   validatedBy,
@@ -53,6 +57,7 @@ export function PostConfirmCard({
   const [status, setStatus] = useState(initialStatus);
   const [dataUrl, setDataUrl] = useState(initialDataUrl);
   const [error, setError] = useState(initialError);
+  const [fallbackCrop, setFallbackCrop] = useState(initialFallbackCrop);
   // Le poll peut s'arrêter sans jamais avoir vu de statut final (STUDIO
   // tombé en plein rendu, ni succès ni callback d'échec) — sans ce drapeau,
   // la carte resterait bloquée sur "en préparation" indéfiniment, sans
@@ -74,6 +79,7 @@ export function PostConfirmCard({
             setStatus(data.status);
             setDataUrl(data.dataUrl ?? null);
             setError(data.error ?? null);
+            setFallbackCrop(!!data.fallbackCrop);
           }
         }
       } catch {
@@ -130,6 +136,11 @@ export function PostConfirmCard({
               Visuel généré par l&apos;IA
             </Badge>
           )}
+          {status === 'ready' && fallbackCrop && (
+            <Badge tone="warn" icon={IconAlert}>
+              Cadrage simplifié
+            </Badge>
+          )}
           {status === 'pending' && <Badge tone="info">Visuel en préparation…</Badge>}
           {status === 'failed' && <Badge tone="warn">Aperçu automatique indisponible</Badge>}
           {validatedBy === 'auto_score' && (
@@ -147,6 +158,11 @@ export function PostConfirmCard({
         {validatedBy === 'auto_score' && (
           <p className="t-caption -mt-0.5 mb-1.5 text-[var(--text-muted)]">
             Aucun humain n&apos;a relu ce texte — la confiance mesurée a dépassé le seuil configuré.
+          </p>
+        )}
+        {status === 'ready' && fallbackCrop && (
+          <p className="t-caption -mt-0.5 mb-1.5 text-[var(--text-muted)]">
+            Détourage indisponible côté STUDIO — recadrage centré utilisé à la place. Modifier dans STUDIO pour ajuster si besoin.
           </p>
         )}
 

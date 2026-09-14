@@ -1,0 +1,11 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+await page.goto('http://localhost:3000/login', { waitUntil: 'networkidle' });
+await page.fill('input[type="password"]', 'work');
+await page.click('button[type="submit"]');
+await page.waitForTimeout(1000);
+await page.goto('http://localhost:3000/', { waitUntil: 'networkidle' });
+await page.waitForTimeout(400);
+await page.screenshot({ path: 'scripts/e2e-test/output-visuels/desktop-pipeline-check.png' });
+await browser.close();

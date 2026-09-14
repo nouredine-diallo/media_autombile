@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+await page.goto('http://studio.89.168.53.133.nip.io/login', { waitUntil: 'networkidle', timeout: 20000 });
+await page.fill('input[type="password"]', 'work');
+await page.click('button[type="submit"]');
+await page.waitForTimeout(1000);
+await page.goto('http://studio.89.168.53.133.nip.io/titres', { waitUntil: 'networkidle', timeout: 20000 });
+await page.click('text=1A').catch(() => {});
+await page.waitForTimeout(500);
+await page.screenshot({ path: 'scripts/e2e-test/output-visuels/prod-placeholder-check2.png', fullPage: true });
+console.log('done');
+await browser.close();

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui';
+import { useOnlineStatus } from '@/lib/apiFetch';
 import {
   IconChevronDown,
   IconChevronUp,
@@ -82,15 +83,24 @@ export function PipelineStatusIndicator() {
   const [status, setStatus] = useState<PipelineStatus | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  // Finding B3 (audit 2026-09-07) : `catch {}` muet + `if (!status)` faisait
+  // rester le squelette de chargement indéfiniment sur un échec réseau —
+  // présenté comme "en cours" alors qu'il s'agissait d'une panne permanente.
+  const [loadError, setLoadError] = useState(false);
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch('/api/cron');
+      const res = await fetch('/api/cron', { signal: AbortSignal.timeout(10_000) });
       if (res.ok) {
         const data = await res.json();
         setStatus(data);
+        setLoadError(false);
+      } else {
+        setLoadError(true);
       }
-    } catch {}
+    } catch {
+      setLoadError(true);
+    }
   };
 
   useEffect(() => {
@@ -98,6 +108,15 @@ export function PipelineStatusIndicator() {
     const interval = setInterval(fetchStatus, 30000); // refresh every 30s
     return () => clearInterval(interval);
   }, []);
+
+  // Finding C7 (audit 2026-09-07) : la 5G qui coupe puis revient (cas
+  // courant pour une équipe mobile) laissait ce widget bloqué sur l'état
+  // d'erreur jusqu'à un tap manuel sur "Réessayer" — même une fois la
+  // connexion réellement revenue. Re-tente automatiquement sur l'événement
+  // navigateur `online`, uniquement si un chargement avait échoué.
+  useOnlineStatus(() => {
+    if (loadError) fetchStatus();
+  });
 
   const handleTrigger = async () => {
     setTriggering(true);
@@ -122,7 +141,23 @@ export function PipelineStatusIndicator() {
     }
   };
 
+  // Échec dès le premier chargement : jamais rien reçu du serveur — un
+  // squelette qui tourne indéfiniment mentirait sur l'état réel.
+  if (!status && loadError) {
+    return (
+      <div className="flex h-[52px] items-center justify-between gap-3 rounded-[var(--radius-lg)] border border-[var(--warn-border)] bg-[var(--warn-soft)] px-3.5">
+        <span className="t-caption text-[var(--text-secondary)]">
+          Statut du pipeline indisponible — connexion au serveur impossible
+        </span>
+        <Button variant="ghost" size="sm" onClick={() => fetchStatus()}>
+          Réessayer
+        </Button>
+      </div>
+    );
+  }
+
   // État de chargement : un squelette de la même forme que la barre finale
+  // (uniquement pendant la toute première tentative, pas après un échec).
   if (!status) {
     return <div className="skeleton h-[52px] rounded-[var(--radius-lg)]" aria-hidden />;
   }

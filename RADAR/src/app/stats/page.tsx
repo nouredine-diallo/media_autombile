@@ -2,12 +2,21 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { EngagementTrend } from '@/components/charts/EngagementTrend';
-import { FormatDistribution } from '@/components/charts/FormatDistribution';
-import { TopPosts } from '@/components/charts/TopPosts';
-import { MetricsComparison } from '@/components/charts/MetricsComparison';
-import { PerformanceScatter } from '@/components/charts/PerformanceScatter';
+import dynamic from 'next/dynamic';
 import SmartDropzone from '@/components/SmartDropzone';
+
+// Finding B10 (audit 2026-09-07) : les 5 graphiques (recharts, dépendance
+// significative) étaient importés statiquement — leur JS chargeait pour
+// n'importe quelle visite de /stats, même avant qu'un graphique soit
+// visible. `next/dynamic` + `ssr: false` (recharts dépend du DOM/canvas,
+// non pertinent en SSR de toute façon) : le bundle initial de la page ne
+// porte plus ce poids, chargé seulement quand la page s'affiche vraiment.
+const chartLoading = <div className="h-64 w-full animate-pulse rounded-lg bg-zinc-100" />;
+const EngagementTrend = dynamic(() => import('@/components/charts/EngagementTrend').then(m => m.EngagementTrend), { ssr: false, loading: () => chartLoading });
+const FormatDistribution = dynamic(() => import('@/components/charts/FormatDistribution').then(m => m.FormatDistribution), { ssr: false, loading: () => chartLoading });
+const TopPosts = dynamic(() => import('@/components/charts/TopPosts').then(m => m.TopPosts), { ssr: false, loading: () => chartLoading });
+const MetricsComparison = dynamic(() => import('@/components/charts/MetricsComparison').then(m => m.MetricsComparison), { ssr: false, loading: () => chartLoading });
+const PerformanceScatter = dynamic(() => import('@/components/charts/PerformanceScatter').then(m => m.PerformanceScatter), { ssr: false, loading: () => chartLoading });
 
 interface InstagramPost {
   id: string;

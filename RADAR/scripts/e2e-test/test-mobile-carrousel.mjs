@@ -1,0 +1,15 @@
+import { chromium, devices } from 'playwright';
+const iphone = devices['iPhone 13'];
+const browser = await chromium.launch({ headless: true });
+const context = await browser.newContext({ ...iphone });
+const page = await context.newPage();
+await page.goto('http://localhost:3002/login', { waitUntil: 'networkidle' });
+await page.fill('input[type="password"]', 'work');
+await page.click('button[type="submit"]');
+await page.waitForTimeout(1000);
+await page.goto('http://localhost:3002/titres/carrousel', { waitUntil: 'networkidle', timeout: 20000 }).catch(() => {});
+await page.waitForTimeout(500);
+await page.screenshot({ path: 'scripts/e2e-test/output-visuels/mobile-studio-carrousel.png', fullPage: true });
+const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 2);
+console.log('horizontal scroll:', overflow);
+await browser.close();

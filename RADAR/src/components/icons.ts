@@ -23,6 +23,7 @@ export {
   Palette as IconStudio,
   FolderOpen as IconDrive,
   PanelLeft as IconPanelToggle,
+  Menu as IconMenu,
   ArrowUpRight as IconExternal,
   ArrowRight as IconArrowRight,
   ArrowLeft as IconArrowLeft,

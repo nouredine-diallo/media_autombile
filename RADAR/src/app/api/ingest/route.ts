@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getFeeds, fetchFeed, storeItems, updateFeedLastFetched } from '@/lib/rss';
+import { getFeeds, fetchFeed, storeItems, recordFeedFetchSuccess, recordFeedFetchFailure } from '@/lib/rss';
 import { startPipelineRun, completePipelineRun } from '@/lib/db';
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -16,15 +16,17 @@ export async function POST() {
     try {
       const items = await withTimeout(fetchFeed(feed), 12000);
       const { stored, duplicates } = storeItems(feed.id, items);
-      updateFeedLastFetched(feed.id);
+      recordFeedFetchSuccess(feed.id);
       results.push({ feed: feed.name, stored, duplicates });
       totalStored += stored;
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      recordFeedFetchFailure(feed.id, message);
       results.push({
         feed: feed.name,
         stored: 0,
         duplicates: 0,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: message,
       });
     }
   }
