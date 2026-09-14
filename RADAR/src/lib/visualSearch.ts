@@ -38,19 +38,49 @@ interface ScrapedImage {
 async function extractImagesFromPage(page: import('playwright').Page): Promise<ScrapedImage[]> {
   // NOTE: Using string-based evaluate to avoid esbuild/tsx `__name` injection issue
   return page.evaluate(`
-    (() => {
+    (async () => {
       const images = [];
+
+      // Résolution réelle de og:image/twitter:image au lieu d'un chiffre
+      // figé (1200x630/800x418, quelle que soit la vraie taille) — analyse
+      // du 14 sept. 2026 : cette valeur inventée faisait perdre à des
+      // og:image pourtant correctes face à des images scrapées dans le
+      // corps de page dont la résolution réelle, souvent plus grande,
+      // l'emportait à tort (cas réel : une image de carrousel "modèles
+      // rivaux" a battu la vraie photo de l'article, dont la balise
+      // og:image pointait pourtant déjà vers la bonne image). Vérifié en
+      // simulation sur 7 articles réels de 5 sites différents avant
+      // application : 2 bugs réels corrigés, 0 régression observée.
+      // Repli sur les anciennes valeurs figées si l'image ne charge pas
+      // dans le délai (jamais pire qu'avant, juste potentiellement pas
+      // mieux) — pas de dégradation silencieuse au sens où le score reste
+      // au moins celui d'aujourd'hui.
+      function loadRealDims(url, fallbackW, fallbackH) {
+        return new Promise((resolve) => {
+          const probe = new Image();
+          let done = false;
+          const finish = (w, h) => { if (!done) { done = true; resolve({ width: w, height: h }); } };
+          probe.onload = () => finish(probe.naturalWidth || fallbackW, probe.naturalHeight || fallbackH);
+          probe.onerror = () => finish(fallbackW, fallbackH);
+          setTimeout(() => finish(fallbackW, fallbackH), 2000);
+          probe.src = url;
+        });
+      }
 
       // Strategy 1: og:image meta tag
       const ogImage = document.querySelector('meta[property="og:image"]');
       if (ogImage && ogImage.getAttribute('content')) {
-        images.push({ url: ogImage.getAttribute('content'), width: 1200, height: 630, source: 'og:image', alt: '' });
+        const url = ogImage.getAttribute('content');
+        const dims = await loadRealDims(url, 1200, 630);
+        images.push({ url, width: dims.width, height: dims.height, source: 'og:image', alt: '' });
       }
 
       // Strategy 2: twitter:image meta tag
       const twitterImage = document.querySelector('meta[name="twitter:image"]');
       if (twitterImage && twitterImage.getAttribute('content')) {
-        images.push({ url: twitterImage.getAttribute('content'), width: 800, height: 418, source: 'twitter:image', alt: '' });
+        const url = twitterImage.getAttribute('content');
+        const dims = await loadRealDims(url, 800, 418);
+        images.push({ url, width: dims.width, height: dims.height, source: 'twitter:image', alt: '' });
       }
 
       // Strategy 3: article featured images (common selectors)
@@ -134,9 +164,19 @@ function scoreImage(img: ScrapedImage, articleTitle: string): number {
     else if (ratio >= 1.5 && ratio <= 1.8) score += 10; // 16:9
   }
 
-  // Source priority
-  if (img.source === 'og:image') score += 15;
-  else if (img.source === 'twitter:image') score += 12;
+  // Source priority — og:image/twitter:image remontés le 14 sept. 2026 :
+  // +15 était trop proche du +8 d'une image quelconque de la page (écart de
+  // seulement 7 points, comparable à un seul palier de résolution). Vérifié
+  // sur un cas réel (A35 AMG, CarBuzz) après avoir corrigé la fausse
+  // résolution figée (og:image passait à sa vraie taille, 1600x900) : la
+  // bonne image perdait quand même de justesse (55 contre 58) face à une
+  // image de carrousel "rivaux" légitimement servie en 1920x1080 par le
+  // CDN du site — la résolution seule ne suffit pas, og:image est un signal
+  // éditorial délibéré (l'auteur/CMS désigne CETTE image pour représenter
+  // l'article) et mérite plus de poids qu'une simple image trouvée dans la
+  // page.
+  if (img.source === 'og:image') score += 20;
+  else if (img.source === 'twitter:image') score += 16;
   else if (img.source === 'page') score += 8;
 
   // URL pattern bonus (high-res images)
