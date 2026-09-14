@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `Maximum ${MAX_URLS} URLs par appel` }, { status: 400 });
   }
 
-  const results: Array<{ id: string; croppedUrl: string; backdropUrl: string }> = [];
+  const results: Array<{ id: string; croppedUrl: string; backdropUrl: string; fallbackCrop: boolean }> = [];
 
   for (const url of urls) {
     try {
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
 
       const croppedPath = path.join(dir, "cropped.jpg");
       const backdropPath = path.join(dir, "backdrop.jpg");
-      await cropToAspectSmart(
+      const outcome = await cropToAspectSmart(
         sourcePath,
         croppedPath,
         backdropPath,
@@ -151,6 +151,8 @@ export async function POST(request: NextRequest) {
         id,
         croppedUrl: `/api/images/${id}?variant=cropped`,
         backdropUrl: `/api/images/${id}?variant=backdrop`,
+        // Finding B8 (audit 2026-09-07) : voir upload-batch/route.ts, même correctif.
+        fallbackCrop: outcome.backdrop.fallbackToCenter,
       });
     } catch {
       // URL source inaccessible ou traitement échoué — on continue avec les suivantes,

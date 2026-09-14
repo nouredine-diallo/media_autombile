@@ -52,10 +52,29 @@ type Geste =
   | { cible: BulleCible; mode: "deplacer" | "redimensionner"; x0: number; y0: number; g0: BulleGeometry }
   | { cible: BulleCible; mode: "cadrer"; x0: number; y0: number; c0: { zoom: number; dx: number; dy: number } };
 
+/**
+ * Pincement à deux doigts (finding B6, audit 2026-09-07) — le zoom du
+ * contenu d'une bulle ne répondait qu'à la molette (`molette()` ci-dessous),
+ * inutilisable sur tactile puisqu'un doigt seul ne fait que déplacer la
+ * photo (voir `bouger`, mode "cadrer"). Dès qu'un second doigt touche la
+ * même bulle, la distance entre les deux pilote le zoom à la place du
+ * glisser à un doigt — même plage [0.6, 2.2] que la molette.
+ */
+interface Pincement {
+  cleGeom: string;
+  cleCadre: string;
+  distance0: number;
+  c0: { zoom: number; dx: number; dy: number };
+}
+
 export function MontageDirect({ echelle, cibles, valeurs, onChange, photos }: Props) {
   const zone = useRef<HTMLDivElement>(null);
   const [survol, setSurvol] = useState<string | null>(null);
   const [geste, setGeste] = useState<Geste | null>(null);
+  const [pincement, setPincement] = useState<Pincement | null>(null);
+  /** Pointeurs tactiles actifs, par pointerId — sert uniquement à calculer la
+   * distance entre deux doigts sur la même bulle pour le pincement. */
+  const pointeursActifs = useRef<Map<number, { x: number; y: number; cleGeom: string }>>(new Map());
   /**
    * Deux façons de glisser, une seule à la fois : déplacer la bulle dans le
    * montage, ou recadrer la photo à l'intérieur. Un basculeur plutôt qu'une
@@ -72,7 +91,34 @@ export function MontageDirect({ echelle, cibles, valeurs, onChange, photos }: Pr
   function demarrer(e: React.PointerEvent, cible: BulleCible, mode: "deplacer" | "redimensionner" | "cadrer") {
     e.preventDefault();
     e.stopPropagation();
-    (e.target as Element).setPointerCapture?.(e.pointerId);
+    try {
+      // `?.()` protège seulement si la méthode n'existe pas (vieux
+      // navigateur) — trouvé en testant réellement le pincement (finding B6,
+      // audit 2026-09-07) qu'elle peut aussi LEVER ("No active pointer with
+      // the given id is found") sans que ce soit forcément rare en pratique
+      // multi-doigts. Une exception non rattrapée ici interromprait tout
+      // `demarrer()`, y compris la détection du second doigt plus bas — la
+      // capture de pointeur est un confort (glisser hors des limites de
+      // l'élément reste suivi), pas une condition pour que le geste marche.
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch {
+      // Ignoré volontairement — voir commentaire ci-dessus.
+    }
+
+    if (mode === "cadrer" && e.pointerType === "touch") {
+      pointeursActifs.current.set(e.pointerId, { x: e.clientX, y: e.clientY, cleGeom: cible.cleGeom });
+      const surCetteBulle = [...pointeursActifs.current.values()].filter((p) => p.cleGeom === cible.cleGeom);
+      if (surCetteBulle.length >= 2) {
+        // Second doigt sur la même bulle : le pincement prend le relais du
+        // glisser à un doigt, qui aurait pu démarrer avec le premier.
+        const [p1, p2] = surCetteBulle;
+        const distance0 = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+        setPincement({ cleGeom: cible.cleGeom, cleCadre: cible.cleCadre, distance0, c0: lireCadre(valeurs[cible.cleCadre]) });
+        setGeste(null);
+        return;
+      }
+    }
+
     if (mode === "cadrer") {
       setGeste({ cible, mode, x0: e.clientX, y0: e.clientY, c0: lireCadre(valeurs[cible.cleCadre]) });
       return;
@@ -90,6 +136,21 @@ export function MontageDirect({ echelle, cibles, valeurs, onChange, photos }: Pr
   }
 
   function bouger(e: React.PointerEvent) {
+    if (pointeursActifs.current.has(e.pointerId)) {
+      const p = pointeursActifs.current.get(e.pointerId)!;
+      pointeursActifs.current.set(e.pointerId, { ...p, x: e.clientX, y: e.clientY });
+    }
+
+    if (pincement) {
+      const pts = [...pointeursActifs.current.values()].filter((p) => p.cleGeom === pincement.cleGeom);
+      if (pts.length >= 2) {
+        const distance = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        const zoom = Math.min(2.2, Math.max(0.6, pincement.c0.zoom * (distance / pincement.distance0)));
+        onChange({ [pincement.cleCadre]: `${zoom.toFixed(3)},${pincement.c0.dx.toFixed(2)},${pincement.c0.dy.toFixed(2)}` });
+      }
+      return;
+    }
+
     if (!geste) return;
     if (geste.mode === "cadrer") {
       // Décalage exprimé en % du DIAMÈTRE de la bulle : le geste garde la même
@@ -125,7 +186,14 @@ export function MontageDirect({ echelle, cibles, valeurs, onChange, photos }: Pr
     onChange({ [geste.cible.cleGeom]: `${suivant.leftPercent.toFixed(2)},${suivant.topPercent.toFixed(2)},${suivant.sizePercent.toFixed(2)}` });
   }
 
-  const arreter = () => setGeste(null);
+  const arreter = (e: React.PointerEvent) => {
+    pointeursActifs.current.delete(e.pointerId);
+    if (pincement) {
+      const pts = [...pointeursActifs.current.values()].filter((p) => p.cleGeom === pincement.cleGeom);
+      if (pts.length < 2) setPincement(null);
+    }
+    setGeste(null);
+  };
 
   /* ── Actions ponctuelles ── */
   function basculerDebordement(c: BulleCible) {
@@ -181,19 +249,35 @@ export function MontageDirect({ echelle, cibles, valeurs, onChange, photos }: Pr
 
             {actif && (
               <>
-                {/* Poignée de taille, en bas à droite du cercle */}
+                {/* Poignée de taille, en bas à droite du cercle. Le point visuel
+                    reste à 16px (esthétique), mais la zone tactile réelle est
+                    portée à 44px (repère Apple HIG / Material Design pour une
+                    cible tactile minimale — finding B9, audit 2026-09-07) via
+                    un conteneur invisible plus grand, centré au même point.
+                    `onPointerEnter` : bug réel trouvé en testant — la poignée
+                    agrandie chevauche assez la zone du cercle pour que le
+                    passage de l'une à l'autre déclenche l'`onPointerLeave` du
+                    cercle (survol → null), qui masque la poignée à l'instant
+                    même où le curseur l'atteint (avant tout clic possible).
+                    Réaffirmer le survol à l'entrée rend la transition stable. */}
                 <div
                   onPointerDown={(e) => demarrer(e, c, "redimensionner")}
-                  className="absolute size-4 cursor-nwse-resize rounded-full border-2 border-white bg-sky-500 shadow"
-                  style={{ left: cx + d * 0.354 - 8, top: cy + d * 0.354 - 8 }}
+                  onPointerEnter={() => setSurvol(c.cleGeom)}
+                  className="absolute flex size-11 cursor-nwse-resize items-center justify-center"
+                  style={{ left: cx + d * 0.354 - 22, top: cy + d * 0.354 - 22 }}
                   title="Glisser pour agrandir ou réduire"
-                />
+                >
+                  <div className="size-4 rounded-full border-2 border-white bg-sky-500 shadow" />
+                </div>
 
-                {/* Barre d'actions, ancrée sous le cercle */}
+                {/* Barre d'actions, ancrée sous le cercle. Même correctif de
+                    survol que la poignée ci-dessus — même bug latent (barre
+                    positionnée hors du cercle, séparée par un espace). */}
                 <div
                   className="absolute flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-zinc-200/80 bg-white/90 p-0.5 shadow-lg backdrop-blur-md"
                   style={{ left: cx, top: cy + d / 2 + 10 }}
                   onPointerDown={(e) => e.stopPropagation()}
+                  onPointerEnter={() => setSurvol(c.cleGeom)}
                 >
                   <button
                     type="button"

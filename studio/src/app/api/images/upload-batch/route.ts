@@ -73,8 +73,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Fichier invalide" }, { status: 400 });
     }
     if (!ALLOWED_MIME[f.type]) {
+      // Finding B9 (audit 2026-09-07) : format par défaut des photos iPhone,
+      // jamais accepté ici (sharp/libvips embarque libheif mais sans décodeur
+      // HEVC — vérifié : `sharp.versions()` liste `aom` (AV1, pour l'AVIF)
+      // sans équivalent HEVC/x265, cohérent avec la limitation documentée de
+      // sharp sur les binaires précompilés). Message actionnable plutôt
+      // qu'un rejet générique — la vraie réponse pour l'opérateur.
+      const isHeic = /heic|heif/i.test(f.type) || /\.(heic|heif)$/i.test(f.name);
       return NextResponse.json(
-        { error: `Type de fichier non supporté : ${f.type || "inconnu"}` },
+        {
+          error: isHeic
+            ? "Format HEIC/HEIF non pris en charge (format par défaut des photos iPhone). Sur iPhone : Réglages > Appareil photo > Formats > choisir « Le plus compatible » pour enregistrer en JPEG."
+            : `Type de fichier non supporté : ${f.type || "inconnu"}`,
+        },
         { status: 400 },
       );
     }
@@ -130,6 +141,12 @@ export async function POST(request: NextRequest) {
         bulleUrl: `/api/images/${item.id}?variant=bulle`,
         role: suggestion.role,
         reason: suggestion.reason,
+        // Finding B8 (audit 2026-09-07) : `outcome` était calculé puis jeté —
+        // si le détourage échoue et que le pipeline retombe sur un recadrage
+        // centré (potentiellement au travers du sujet), rien ne le signalait
+        // à l'opérateur sur ce parcours (upload manuel). CLAUDE.md §5 :
+        // jamais un résultat de moindre qualité présenté comme normal.
+        fallbackCrop: outcome.backdrop.fallbackToCenter,
       };
     }),
   );

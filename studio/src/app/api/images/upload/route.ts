@@ -57,8 +57,14 @@ export async function POST(request: NextRequest) {
   }
   const ext = ALLOWED_MIME[file.type];
   if (!ext) {
+    // Finding B9 (audit 2026-09-07) : voir upload-batch/route.ts, même correctif.
+    const isHeic = /heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
     return NextResponse.json(
-      { error: `Type de fichier non supporté : ${file.type || "inconnu"}` },
+      {
+        error: isHeic
+          ? "Format HEIC/HEIF non pris en charge (format par défaut des photos iPhone). Sur iPhone : Réglages > Appareil photo > Formats > choisir « Le plus compatible » pour enregistrer en JPEG."
+          : `Type de fichier non supporté : ${file.type || "inconnu"}`,
+      },
       { status: 400 },
     );
   }
