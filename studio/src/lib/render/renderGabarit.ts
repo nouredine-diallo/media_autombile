@@ -26,6 +26,13 @@ export async function renderGabaritToPng(
     const value = fieldValues[field.key];
     resolved[field.key] = value && value.length > 0 ? value : (def.defaults[field.key] ?? "");
   }
+  // `photoHeight` (hauteur adaptative de la zone photo, 62-74%, calculée à
+  // l'upload — voir smartCrop.ts) n'est pas un champ éditable, donc jamais
+  // déclaré dans `def.fields` : sans ce passage explicite, il était toujours
+  // perdu ici et l'export retombait sur le défaut (74%), quelle que soit la
+  // vraie valeur montrée dans l'aperçu — trouvé le 2026-09-14 en vérifiant
+  // que le recadrage manuel du fond exporte bien la même image que l'aperçu.
+  if (fieldValues.photoHeight) resolved.photoHeight = fieldValues.photoHeight;
 
   const internalToken = await encrypt({
     userId: "internal-render",

@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowRight, CheckCircle2, Download, Loader2 } from "lucide-react";
 import { decodePrefill } from "@/lib/prefill";
+import { useExportJobPolling } from "@/lib/export/useExportJobPolling";
 import { GABARITS, GABARIT_HEIGHT, GABARIT_WIDTH } from "@/components/gabarits/registry";
+import { RecadrageFond } from "@/components/RecadrageFond";
+import { lireHauteurPhoto, GABARIT_PHOTO_HEIGHT } from "@/components/gabarits/Gabarit1A";
 
 // Plafond desktop, jamais dépassé — voir la note équivalente dans
 // titres/page.tsx (2026-08-29) : rendu à résolution réelle puis réduit par
@@ -60,7 +63,14 @@ export default function CarrouselPage() {
   const [slides, setSlides] = useState<Slide[]>([]);
   const [legend, setLegend] = useState("");
   const [exporting, setExporting] = useState(false);
-  const [exportJob, setExportJob] = useState<{ status: string; driveUrl?: string; jobId?: string } | null>(null);
+  const { job: exportJob, start: startExportPolling, retry: retryExportPolling } = useExportJobPolling();
+
+  /* ── Le bouton "Exporter" reste désactivé tant que le job n'a pas atteint
+     un état terminal — même garde qu'avant le fix C1, pour ne pas ouvrir de
+     fenêtre de double-clic pendant le rendu/upload (cf. audit finding D5).
+     Dérivé directement au rendu plutôt que synchronisé par un effet (évite
+     un aller-retour de rendu inutile — react-hooks/set-state-in-effect). ── */
+  const exportBusy = exporting || (!!exportJob && exportJob.status !== "done" && exportJob.status !== "error");
   const [previewScale, setPreviewScale] = useState(PREVIEW_SCALE_MAX);
 
   /* ── Aperçu responsive : ne dépasse jamais la largeur de l'écran (même
@@ -145,6 +155,16 @@ export default function CarrouselPage() {
     });
   }
 
+  /** Recadrage manuel du fond d'une slide (gabarits famille 1) — même
+   * mécanisme que /titres et l'éditeur détaillé, demande du 2026-09-14. */
+  function updateSlideCadre(index: number, imageCadre: string) {
+    setSlides((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], fieldValues: { ...next[index].fieldValues, imageCadre } };
+      return next;
+    });
+  }
+
   async function handleExport() {
     if (!pkg) return;
     setExporting(true);
@@ -162,34 +182,11 @@ export default function CarrouselPage() {
       const data = await res.json().catch(() => ({ error: "Échec inconnu" }));
       if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
       const jobId = data.jobId as string;
-      setExportJob({ status: "pending", jobId });
-      pollExport(jobId);
+      startExportPolling(jobId);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Erreur inconnue");
       setExporting(false);
     }
-  }
-
-  function pollExport(jobId: string) {
-    let cancelled = false;
-    async function loop() {
-      if (cancelled) return;
-      try {
-        const r = await fetch(`/api/export/${jobId}`);
-        if (!r.ok) return;
-        const j = await r.json();
-        setExportJob({ status: j.status, driveUrl: j.driveUrl, jobId });
-        if (j.status !== "done" && j.status !== "error") {
-          setTimeout(loop, 800);
-        } else {
-          setExporting(false);
-        }
-      } catch {
-        // Erreur réseau — on arrête le polling silencieusement
-      }
-    }
-    loop();
-    return () => { cancelled = true; };
   }
 
   const totalSlides = slides.length;
@@ -260,6 +257,7 @@ export default function CarrouselPage() {
                   previewScale={previewScale}
                   onTextChange={(v) => updateSlideText(i, v)}
                   onImageChange={(idx) => updateSlideImage(i, idx)}
+                  onCadreChange={(v) => updateSlideCadre(i, v)}
                 />
               ))}
             </div>
@@ -268,10 +266,10 @@ export default function CarrouselPage() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={handleExport}
-                  disabled={exporting}
+                  disabled={exportBusy}
                   className="flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-hover active:bg-brand-pressed disabled:opacity-50"
                 >
-                  {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+                  {exportBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
                   Exporter ce carrousel
                 </button>
                 {exportJob?.status === "done" && exportJob.driveUrl && (
@@ -295,7 +293,18 @@ export default function CarrouselPage() {
                   </a>
                 )}
                 {exportJob?.status === "error" && (
-                  <span className="text-sm text-red-600">Échec de l&apos;export — voir les logs serveur.</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-red-600">
+                      {exportJob.error ?? "Échec de l'export — voir les logs serveur."}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => retryExportPolling()}
+                      className="text-sm font-medium text-brand hover:underline"
+                    >
+                      Réessayer
+                    </button>
+                  </div>
                 )}
                 {exportJob && exportJob.status !== "done" && exportJob.status !== "error" && (
                   <span className="text-sm text-zinc-500">{exportJob.status}…</span>
@@ -320,6 +329,7 @@ function SlideCard({
   previewScale,
   onTextChange,
   onImageChange,
+  onCadreChange,
 }: {
   index: number;
   total: number;
@@ -328,6 +338,7 @@ function SlideCard({
   previewScale: number;
   onTextChange: (value: string) => void;
   onImageChange: (imageIndex: number) => void;
+  onCadreChange: (imageCadre: string) => void;
 }) {
   const def = GABARITS[slide.gabaritId];
   const Preview = def?.Component;
@@ -352,6 +363,17 @@ function SlideCard({
           >
             <Preview {...slide.fieldValues} />
           </div>
+          {/* Recadrage manuel du fond — famille 1 uniquement (1A/1B/1C),
+              même contrôle que /titres et l'éditeur détaillé. */}
+          {["1a", "1b", "1c"].includes(slide.gabaritId) && (
+            <RecadrageFond
+              echelle={previewScale}
+              largeur={GABARIT_WIDTH}
+              hauteur={lireHauteurPhoto(slide.fieldValues.photoHeight) || GABARIT_PHOTO_HEIGHT}
+              valeur={slide.fieldValues.imageCadre}
+              onChange={onCadreChange}
+            />
+          )}
         </div>
       )}
 

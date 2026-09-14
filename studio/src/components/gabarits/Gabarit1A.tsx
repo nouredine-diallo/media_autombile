@@ -79,9 +79,11 @@ export interface Gabarit1AProps {
  * Gabarit 1A — image seule + titre.
  *
  * Ce composant est l'unique source de vérité visuelle : il est utilisé tel quel
- * dans l'aperçu navigateur (src/app/gabarits/1a) et dans la page de capture
- * Playwright (src/app/render/1a) — voir CLAUDE.md §1, contrainte "zéro écart
- * entre aperçu et rendu final".
+ * dans l'aperçu navigateur (src/app/gabarits/[gabaritId], registre GABARITS —
+ * l'ancienne route dédiée src/app/gabarits/1a a été retirée le 2026-09-14,
+ * elle masquait le vrai éditeur derrière un outil de dev "Étape 1" jamais mis
+ * à jour) et dans la page de capture Playwright (src/app/render/1a) — voir
+ * CLAUDE.md §1, contrainte "zéro écart entre aperçu et rendu final".
  *
  * Police et proportions déduites par analyse des captures de référence
  * (inspi/, posts réels) plutôt qu'estimées à l'œil (CLAUDE.md §6.2) :
@@ -91,7 +93,7 @@ export interface Gabarit1AProps {
  *   depuis l'Étape 4, extrait tel quel de ce composant — vérifié
  *   pixel-identique après extraction, voir scripts/verify-gabarit-1a.mjs).
  */
-function lireHauteurPhoto(valeur: string | undefined): number {
+export function lireHauteurPhoto(valeur: string | undefined): number {
   const n = Number.parseInt(valeur ?? "", 10);
   return Number.isFinite(n) && n > 0 && n <= GABARIT_1A_HEIGHT ? n : GABARIT_PHOTO_HEIGHT;
 }

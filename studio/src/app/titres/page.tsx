@@ -12,8 +12,12 @@ import {
   X,
 } from "lucide-react";
 import { decodePrefill } from "@/lib/prefill";
+import { useExportJobPolling } from "@/lib/export/useExportJobPolling";
+import { apiFetch } from "@/lib/apiFetch";
 import { GABARITS, GABARIT_HEIGHT, GABARIT_WIDTH } from "@/components/gabarits/registry";
 import { MontageDirect, type BulleCible } from "@/components/MontageDirect";
+import { RecadrageFond } from "@/components/RecadrageFond";
+import { lireHauteurPhoto, GABARIT_PHOTO_HEIGHT } from "@/components/gabarits/Gabarit1A";
 import { GABARIT_2A_BULLE } from "@/components/gabarits/Gabarit2A";
 import { GABARIT_2B_BULLE } from "@/components/gabarits/Gabarit2B";
 import { GABARIT_3A_BULLE1, GABARIT_3A_BULLE2 } from "@/components/gabarits/Gabarit3A";
@@ -84,6 +88,8 @@ interface UploadedImage {
   /** Position du sujet dans le fond composé, en % du canevas. */
   sujetHaut?: number;
   sujetCentreX?: number;
+  /** Détourage indisponible/sujet trop large : recadrage centré appliqué en repli (finding B8). */
+  fallbackCrop?: boolean;
 }
 
 interface Verdict {
@@ -123,7 +129,7 @@ export default function TitresPage() {
   /** Contexte source depuis le prefill RADAR : nom du flux + chapeau de l'article. */
   const [sourceContext, setSourceContext] = useState<{ source: string; headline: string } | null>(null);
   /** État de l'export inline — évite la navigation vers /export/{jobId}. */
-  const [exportJob, setExportJob] = useState<{ jobId: string; status: string; driveUrl?: string; hasDownload?: boolean } | null>(null);
+  const { job: exportJob, start: startExportPolling, retry: retryExportPolling, reset: resetExportJob } = useExportJobPolling();
   /** Échelle réelle de l'aperçu — voir PREVIEW_SCALE_MAX. */
   const [previewScale, setPreviewScale] = useState(PREVIEW_SCALE_MAX);
 
@@ -171,7 +177,7 @@ export default function TitresPage() {
     // Auto-générer les titres si on a un thème (élimine 1 clic)
     if (data.t && data.t.trim().length > 0) {
       setStatus("loading");
-      fetch("/api/titles/generate", {
+      apiFetch("/api/titles/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theme: data.t }),
@@ -206,10 +212,10 @@ export default function TitresPage() {
   async function detourer(cibles: UploadedImage[]) {
     for (const img of cibles) {
       const [fond, bulle] = await Promise.all([
-        fetch(`/api/images/${img.id}/segment`, { method: "POST" })
+        apiFetch(`/api/images/${img.id}/segment`, { method: "POST" })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
-        fetch(`/api/images/${img.id}/segment?variant=bulle`, { method: "POST" })
+        apiFetch(`/api/images/${img.id}/segment?variant=bulle`, { method: "POST" })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
       ]);
@@ -257,7 +263,14 @@ export default function TitresPage() {
     try {
       const form = new FormData();
       arr.forEach((f) => form.append("images", f));
-      const res = await fetch("/api/images/upload-batch", { method: "POST", body: form });
+      // Timeout plus généreux que le défaut (60s) : plusieurs photos +
+      // détourage serveur (~1.5-2s/image mesuré) peuvent dépasser 20s sans
+      // rien avoir de cassé, surtout sur une connexion 5G faible.
+      const res = await apiFetch("/api/images/upload-batch", {
+        method: "POST",
+        body: form,
+        signal: AbortSignal.timeout(60_000),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
       const nouvelles: UploadedImage[] = data.images.map((img: UploadedImage) => ({
@@ -267,6 +280,7 @@ export default function TitresPage() {
         bulleUrl: img.bulleUrl,
         photoHeight: img.photoHeight,
         role: img.role,
+        fallbackCrop: img.fallbackCrop,
       }));
       setImages((prev) => {
         const suite = [...prev, ...nouvelles];
@@ -301,7 +315,7 @@ export default function TitresPage() {
     setStatus("loading");
     setErrorMessage(null);
     try {
-      const res = await fetch("/api/images/import-urls", {
+      const res = await apiFetch("/api/images/import-urls", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ urls: [url] }),
@@ -310,12 +324,13 @@ export default function TitresPage() {
       if (!res.ok || !Array.isArray(data.images) || data.images.length === 0) {
         throw new Error(data.error ?? "Image indisponible");
       }
-      const nouvelles: UploadedImage[] = data.images.map((img: { id: string; croppedUrl: string; backdropUrl: string }) => ({
+      const nouvelles: UploadedImage[] = data.images.map((img: { id: string; croppedUrl: string; backdropUrl: string; fallbackCrop?: boolean }) => ({
         id: img.id,
         croppedUrl: img.croppedUrl,
         backdropUrl: img.backdropUrl,
         bulleUrl: `/api/images/${img.id}?variant=bulle`,
         role: "fond",
+        fallbackCrop: img.fallbackCrop,
       }));
       setImages((prev) => {
         const suite = [...prev, ...nouvelles];
@@ -339,7 +354,7 @@ export default function TitresPage() {
     setSelectedSurtitre(null);
     setSelectedParagraph(null);
     try {
-      const res = await fetch("/api/titles/generate", {
+      const res = await apiFetch("/api/titles/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theme }),
@@ -473,7 +488,7 @@ export default function TitresPage() {
     if (!fondId || !fondPret) return;
     let annule = false;
     const pour = selectedGabarit;
-    fetch(`/api/images/${fondId}/gabarit-fit?gabarit=${pour}`)
+    apiFetch(`/api/images/${fondId}/gabarit-fit?gabarit=${pour}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (annule || !j) return;
@@ -499,9 +514,9 @@ export default function TitresPage() {
   async function handleExport() {
     setExporting(true);
     setErrorMessage(null);
-    setExportJob(null);
+    resetExportJob();
     try {
-      const res = await fetch("/api/export", {
+      const res = await apiFetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -514,34 +529,12 @@ export default function TitresPage() {
       if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
       // Polling inline au lieu de naviguer vers /export/{jobId}
       const jobId = data.jobId as string;
-      setExportJob({ jobId, status: "pending" });
       setExporting(false);
-      pollExport(jobId);
+      startExportPolling(jobId);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Erreur inconnue");
       setExporting(false);
     }
-  }
-
-  /* ── Polling de l'export — même logique que ExportConfirmationClient ── */
-  function pollExport(jobId: string) {
-    let cancelled = false;
-    async function loop() {
-      if (cancelled) return;
-      try {
-        const r = await fetch(`/api/export/${jobId}`);
-        if (!r.ok) return;
-        const j = await r.json();
-        setExportJob({ jobId, status: j.status, driveUrl: j.driveUrl, hasDownload: j.hasDownload });
-        if (j.status !== "done" && j.status !== "error") {
-          setTimeout(loop, 800);
-        }
-      } catch {
-        // Erreur réseau — on arrête le polling silencieusement
-      }
-    }
-    loop();
-    return () => { cancelled = true; };
   }
 
   const previewValues = buildPreviewValues();
@@ -617,6 +610,14 @@ export default function TitresPage() {
                 <div key={img.id} className="relative h-20 w-16 overflow-hidden rounded-lg border border-zinc-200">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={img.croppedUrl} alt="" className="h-full w-full object-cover" />
+                  {img.fallbackCrop && (
+                    <div
+                      className="absolute bottom-0 left-0 flex items-center gap-1 rounded-tr bg-amber-500/90 px-1 py-0.5 text-white"
+                      title="Cadrage simplifié — le sujet n'a pas pu être détecté, un recadrage centré a été appliqué (peut couper l'image)."
+                    >
+                      <AlertTriangle className="size-3" aria-hidden />
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() =>
@@ -946,10 +947,31 @@ export default function TitresPage() {
                   )}
                   <button
                     type="button"
-                    onClick={() => setExportJob(null)}
+                    onClick={() => resetExportJob()}
                     className="text-xs text-zinc-400 hover:text-zinc-600"
                   >
                     Créer un autre post
+                  </button>
+                </div>
+              )}
+              {exportJob.status === "error" && (
+                <div className="flex flex-col gap-2">
+                  {exportJob.error && (
+                    <p className="text-xs text-red-600">{exportJob.error}</p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => retryExportPolling()}
+                    className="rounded-lg bg-brand px-4 py-2 text-center text-sm font-medium text-white transition-colors hover:bg-brand-hover"
+                  >
+                    Réessayer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => resetExportJob()}
+                    className="text-xs text-zinc-400 hover:text-zinc-600"
+                  >
+                    Annuler
                   </button>
                 </div>
               )}
@@ -989,6 +1011,19 @@ export default function TitresPage() {
                   valeurs={previewValues}
                   onChange={(maj) => setReglages((p) => ({ ...p, ...maj }))}
                   photos={images.slice(1).map((i) => ({ bulleUrl: i.bulleUrl, sujetBulleUrl: i.bulleSujetUrl }))}
+                />
+              )}
+              {/* Recadrage manuel de l'image de fond — gabarits famille 1
+                  (image seule) uniquement, à la demande explicite du
+                  2026-09-14. Le moteur de rendu (Gabarit1A.tsx) acceptait déjà
+                  ce champ (`imageCadre`) ; seule l'interface manquait. */}
+              {["1a", "1b", "1c"].includes(selectedGabarit) && images[0] && (
+                <RecadrageFond
+                  echelle={previewScale}
+                  largeur={GABARIT_WIDTH}
+                  hauteur={lireHauteurPhoto(previewValues.photoHeight) || GABARIT_PHOTO_HEIGHT}
+                  valeur={previewValues.imageCadre}
+                  onChange={(v) => setReglages((p) => ({ ...p, imageCadre: v }))}
                 />
               )}
             </div>

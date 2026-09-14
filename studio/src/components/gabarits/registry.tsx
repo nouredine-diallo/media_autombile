@@ -63,8 +63,22 @@ export const GABARITS: Record<string, GabaritDef> = {
     // Gabarit1A a une signature typée (props nommées) là où le registre
     // passe un `Record<string, string>` générique ; l'adaptateur fait le pont
     // sans toucher au composant, dont le test pixel-exact dépend.
+    //
+    // Bug trouvé le 2026-09-14 en branchant le recadrage manuel : cet
+    // adaptateur ne transmettait ni `imageCadre` ni `photoHeight` à
+    // `Gabarit1A` — contrairement aux adaptateurs "1b"/"1c" ci-dessous, qui
+    // les passent correctement. Le champ était déclaré dans `fields`
+    // (kind: "geometry") et avait un défaut, mais restait mort en pratique
+    // pour ce gabarit précis : toute valeur de recadrage était calculée et
+    // écrite en état, puis silencieusement jetée au rendu. Vérifié par
+    // `getComputedStyle(img).transform` avant/après correctif.
     Component: (props: Record<string, string>) => (
-      <Gabarit1A imageUrl={props.imageUrl ?? ""} title={props.title ?? ""} />
+      <Gabarit1A
+        imageUrl={props.imageUrl ?? ""}
+        title={props.title ?? ""}
+        imageCadre={props.imageCadre}
+        photoHeight={props.photoHeight}
+      />
     ),
     defaults: {
       imageUrl: PLACEHOLDER,

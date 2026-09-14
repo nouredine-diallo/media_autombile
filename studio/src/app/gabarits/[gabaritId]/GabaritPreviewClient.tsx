@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { ArrowRight, Loader2, Plus } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -8,8 +8,15 @@ import {
   GABARIT_HEIGHT,
   GABARIT_WIDTH,
 } from "@/components/gabarits/registry";
+import { apiFetch } from "@/lib/apiFetch";
+import { RecadrageFond } from "@/components/RecadrageFond";
+import { lireHauteurPhoto, GABARIT_PHOTO_HEIGHT } from "@/components/gabarits/Gabarit1A";
 
-const PREVIEW_SCALE = 0.4;
+// Plafond desktop — l'échelle réelle est recalculée sous ce plafond pour ne
+// jamais dépasser la largeur de l'écran (finding B7, audit 2026-09-07 :
+// avant, cette valeur était fixe et débordait sur mobile/tablette — même
+// correctif déjà appliqué à titres/page.tsx le 2026-08-29).
+const PREVIEW_SCALE_MAX = 0.4;
 
 interface UploadedImage {
   id: string;
@@ -45,6 +52,17 @@ export function GabaritPreviewClient({ gabaritId }: { gabaritId: string }) {
   // Images uploadées en session (stockées localement)
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
 
+  const [previewScale, setPreviewScale] = useState(PREVIEW_SCALE_MAX);
+  useEffect(() => {
+    function recalcScale() {
+      const disponible = window.innerWidth - 32;
+      setPreviewScale(Math.min(PREVIEW_SCALE_MAX, disponible / GABARIT_WIDTH));
+    }
+    recalcScale();
+    window.addEventListener("resize", recalcScale);
+    return () => window.removeEventListener("resize", recalcScale);
+  }, []);
+
   const { Component } = def;
 
   /* ── Upload d'une image pour un champ ── */
@@ -54,9 +72,10 @@ export function GabaritPreviewClient({ gabaritId }: { gabaritId: string }) {
       try {
         const form = new FormData();
         form.append("images", file);
-        const res = await fetch("/api/images/upload-batch", {
+        const res = await apiFetch("/api/images/upload-batch", {
           method: "POST",
           body: form,
+          signal: AbortSignal.timeout(60_000),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
@@ -87,7 +106,7 @@ export function GabaritPreviewClient({ gabaritId }: { gabaritId: string }) {
     setStatus("loading");
     setErrorMessage(null);
     try {
-      const res = await fetch("/api/export", {
+      const res = await apiFetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ gabaritId, fieldValues: values }),
@@ -285,21 +304,33 @@ export function GabaritPreviewClient({ gabaritId }: { gabaritId: string }) {
           </p>
           <div
             style={{
-              width: GABARIT_WIDTH * PREVIEW_SCALE,
-              height: GABARIT_HEIGHT * PREVIEW_SCALE,
+              width: GABARIT_WIDTH * previewScale,
+              height: GABARIT_HEIGHT * previewScale,
             }}
-            className="overflow-hidden rounded-xl border border-zinc-200 shadow-md"
+            className="relative overflow-hidden rounded-xl border border-zinc-200 shadow-md"
           >
             <div
               style={{
                 width: GABARIT_WIDTH,
                 height: GABARIT_HEIGHT,
-                transform: `scale(${PREVIEW_SCALE})`,
+                transform: `scale(${previewScale})`,
                 transformOrigin: "top left",
               }}
             >
               <Component {...values} />
             </div>
+            {/* Recadrage manuel de l'image de fond — même contrôle que sur
+                /titres, disponible ici aussi (« peu importe le parcours »,
+                demande du 2026-09-14). Gabarits famille 1 uniquement. */}
+            {["1a", "1b", "1c"].includes(gabaritId) && values.imageUrl && (
+              <RecadrageFond
+                echelle={previewScale}
+                largeur={GABARIT_WIDTH}
+                hauteur={lireHauteurPhoto(values.photoHeight) || GABARIT_PHOTO_HEIGHT}
+                valeur={values.imageCadre}
+                onChange={(v) => setValues((p) => ({ ...p, imageCadre: v }))}
+              />
+            )}
           </div>
         </section>
       </main>
