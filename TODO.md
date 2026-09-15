@@ -29,6 +29,15 @@
 >
 > **Deux bugs supplémentaires trouvés en déployant réellement** (§11.10, pas des findings de sécurité — des bugs d'outillage) : `deploy.sh` s'auto-modifiait pendant sa propre exécution (git pull sur lui-même, bash continuait sur l'ancien contenu déjà chargé) — corrigé en se ré-exécutant depuis une copie figée. Et surtout : `deploy.sh` n'a **jamais lancé `npm install`** depuis le début du projet — `git pull` mettait à jour `package.json` mais `node_modules` restait figé, donc aucune mise à jour de dépendance (y compris de sécurité) n'atteignait jamais réellement la prod par ce script seul. Corrigé. A nécessité 4 runs de déploiement pour que tout s'applique réellement (conséquence du premier correctif : un changement à `deploy.sh` prend effet au run suivant, pas à celui qui l'introduit).
 
+## Fait le 15 sept. 2026 (Partie 3 — test réel du parcours utilisateur, chronométré, **déployé et vérifié en prod**)
+
+> Voir `AUDIT-PRODUCTION-READINESS-2026-09-15.md` §12. Parcours RADAR (login → dashboard → events → brief → article → pages annexes) et STUDIO (login → titres → gabarits → pipeline) testés réellement via Playwright, chronométrés, en local puis contre la vraie prod. 2 appels Groq réels consommés (article + titres), avec accord explicite préalable.
+
+- ✅ **Vitesse vérifiée, pas un problème** : Groq (1.25-2.6s), export Playwright (1.1-1.9s), pages (1.0-1.7s) — tous corrects sur la vraie VM. Seule la génération de brief (traduction locale) est très variable (65ms à 15.6s) selon le volume de texte, pas un goulot fixe.
+- ✅ `[RADAR]` **Bug réel, cassé depuis le début du projet** : `drive_files` n'avait pas de colonne `path` en prod (deux définitions de schéma contradictoires entre `lib/db.ts` et `lib/drive.ts`, celle sans `path` gagnait toujours) — cassait `GET /api/drive?stats=true` (500) et la synchronisation du dossier local `drive-sync/` (`INSERT` sur colonne inexistante). Corrigé par migration `ALTER TABLE ADD COLUMN path`, testé contre une reproduction exacte du schéma cassé de prod (500 → 200), déployé et reconfirmé en direct.
+- ✅ `[RADAR]` `AnalyticsTracker` déclenchait un 401 silencieux sur `/api/analytics` à chaque visite de `/login` (avant toute session). Corrigé à la source, déployé et reconfirmé.
+- ✅ `[LES DEUX]` Scripts de parcours chronométrés réutilisables ajoutés (`scripts/dev-journey-test.mjs`), zéro coût Groq par défaut.
+
 - ✅ `[LES DEUX]` **[CRITIQUE]** Next.js 16.3.1 → 16.3.5 — advisory critique (RCE non authentifiée, Image Optimization API) confirmée par `npm audit`, et `/_next/image` vérifié joignable sans session en prod avant correctif (curl réel). Build OK des deux apps après bump.
 - ✅ `[LES DEUX]` Bypass du rate limiting login (`X-Forwarded-For` spoofable, nginx ne le remplace pas) — `getClientIp()` préfère maintenant `x-real-ip`. Extrait en `lib/loginSecurity.ts`, testé (8 tests RADAR + 6 STUDIO, dont un test qui reproduit l'ancien bug pour prouver qu'il était réel).
 - ✅ `[LES DEUX]` `SESSION_SECRET` : repli silencieux vers une valeur codée en dur remplacé par un fail-fast explicite en prod (`lib/sessionSecret.ts`, résolution paresseuse pour ne pas casser `next build`). Testé.

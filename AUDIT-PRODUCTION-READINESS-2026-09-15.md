@@ -785,3 +785,87 @@ qui a réellement exécuté les deux correctifs ci-dessus) :
   compris.
 - **Déployé et vérifié en production** le 15 sept. 2026 — voir §11.10 pour
   le détail des 4 runs de déploiement et des deux bugs trouvés en route.
+
+---
+
+## 12. Partie 3 — Test réel du parcours utilisateur, chronométré (15 sept. 2026, suite)
+
+Sur demande explicite ("teste le parcours réel de bout en bout") : parcours
+RADAR (login → dashboard → events → brief → article → pages annexes) et
+STUDIO (login → titres → gabarits → pipeline) exécutés réellement via
+Playwright, chaque étape chronométrée, d'abord en local puis contre la
+vraie prod. 2 vrais appels Groq consommés au total (1 article, 1 génération
+de titres), avec accord explicite préalable de l'utilisateur.
+
+### 12.1 Résultat : pas de problème de vitesse
+
+| Composant | Temps réel (prod) |
+|---|---|
+| Login → dashboard | 1.0-1.3s |
+| Pages (events/ready/corrections/stats/partenaires/calendrier) | 1.0-1.7s |
+| Génération d'article (Groq) | 2.6s |
+| Génération de titres STUDIO (Groq) | 1.25s |
+| Export/rendu Playwright serveur | 1.9s (froid) → 1.1s (chaud) |
+| Génération de brief (traduction locale) | 65ms à 15.6s — très variable selon le volume de texte à traduire, pas un point fixe |
+
+Verdict : Groq et l'export ne sont pas des goulots d'étranglement. La VM
+ajoute ~25-40% de latence par rapport à une machine de dev, mais reste dans
+des temps raisonnables pour un usage à 10 personnes. Aucune optimisation
+urgente identifiée sur ce plan.
+
+### 12.2 Deux bugs réels trouvés et corrigés le jour même
+
+**Bug 1 — `drive_files` sans colonne `path`, cassé depuis le tout début du
+projet (pas une régression).** `lib/drive.ts` (`initDriveDb()`) et
+`lib/db.ts` définissaient chacun leur propre schéma pour `drive_files`,
+avec une colonne `path` présente dans l'un et absente dans l'autre. Celui
+de `db.ts` s'exécute en premier au démarrage (avant toute route), donc
+`initDriveDb()` ne créait jamais réellement la table — mais son
+`CREATE INDEX ... (path)` s'exécutait quand même et plantait. Conséquence
+vérifiée en prod : `GET /api/drive?stats=true` en 500, et surtout
+`syncLocalDirectory()` (sync du dossier `drive-sync/`) cassée depuis
+toujours (`INSERT` sur une colonne inexistante). Corrigé par une migration
+`ALTER TABLE ADD COLUMN path` dans `db.ts` (source de vérité unique du
+schéma, même patron que les migrations `is_cloud`/`enabled` déjà en place),
+`lib/drive.ts` simplifié pour ne plus dupliquer la définition de table.
+
+**Test de non-régression réel, pas une relecture de code** : schéma cassé
+exact de prod reproduit sur une copie de la vraie base locale (colonne
+`path` retirée via `ALTER TABLE ... DROP COLUMN`), vrai serveur Next.js
+démarré dessus, vraie requête HTTP authentifiée envoyée à l'endpoint —
+`500` → `200`. Refait une deuxième fois après un faux départ (le premier
+essai testait encore l'ancien build à cause d'un process serveur mal
+arrêté — leçon retenue : toujours vérifier qu'un process est réellement
+mort, pas juste que la commande de kill a été envoyée).
+
+**Bug 2 — analytics 401 sur `/login` (mineur).** `AnalyticsTracker`, monté
+dans le layout racine, se déclenchait sur `/login` avant toute session —
+`/api/analytics` n'étant pas dans l'allowlist du middleware (à raison),
+chaque visite de connexion produisait un 401 silencieux. Perte de données
+de tracking sur le trafic pré-connexion, aucun impact utilisateur visible.
+Corrigé à la source (pas de tracking sur les routes publiques) plutôt
+qu'en élargissant l'allowlist d'authentification.
+
+**Les deux corrigés, testés réellement, déployés et reconfirmés en direct
+contre la vraie prod** : `GET /api/drive?stats=true` → `200` en prod
+réelle, plus aucun `401` sur `/api/analytics` en visitant `/login` en prod
+réelle (vérifié par un dernier passage Playwright après déploiement, pas
+supposé).
+
+### 12.3 Outillage laissé en place
+
+`RADAR/scripts/dev-journey-test.mjs` et `studio/scripts/dev-journey-test.mjs`
+— scripts de parcours chronométrés réutilisables (paramétrables par
+variables d'environnement : `RADAR_BASE_URL`/`STUDIO_BASE_URL`,
+`NO_BRIEF_EVENT_ID`/`WITH_BRIEF_EVENT_ID`, `GENERATE_ARTICLE=1` pour
+inclure le seul appel Groq du parcours RADAR). Par défaut, aucun ne
+consomme de quota Groq — à activer explicitement.
+
+### 12.4 Ce que ce test ne couvre toujours pas
+
+Rappel honnête : ce test valide que le parcours **fonctionne et n'est pas
+lent**, pas que le produit est complet. La liste des ⬜ dans `TODO.md`
+(pipeline RSS, scoring, contrôles qualité, validation humaine, export
+Drive complet, calibration anti-plagiat, poids u2net/realesrgan sur la VM)
+reste largement ouverte — voir la réponse donnée à "mon app est-elle
+production ready" plus tôt dans la session, toujours valable.
