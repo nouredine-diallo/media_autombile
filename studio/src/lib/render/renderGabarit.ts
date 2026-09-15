@@ -4,6 +4,27 @@ import { encrypt } from "@/lib/session";
 import { GABARITS, GABARIT_HEIGHT, GABARIT_WIDTH } from "@/components/gabarits/registry";
 
 /**
+ * Trouvé le 15 sept. 2026, en testant un export réel en prod (RADAR→STUDIO
+ * et STUDIO seul) : depuis l'activation HTTPS (14 sept.), `request.nextUrl.origin`
+ * vaut `https://...` (nginx transmet `X-Forwarded-Proto: https`), mais le
+ * process Next interne ne sert QUE du HTTP en clair sur son port loopback —
+ * seul nginx termine le TLS. Le navigateur headless qui capture le rendu
+ * (même process serveur) tentait donc de se joindre lui-même en HTTPS sur
+ * son propre port interne → `net::ERR_SSL_PROTOCOL_ERROR`, et **tous les
+ * exports échouaient en prod** (job status `error`, vérifié par appel API
+ * réel, pas supposé). Cet appel est un aller-retour serveur→serveur, jamais
+ * un lien cliqué par un navigateur externe — même principe déjà appliqué à
+ * `STUDIO_IMPORT_URL` (RADAR/CLAUDE.md §9b) : toujours viser l'adresse
+ * interne en clair, jamais l'origine publique de la requête qui déclenche
+ * le rendu. Utilisée par les 4 points d'entrée qui lancent ce même
+ * Chromium interne (`api/export`, `api/render/1a`, `api/render/[gabaritId]`,
+ * et cette fonction) pour ne pas dupliquer 4 fois la même correction.
+ */
+export function getInternalRenderOrigin(): string {
+  return `http://127.0.0.1:${process.env.PORT || 3002}`;
+}
+
+/**
  * Rendu Playwright partagé — extrait de /api/render/[gabaritId] (Étape 4)
  * pour être appelable aussi bien depuis une requête HTTP classique que
  * depuis la tâche de fond de l'Étape 6 (/api/export), sans dupliquer la

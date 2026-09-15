@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { getSession } from "@/lib/session";
 import { GABARITS } from "@/components/gabarits/registry";
 import { createJob, createCarouselJob, updateJob, type CarouselSlideSpec } from "@/lib/jobs/store";
-import { renderGabaritToPng } from "@/lib/render/renderGabarit";
+import { renderGabaritToPng, getInternalRenderOrigin } from "@/lib/render/renderGabarit";
 import { uploadCarouselToDrive } from "@/lib/drive/upload";
 import { processExportJob, notifyRadarExported } from "@/lib/export/runExport";
 
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const jobId = randomUUID();
     createCarouselJob(jobId, slides);
 
-    processCarouselExportJob(jobId, slides, contentId ?? null, fieldValues?.caption, request.nextUrl.origin).catch(
+    processCarouselExportJob(jobId, slides, contentId ?? null, fieldValues?.caption, getInternalRenderOrigin()).catch(
       (err) => {
         console.error(`[export] Job carrousel ${jobId} échoué:`, err);
         updateJob(jobId, {
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
   createJob(jobId, gabaritId, resolved);
 
   // Lancer le traitement en arrière-plan (ne pas attendre la réponse)
-  processExportJob(jobId, gabaritId, resolved, contentId ?? null, request.nextUrl.origin).catch(
+  processExportJob(jobId, gabaritId, resolved, contentId ?? null, getInternalRenderOrigin()).catch(
     (err) => {
       console.error(`[export] Job ${jobId} échoué:`, err);
       updateJob(jobId, {

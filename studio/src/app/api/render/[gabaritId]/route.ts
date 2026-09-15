@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { chromium } from "playwright";
 import { encrypt, getSession } from "@/lib/session";
 import { GABARITS, GABARIT_HEIGHT, GABARIT_WIDTH } from "@/components/gabarits/registry";
+import { getInternalRenderOrigin } from "@/lib/render/renderGabarit";
 
 export const runtime = "nodejs";
 
@@ -40,7 +41,7 @@ export async function POST(
         : (def.defaults[field.key] ?? "");
   }
 
-  const origin = request.nextUrl.origin;
+  const origin = getInternalRenderOrigin();
 
   // Cookie de session dédié au navigateur headless (voir /api/render/1a pour le détail).
   const internalToken = await encrypt({

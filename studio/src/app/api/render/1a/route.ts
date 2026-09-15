@@ -6,6 +6,7 @@ import {
   GABARIT_1A_WIDTH,
   GABARIT_1A_HEIGHT,
 } from "@/components/gabarits/Gabarit1A";
+import { getInternalRenderOrigin } from "@/lib/render/renderGabarit";
 
 export const runtime = "nodejs";
 
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
       ? body.imageUrl
       : "/test/placeholder-photo.jpg";
 
-  const origin = request.nextUrl.origin;
+  const origin = getInternalRenderOrigin();
 
   // Cookie de session dédié au navigateur headless : ne jamais transporter le
   // cookie de l'utilisateur courant vers ce contexte serveur-à-serveur.

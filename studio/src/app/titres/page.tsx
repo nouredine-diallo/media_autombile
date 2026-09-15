@@ -875,7 +875,16 @@ export default function TitresPage() {
           )}
 
           {/* ── Sortie : export inline ── */}
-          {selectedTitle && !exportJob && (
+          {/* Trouvé le 15 sept. 2026 : ce bouton n'attendait que le titre
+              (rapide, 1-3s) — pas l'import de l'image RADAR (`importFromUrl`,
+              plus lent : fetch serveur-à-serveur + recadrage), qui tourne en
+              parallèle. Un clic pendant cette fenêtre exportait les
+              placeholders par défaut (`def.defaults`) plutôt que la vraie
+              photo — vérifié par export réel, pas supposé : le job produit
+              contenait `imageUrl: "/test/placeholder-photo.jpg"`. `images`
+              reste vide tant que l'import n'a pas résolu, donc l'attendre
+              ici ferme la fenêtre sans dupliquer la logique de chargement. */}
+          {selectedTitle && images.length >= requiredImages && !exportJob && (
             <div className="flex flex-col gap-2">
               <button
                 type="button"
