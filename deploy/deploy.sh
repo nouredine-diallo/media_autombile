@@ -96,8 +96,34 @@ pm2 delete all 2>/dev/null || true
 # d'ingestion en cours. Relevé à 10s, seule RADAR a ce handler (STUDIO n'a
 # ni cron de fond ni connexion SQLite persistante à fermer proprement — pas
 # le même risque, valeur par défaut PM2 conservée).
-pm2 start /opt/media-labs/start-radar.sh --name radar --cwd "$REPO_DIR/RADAR" --max-memory-restart 400M --kill-timeout 10000
+#
+# 400M (14 sept. 2026, ce commit) confirmé beaucoup trop bas en usage réel :
+# pm2.log montre `current_memory=939458560` puis `1005432832` octets (~900
+# Mo-1 Go) au chargement du modèle d'embeddings (`@xenova/transformers`,
+# scoring.ts) — PM2 SIGKILL le process à chaque fois avant la fin du
+# clustering, 3 pipeline runs consécutifs tués le même jour
+# (pipeline_runs.id 83, 84, 85, tous "Processus interrompu avant la fin").
+#
+# 1500M (même jour, quelques minutes plus tard) ENCORE insuffisant : le
+# pipeline charge un DEUXIÈME modèle (traduction FR, ~300 Mo) juste après
+# l'embedding, cumul mesuré à 1634156544 octets (~1558 Mo) — PM2 a re-tué le
+# process (run 86) au même endroit. 3000M laisse une marge large au-dessus
+# du pic réel observé, sur une VM à 11 Go (10 Go dispo, `free -h` vérifié).
+pm2 start /opt/media-labs/start-radar.sh --name radar --cwd "$REPO_DIR/RADAR" --max-memory-restart 3000M --kill-timeout 10000
 pm2 start /opt/media-labs/start-studio.sh --name studio --cwd "$REPO_DIR/studio" --max-memory-restart 400M
+# Trouvé le 15 sept. 2026, en vérifiant un déploiement réel : `pm2 start
+# --max-memory-restart 3000M` juste au-dessus n'applique PAS la limite sur
+# ce process precis — `pm2 describe radar` affichait encore 419430400 (400M,
+# la valeur de STUDIO) après ce même déploiement, alors que `--kill-timeout`
+# de la même commande, lui, était bien appliqué (10000 confirmé). Reproduit
+# la régression déjà documentée plus haut (pic mesuré ~1.5-1.6 Go, 400M tue
+# le process en pleine ingestion) sans qu'aucune ligne de ce script n'ait
+# changé — cause exacte non identifiée (PM2 semble parfois ignorer ce flag
+# précis sur un `start` frais après `delete all`), mais `pm2 restart
+# --update-env` avec le même flag corrige la valeur de façon vérifiée à
+# chaque fois. Filet de sécurité explicite plutôt que de faire confiance au
+# flag de la commande `start` ci-dessus.
+pm2 restart radar --update-env --max-memory-restart 3000M
 pm2 save
 
 # 5. Open firewall
