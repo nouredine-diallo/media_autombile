@@ -15,7 +15,7 @@ import { tryAcquireGenerationLock, releaseGenerationLock, AlreadyGeneratingError
  * figée, RADAR/CLAUDE.md §3) : supprime toute balise `<...>` en bloc, ce qui
  * élimine aussi bien la balise que les attributs qu'elle porte.
  */
-function stripHtml(text: string | null | undefined): string {
+export function stripHtml(text: string | null | undefined): string {
   if (!text) return '';
   return text
     .replace(/<[^>]*>/g, ' ')
@@ -218,7 +218,7 @@ async function generateBriefUnlocked(eventId: number): Promise<Brief | null> {
   return brief;
 }
 
-function extractFacts(items: Item[]): Fact[] {
+export function extractFacts(items: Item[]): Fact[] {
   const facts: Fact[] = [];
   const seen = new Set<string>();
   

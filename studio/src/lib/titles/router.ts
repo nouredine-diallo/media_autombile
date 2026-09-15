@@ -1,4 +1,5 @@
 import "server-only";
+import type { LookupFact } from "./factsLookup";
 
 export interface TitleGenerationResult {
   titles: string[];
@@ -42,26 +43,56 @@ const PARAGRAPH_EXAMPLES = [
 ];
 
 /**
+ * Faits réels (chantier "P3", 15 sept. 2026, voir factsLookup.ts) : injectés
+ * tels quels — des phrases entières avec leur contexte, jamais des chiffres
+ * isolés — pour qu'un chiffre ne puisse pas être réinterprété dans un autre
+ * sens que celui de sa phrase d'origine (ex. "la BMW atteint 200 km/h" ne
+ * doit jamais devenir une vitesse minimale, un prix, ou toute autre
+ * statistique dans la sortie). Absents → repli explicite qui interdit
+ * d'inventer un chiffre technique plutôt que de laisser la consigne
+ * "chiffres concrets" pousser à en halluciner un (cause racine identifiée
+ * en analysant le prompt existant).
+ */
+function buildFactsSection(facts: LookupFact[]): string {
+  if (facts.length === 0) {
+    return [
+      "",
+      "Aucune donnée vérifiée n'est disponible pour ce thème.",
+      "N'invente AUCUN chiffre technique précis (puissance, vitesse, prix, autonomie, 0-100...).",
+      "Reste qualitatif si besoin (\"la nouvelle génération\", \"récemment\") plutôt que d'en inventer un.",
+    ].join("\n");
+  }
+  return [
+    "",
+    "FAITS RÉELS VÉRIFIÉS SUR CE THÈME (trouvés dans la veille RADAR — certains en anglais, à restituer fidèlement en français) :",
+    ...facts.map((f) => `- "${f.text}" (source : ${f.source_title})`),
+    "Utilise ces faits tels quels s'ils sont pertinents — ne réinterprète JAMAIS un chiffre dans un autre sens que celui de sa phrase d'origine.",
+    "Pour tout AUTRE chiffre technique non couvert par ces faits, n'en invente aucun.",
+  ].join("\n");
+}
+
+/**
  * Prompt unifié — un seul appel LLM produit titres + surtitres + paragraphes.
  * Économise ~50% de tokens par rapport aux 2 appels séparés.
  */
-function buildUnifiedPrompt(): string {
+function buildUnifiedPrompt(facts: LookupFact[] = []): string {
   return [
     "Tu écris du contenu pour les posts Instagram du Média Automobile.",
     "Tu dois produire DES TITRES, DES SURTITRES et DES PARAGRAPHES — tout dans un seul JSON.",
     "",
     "STYLE DES TITRES :",
     "- Phrase complète (pas de fragment), factuel ou intrigant",
-    "- Chiffres concrets quand possible, tutoiement, pas de putaclic mensonger",
+    "- Chiffres concrets SEULEMENT s'ils viennent des faits vérifiés ci-dessous, tutoiement, pas de putaclic mensonger",
     "EXEMPLES DE TITRES :",
     ...STYLE_EXAMPLES.map((t, i) => `${i + 1}. ${t}`),
     "",
     "STYLE DES PARAGRAPHES :",
     "- 25 à 60 mots, 1 idée par paragraphe, phrases courtes (15-25 mots)",
     "- Tutoiement, mettre en gras les mots-clés avec **gras**",
-    "- Factuel mais complice, jamais froid, chiffres concrets",
+    "- Factuel mais complice, jamais froid, chiffres concrets SEULEMENT s'ils viennent des faits vérifiés ci-dessous",
     "EXEMPLES DE PARAGRAPHES :",
     ...PARAGRAPH_EXAMPLES.map((p, i) => `${i + 1}. ${p}`),
+    buildFactsSection(facts),
     "",
     `Réponds UNIQUEMENT en JSON valide :`,
     `{`,
@@ -100,7 +131,7 @@ function nestedFind(obj: Record<string, unknown>, key: string): unknown {
  * CLAUDE.md §3.1) ; Claude est prévu pour la prod, sans clé à ce jour —
  * le point de branchement est documenté dans le `switch` ci-dessous.
  */
-export async function generateTitles(theme: string): Promise<TitleGenerationResult> {
+export async function generateTitles(theme: string, facts: LookupFact[] = []): Promise<TitleGenerationResult> {
   const trimmed = theme.trim();
   if (trimmed.length === 0) {
     throw new TitleGenerationError("Thème vide");
@@ -108,9 +139,9 @@ export async function generateTitles(theme: string): Promise<TitleGenerationResu
 
   switch (fournisseurActif()) {
     case "groq":
-      return generateAvecGroq(trimmed);
+      return generateAvecGroq(trimmed, facts);
     case "ollama":
-      return generateAvecOllama(trimmed);
+      return generateAvecOllama(trimmed, facts);
     // ── Point de branchement Claude (prod uniquement) ──
     // `LLM_PROVIDER=claude` activerait ici generateAvecClaude(trimmed).
     // Elle exigera une clé (ANTHROPIC_API_KEY) posée côté serveur et pourra
@@ -135,7 +166,7 @@ function fournisseurActif(): string {
  * Générateur Groq seul — le comportement de production actuel, isolé pour
  * qu'un second fournisseur puisse s'ajouter sans toucher aux appelants.
  */
-async function generateAvecGroq(theme: string): Promise<TitleGenerationResult> {
+async function generateAvecGroq(theme: string, facts: LookupFact[] = []): Promise<TitleGenerationResult> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     throw new TitleGenerationError("GROQ_API_KEY manquant côté serveur");
@@ -150,7 +181,7 @@ async function generateAvecGroq(theme: string): Promise<TitleGenerationResult> {
     body: JSON.stringify({
       model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
       messages: [
-        { role: "system", content: buildUnifiedPrompt() },
+        { role: "system", content: buildUnifiedPrompt(facts) },
         { role: "user", content: `Thème : ${theme}` },
       ],
       temperature: 0.8,
@@ -196,7 +227,7 @@ async function generateAvecGroq(theme: string): Promise<TitleGenerationResult> {
  * timeout est distinct. En streaming les en-têtes arrivent au premier
  * token, le timeout ne se déclenche jamais.
  */
-async function generateAvecOllama(theme: string): Promise<TitleGenerationResult> {
+async function generateAvecOllama(theme: string, facts: LookupFact[] = []): Promise<TitleGenerationResult> {
   const url = process.env.OLLAMA_URL || "http://localhost:11434";
   const model = process.env.OLLAMA_MODEL || "gemma4:e2b-it-qat";
 
@@ -206,7 +237,7 @@ async function generateAvecOllama(theme: string): Promise<TitleGenerationResult>
     body: JSON.stringify({
       model,
       messages: [
-        { role: "system", content: buildUnifiedPrompt() },
+        { role: "system", content: buildUnifiedPrompt(facts) },
         { role: "user", content: `Thème : ${theme}` },
       ],
       format: "json",

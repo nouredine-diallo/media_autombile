@@ -41,12 +41,19 @@ const publicRoutes = ["/login", "/select-name"];
  * l'information de mode dégradé disparaissait là où elle doit justement
  * apparaître le plus tôt). Endpoint en lecture seule, non sensible (statut
  * killswitch/mode dégradé, `src/lib/killswitch.ts`) — aucune donnée utilisateur.
+ *
+ * `/api/facts-lookup` (15 sept. 2026) rejoint la liste pour la même raison
+ * que les callbacks ci-dessus : appelé par STUDIO (`factsLookup.ts`) avant
+ * chaque génération de titre, sans session RADAR possible côté STUDIO.
+ * Lecture seule, ne renvoie que des phrases déjà publiques (items RSS déjà
+ * ingérés), aucune donnée utilisateur.
  */
 const publicApiPatterns = [
   /^\/api\/events\/[^/]+\/exported$/,
   /^\/api\/events\/[^/]+\/auto-preview$/,
   /^\/api\/events\/[^/]+\/carousel-package$/,
   /^\/api\/system\/status$/,
+  /^\/api\/facts-lookup$/,
 ];
 
 async function verifySession(token: string) {
