@@ -6,8 +6,33 @@
 # arrière automatique si la vérification post-déploiement échoue.
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Trouvé le 15 sept. 2026 (Partie 2 de AUDIT-PRODUCTION-READINESS) en
+# vérifiant un déploiement RÉEL : ce script fait `git pull` sur lui-même à
+# l'étape [1/6], en pleine exécution. Constaté concrètement — la nouvelle
+# étape de vérification PM2 ajoutée plus bas (§4) ne s'est PAS affichée dans
+# la sortie du déploiement qui a introduit ce correctif, alors que le
+# fichier sur disque contenait déjà le nouveau code (`git pull` avait bien
+# réussi). Cause : `git pull` remplace le fichier par un nouvel inode
+# (rename), mais bash garde son descripteur ouvert sur l'ANCIEN inode,
+# désormais orphelin — toute la suite du script continue silencieusement à
+# exécuter l'ancien contenu déjà en mémoire. Corrigé en se ré-exécutant
+# depuis une copie figée avant même de commencer, pour que le `git pull` de
+# l'étape suivante ne puisse plus jamais affecter le processus en cours.
+#
+# `$0` devient le chemin de la copie temporaire après le ré-exec — donc
+# SCRIPT_DIR/REPO_DIR doivent être calculés une seule fois, ICI, avant le
+# ré-exec, puis transmis par variable d'environnement plutôt que recalculés
+# depuis `$0` après coup (ce qui pointerait vers /tmp).
+SCRIPT_DIR="${DEPLOY_SH_SCRIPT_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
+
+if [ -z "${DEPLOY_SH_SELF_COPY:-}" ]; then
+    TMP_SELF="$(mktemp /tmp/deploy-sh-run.XXXXXX)"
+    cp "$0" "$TMP_SELF"
+    chmod +x "$TMP_SELF"
+    trap 'rm -f "$TMP_SELF"' EXIT
+    DEPLOY_SH_SELF_COPY=1 DEPLOY_SH_SCRIPT_DIR="$SCRIPT_DIR" exec "$TMP_SELF" "$@"
+fi
 
 echo "=== Media Labs Deploy ==="
 
