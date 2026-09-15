@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
-
-const secretKey = process.env.SESSION_SECRET || "fallback-very-long-secret-key-that-is-32-bytes-at-least-123456789";
-const paddedKey = secretKey.padEnd(32, "0");
-const encodedKey = new TextEncoder().encode(paddedKey);
+import { getSessionSecretBytes } from "@/lib/sessionSecret";
 
 const publicRoutes = ["/login", "/select-name"];
 
@@ -58,7 +55,7 @@ const publicApiPatterns = [
 
 async function verifySession(token: string) {
   try {
-    const { payload } = await jwtVerify(token, encodedKey, {
+    const { payload } = await jwtVerify(token, getSessionSecretBytes(), {
       algorithms: ["HS256"],
     });
     return payload as {

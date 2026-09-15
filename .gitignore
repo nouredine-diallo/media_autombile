@@ -70,3 +70,4 @@ studio/previews/
 
 # Artefacts générés par les scripts e2e (zip/pdf téléchargés en test)
 RADAR/scripts/e2e-test/output-visuels/
+backups-offsite/

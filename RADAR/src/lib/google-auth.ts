@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { getDb } from './db';
+import { getSessionSecretString } from './sessionSecret';
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
@@ -17,8 +18,7 @@ const SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
  * dépendance ajoutée (RADAR/CLAUDE.md §3).
  */
 function getTokenEncryptionKey(): Buffer {
-  const secret = process.env.SESSION_SECRET || 'fallback-very-long-secret-key-that-is-32-bytes-at-least-123456789';
-  return createHash('sha256').update(`google-tokens:${secret}`).digest();
+  return createHash('sha256').update(`google-tokens:${getSessionSecretString()}`).digest();
 }
 
 function encryptToken(plaintext: string): string {

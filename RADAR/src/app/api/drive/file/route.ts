@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { isPathWithinAllowedDirs } from '@/lib/pathGuard';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -17,8 +18,10 @@ export async function GET(request: NextRequest) {
     path.join(process.cwd(), 'visual-cache'),
   ];
 
-  const isAllowed = allowedDirs.some(dir => resolved.startsWith(dir));
-  if (!isAllowed) {
+  // Finding 1.6 (AUDIT-PRODUCTION-READINESS, 15 sept. 2026) — logique
+  // extraite dans lib/pathGuard.ts, testée par
+  // scripts/unit-tests/pathGuard.test.ts.
+  if (!isPathWithinAllowedDirs(resolved, allowedDirs)) {
     return NextResponse.json({ error: 'Access denied' }, { status: 403 });
   }
 

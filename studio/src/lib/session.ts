@@ -1,10 +1,7 @@
 import "server-only";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
-
-const secretKey = process.env.SESSION_SECRET || "fallback-very-long-secret-key-that-is-32-bytes-at-least-123456789";
-const paddedKey = secretKey.padEnd(32, "0");
-const encodedKey = new TextEncoder().encode(paddedKey);
+import { getSessionSecretBytes } from "./sessionSecret";
 
 export interface SessionPayload {
   userId: string;
@@ -16,12 +13,12 @@ export async function encrypt(payload: SessionPayload) {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(encodedKey);
+    .sign(getSessionSecretBytes());
 }
 
 export async function decrypt(session: string | undefined = "") {
   try {
-    const { payload } = await jwtVerify(session, encodedKey, {
+    const { payload } = await jwtVerify(session, getSessionSecretBytes(), {
       algorithms: ["HS256"],
     });
     return payload as { userId: string };

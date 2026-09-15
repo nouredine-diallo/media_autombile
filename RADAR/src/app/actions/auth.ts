@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createSession, deleteSession, getSession } from "@/lib/session";
 import { TEAM_MEMBERS } from "@/lib/team";
+import { getClientIp, passwordMatches } from "@/lib/loginSecurity";
 
 /**
  * Rate limiting du login — finding A3 (audit 2026-09-07) : aucune limite de
@@ -12,16 +13,16 @@ import { TEAM_MEMBERS } from "@/lib/team";
  * Compteur en mémoire process (même principe que le verrou D5 côté STUDIO —
  * un seul process sert RADAR, PM2 sans cluster). Purge opportuniste des
  * entrées expirées à chaque appel, pas de tâche planifiée en plus pour ça.
+ *
+ * `getClientIp`/`passwordMatches` extraits dans lib/loginSecurity.ts
+ * (15 sept. 2026, findings 1.2/1.5, AUDIT-PRODUCTION-READINESS) — testés
+ * par un vrai test unitaire (scripts/unit-tests/loginSecurity.test.ts),
+ * impossible à faire proprement pour du code vivant dans un fichier
+ * "use server".
  */
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const loginAttempts = new Map<string, { count: number; windowStart: number }>();
-
-function getClientIp(headersList: Headers): string {
-  const forwarded = headersList.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0].trim();
-  return headersList.get("x-real-ip") || "unknown";
-}
 
 function pruneExpiredAttempts(now: number) {
   for (const [ip, record] of loginAttempts) {
@@ -45,7 +46,7 @@ export async function login(_prevState: string | undefined, formData: FormData) 
 
   const password = formData.get("password") as string;
 
-  if (password !== process.env.AUTH_PASSWORD) {
+  if (!passwordMatches(password || "", process.env.AUTH_PASSWORD || "")) {
     const record = existing && now - existing.windowStart < LOGIN_WINDOW_MS
       ? existing
       : { count: 0, windowStart: now };

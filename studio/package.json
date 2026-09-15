@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:unit": "node --experimental-strip-types --test \"scripts/unit-tests/**/*.test.ts\"",
     "verify:1a": "node scripts/verify-gabarit-1a.mjs",
     "verify:detourage": "node scripts/verify-detourage.mjs"
   },
@@ -15,7 +16,7 @@
     "googleapis": "^175.0.0",
     "jose": "^6.2.9",
     "lucide-react": "^1.33.0",
-    "next": "16.3.1",
+    "next": "^16.3.5",
     "onnxruntime-node": "^1.27.0",
     "playwright": "^1.62.1",
     "react": "19.2.8",

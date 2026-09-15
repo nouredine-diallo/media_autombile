@@ -16,6 +16,19 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["sharp", "onnxruntime-node"],
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
+  // Finding 1.7 (AUDIT-PRODUCTION-READINESS, 15 sept. 2026) — même correctif
+  // que RADAR/next.config.ts, voir le commentaire là-bas.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

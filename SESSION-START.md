@@ -52,6 +52,19 @@ correctement. `deploy.sh` a maintenant un `pm2 restart radar --update-env
 tout déploiement, vérifier `pm2 jlist` → `pm2_env.max_memory_restart` pour
 `radar` doit afficher `3145728000`, pas `419430400`** — si jamais le filet de
 sécurité cesse de suffire, creuser pourquoi PM2 ignore le flag sur `start`.
+**15 sept., Partie 2** : `deploy.sh` vérifie maintenant lui-même cette valeur
+après le restart et échoue bruyamment sinon — la vérification manuelle
+ci-dessus reste utile en diagnostic, mais n'est plus le seul filet.
+
+**Audit production-ready du 15 sept. (Partie 1 + 2) — voir
+`AUDIT-PRODUCTION-READINESS-2026-09-15.md`** : correctifs de sécurité
+(RCE Next.js critique, bypass rate limiting, secret de session, etc.) et de
+robustesse (backup/restore réellement testé, `deploy.sh` durci) écrits,
+testés (builds + 25 tests unitaires réels + vérifications SSH/curl en
+lecture seule contre la prod) — **mais pas encore commités/poussés/
+déployés** au moment où cette ligne a été écrite. Vérifier `git log`/`git
+status` en début de session pour savoir si c'est toujours le cas avant de
+supposer l'un ou l'autre état.
 
 **Ne re-tente pas ce qui a déjà échoué** (détail dans `ONBOARDING.md` §3) :
 contrôle d'un navigateur visible en local (pas de Chrome/sudo — utiliser
@@ -79,6 +92,11 @@ préférer les chemins à coût nul (endpoints purement SQL comme
 LLM, requêtes GET) et limiter les vrais appels Groq au strict nécessaire (1-2
 par vérification). Documenté ici parce que c'est devenu une contrainte
 explicite de l'utilisateur, pas juste une bonne pratique générale.
+**15 sept., Partie 2** : `npm run test:unit` (RADAR et STUDIO, `node --test`
+natif, zéro dépendance) couvre maintenant la logique de sécurité
+extraite (rate limiting, secret de session, contrôle de chemin) sans
+serveur ni réseau ni Groq — à lancer avant toute vérification qui, sinon,
+tenterait de reproduire le même scénario via un vrai appel.
 
 **Règles non négociables** : jamais de commit/push/déploiement en prod sans
 demande explicite ; jamais d'action destructive sur la base prod sans backup

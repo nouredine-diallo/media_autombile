@@ -126,6 +126,30 @@ pm2 start /opt/media-labs/start-studio.sh --name studio --cwd "$REPO_DIR/studio"
 pm2 restart radar --update-env --max-memory-restart 3000M
 pm2 save
 
+# Finding 3.2 (AUDIT-PRODUCTION-READINESS, 15 sept. 2026) : ce script
+# affirmait déjà que le filet de sécurité ci-dessus "corrige la valeur de
+# façon vérifiée à chaque fois" — mais ne le vérifiait plus jamais lui-même
+# après ce premier constat manuel. Un déploiement où PM2 ignorerait le flag
+# une troisième fois serait passé inaperçu jusqu'au prochain OOM en pleine
+# ingestion. Vérification bloquante plutôt qu'une confiance renouvelée à
+# chaque déploiement.
+echo "  Vérification du plafond mémoire radar..."
+RADAR_MEM_LIMIT=$(pm2 jlist | node -e "
+  let data = '';
+  process.stdin.on('data', d => data += d);
+  process.stdin.on('end', () => {
+    const procs = JSON.parse(data);
+    const radar = procs.find(p => p.name === 'radar');
+    console.log(radar ? radar.pm2_env.max_memory_restart : '0');
+  });
+")
+if [ "$RADAR_MEM_LIMIT" != "3145728000" ]; then
+    echo "  ❌ Plafond mémoire radar incorrect après redémarrage : $RADAR_MEM_LIMIT (attendu 3145728000 = 3000M)"
+    echo "     PM2 a de nouveau ignoré --max-memory-restart — voir SESSION-START.md, 'Piège PM2'."
+    exit 1
+fi
+echo "  ✅ Plafond mémoire radar : 3000M confirmé"
+
 # 5. Open firewall
 echo "[5/6] Opening ports..."
 sudo iptables -C INPUT -p tcp --dport 3000 -j ACCEPT 2>/dev/null || sudo iptables -I INPUT 1 -p tcp --dport 3000 -j ACCEPT

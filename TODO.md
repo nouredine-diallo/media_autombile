@@ -23,6 +23,23 @@
 - ✅ `[LES DEUX]` Icône Sparkles retirée de toute l'UI, labels de section en casse normale (au lieu d'ALL-CAPS) — signatures visuelles "IA générique" reconnues.
 - ✅ `[INFRA]` `deploy.sh` : `pm2 start --max-memory-restart 3000M` n'appliquait pas fiablement la limite sur `radar` — filet de sécurité `pm2 restart --update-env` ajouté. À surveiller au prochain déploiement (voir `SESSION-START.md`).
 
+## Fait le 15 sept. 2026 (Partie 2 — audit production-ready, en local, **pas encore déployé/commité**)
+
+> Voir `AUDIT-PRODUCTION-READINESS-2026-09-15.md` §11 pour le détail complet et les preuves de vérification (builds, tests unitaires réels, SSH prod en lecture seule). Rien ci-dessous n'a été poussé en prod — règle non négociable `RADAR/CLAUDE.md` §2.
+
+- ✅ `[LES DEUX]` **[CRITIQUE]** Next.js 16.3.1 → 16.3.5 — advisory critique (RCE non authentifiée, Image Optimization API) confirmée par `npm audit`, et `/_next/image` vérifié joignable sans session en prod avant correctif (curl réel). Build OK des deux apps après bump.
+- ✅ `[LES DEUX]` Bypass du rate limiting login (`X-Forwarded-For` spoofable, nginx ne le remplace pas) — `getClientIp()` préfère maintenant `x-real-ip`. Extrait en `lib/loginSecurity.ts`, testé (8 tests RADAR + 6 STUDIO, dont un test qui reproduit l'ancien bug pour prouver qu'il était réel).
+- ✅ `[LES DEUX]` `SESSION_SECRET` : repli silencieux vers une valeur codée en dur remplacé par un fail-fast explicite en prod (`lib/sessionSecret.ts`, résolution paresseuse pour ne pas casser `next build`). Testé.
+- ✅ `[LES DEUX]` Comparaison mot de passe non constant-time (`crypto.timingSafeEqual`), path traversal par préfixe sans séparateur (`/api/drive/file`), `X-Frame-Options` manquant — 3 correctifs ponctuels, testés.
+- ✅ `[RADAR]` `npm audit` : 6 → 0 vulnérabilité (`js-yaml`, `protobufjs` critique, `sharp` — ces deux derniers via `overrides` ciblés plutôt qu'un downgrade cassant de `@xenova/transformers`). Vérifié par un vrai calcul d'embeddings après coup (similarité cosinus correcte, modèle intact).
+- ✅ `[STUDIO]` `npm audit` : 5 → 0 vulnérabilité (`sharp`, `qs`, `adm-zip`), aucun downgrade cassant.
+- ✅ `[INFRA]` Restauration de `radar.db` **réellement testée** (pas juste analysée) : sauvegarde du matin ouverte en lecture seule sur la VM, `PRAGMA integrity_check` = "ok", 791 events/837 items relus. Nouveau `deploy/restore.sh` (procédure complète, avec sauvegarde de sécurité avant écrasement — écrit et relu, **pas exécuté contre le `radar.db` vivant**).
+- ✅ `[INFRA]` Nouveau `deploy/fetch-backup.sh` — rapatrie la dernière sauvegarde de la VM en local par SSH/SCP (répond au risque "même disque que le prod" détecté dans l'audit). **Exécuté réellement**, copie présente dans `backups-offsite/` (gitignored).
+- ✅ `[INFRA]` `deploy.sh` vérifie maintenant lui-même que son filet PM2 (`--max-memory-restart 3000M`) a fonctionné après coup, au lieu de le supposer — échoue bruyamment sinon. Logique testée contre le vrai `pm2 jlist` de la VM prod.
+- ✅ `[LES DEUX]` 25 tests unitaires réels ajoutés (`npm run test:unit`, `node --test` natif, zéro nouvelle dépendance), chacun reproduisant un scénario concret des findings ci-dessus.
+- ⚠️ `[STUDIO]` Confirmé (pas supposé) : `uploads/` (images en cours, pas encore exportées) n'a aucune sauvegarde — pas corrigé cette session (décision produit hors périmètre d'un correctif ponctuel), signalé explicitement.
+- ℹ️ Découverte annexe : `scripts/verify-gabarit-1a.mjs` (aperçu=export pixel-identique) échoue actuellement — **vérifié par bisection que ce n'est pas une régression de cette session** (échoue aussi sur le code d'origine, avant tout correctif). Non corrigé, hors périmètre sécurité de cette passe.
+
 ---
 
 ## Objectif 1 — Comprendre le contenu réel de LMA
