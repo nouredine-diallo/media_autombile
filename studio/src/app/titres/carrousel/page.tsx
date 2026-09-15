@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowRight, CheckCircle2, Download, Loader2 } from "luci
 import { decodePrefill } from "@/lib/prefill";
 import { useExportJobPolling } from "@/lib/export/useExportJobPolling";
 import { GABARITS, GABARIT_HEIGHT, GABARIT_WIDTH } from "@/components/gabarits/registry";
+import { BrandHomeLink } from "@/components/BrandHomeLink";
 import { RecadrageFond } from "@/components/RecadrageFond";
 import { lireHauteurPhoto, GABARIT_PHOTO_HEIGHT } from "@/components/gabarits/Gabarit1A";
 
@@ -195,9 +196,7 @@ export default function CarrouselPage() {
     <div className="flex min-h-screen flex-col bg-zinc-50">
       <header className="sticky top-0 z-20 border-b border-zinc-200/70 bg-white/75 px-6 py-4 backdrop-blur-xl">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-900 text-sm font-bold text-white">
-            SA
-          </div>
+          <BrandHomeLink />
           <div>
             <h1 className="text-lg font-semibold text-zinc-900">Carrousel</h1>
             <p className="text-sm text-zinc-500">

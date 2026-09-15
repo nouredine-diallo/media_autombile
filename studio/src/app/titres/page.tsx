@@ -16,8 +16,11 @@ import { useExportJobPolling } from "@/lib/export/useExportJobPolling";
 import { apiFetch } from "@/lib/apiFetch";
 import { GABARITS, GABARIT_HEIGHT, GABARIT_WIDTH } from "@/components/gabarits/registry";
 import { MontageDirect, type BulleCible } from "@/components/MontageDirect";
+import { BrandHomeLink } from "@/components/BrandHomeLink";
 import { RecadrageFond } from "@/components/RecadrageFond";
 import { lireHauteurPhoto, GABARIT_PHOTO_HEIGHT } from "@/components/gabarits/Gabarit1A";
+import { BLOCK_TOP_PERCENT, BLOCK_SPAN } from "@/components/gabarits/TitleFooter";
+import { CTA_TEXT_ZONE_HEIGHT } from "@/components/gabarits/GabaritCTA";
 import { GABARIT_2A_BULLE } from "@/components/gabarits/Gabarit2A";
 import { GABARIT_2B_BULLE } from "@/components/gabarits/Gabarit2B";
 import { GABARIT_3A_BULLE1, GABARIT_3A_BULLE2 } from "@/components/gabarits/Gabarit3A";
@@ -570,9 +573,7 @@ export default function TitresPage() {
           problème d'accessibilité sur du contenu dense (WCAG). */}
       <header className="sticky top-0 z-20 border-b border-zinc-200/70 bg-white/75 px-6 py-4 backdrop-blur-xl">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-900 text-sm font-bold text-white">
-            SA
-          </div>
+          <BrandHomeLink />
           <div>
             <h1 className="text-lg font-semibold text-zinc-900">
               Titre + Gabarit
@@ -1034,6 +1035,37 @@ export default function TitresPage() {
                   valeur={previewValues.imageCadre}
                   onChange={(v) => setReglages((p) => ({ ...p, imageCadre: v }))}
                 />
+              )}
+              {/* Recadrage manuel du titre (P7, 15 sept. 2026) — même
+                  mécanisme que le fond ci-dessus, réutilisé tel quel : un
+                  bloc texte plein cadre est géométriquement identique à un
+                  bloc image du point de vue de RecadrageFond (juste un
+                  contenu, un zoom, un déplacement). Tous les gabarits sauf
+                  "1b" (paragraphe, pas de titre) et "cta" (bloc séparé
+                  ci-dessous) partagent TitleFooter, donc la même zone. */}
+              {!["1b", "cta"].includes(selectedGabarit) && (
+                <div style={{ position: "absolute", left: 0, top: GABARIT_HEIGHT * (BLOCK_TOP_PERCENT / 100) * previewScale }}>
+                  <RecadrageFond
+                    echelle={previewScale}
+                    largeur={GABARIT_WIDTH}
+                    hauteur={GABARIT_HEIGHT * (BLOCK_SPAN / 100)}
+                    valeur={previewValues.titreCadre}
+                    onChange={(v) => setReglages((p) => ({ ...p, titreCadre: v }))}
+                  />
+                </div>
+              )}
+              {/* Même principe pour le texte du CTA (fin de carrousel),
+                  positionné sur sa propre zone mesurée (~8-28% du haut). */}
+              {selectedGabarit === "cta" && (
+                <div style={{ position: "absolute", left: 0, top: GABARIT_HEIGHT * 0.08 * previewScale }}>
+                  <RecadrageFond
+                    echelle={previewScale}
+                    largeur={GABARIT_WIDTH}
+                    hauteur={CTA_TEXT_ZONE_HEIGHT}
+                    valeur={previewValues.ctaCadre}
+                    onChange={(v) => setReglages((p) => ({ ...p, ctaCadre: v }))}
+                  />
+                </div>
               )}
             </div>
           ) : (

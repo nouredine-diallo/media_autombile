@@ -9,6 +9,7 @@ import {
   GABARIT_WIDTH,
 } from "@/components/gabarits/registry";
 import { apiFetch } from "@/lib/apiFetch";
+import { BrandHomeLink } from "@/components/BrandHomeLink";
 import { RecadrageFond } from "@/components/RecadrageFond";
 import { lireHauteurPhoto, GABARIT_PHOTO_HEIGHT } from "@/components/gabarits/Gabarit1A";
 
@@ -204,9 +205,7 @@ export function GabaritPreviewClient({ gabaritId }: { gabaritId: string }) {
       {/* Header */}
       <header className="border-b border-zinc-200 bg-white px-6 py-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-900 text-sm font-bold text-white">
-            SA
-          </div>
+          <BrandHomeLink />
           <div>
             <h1 className="text-lg font-semibold text-zinc-900">
               {def.label}
