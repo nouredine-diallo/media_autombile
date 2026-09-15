@@ -38,6 +38,13 @@
 - ✅ `[RADAR]` `AnalyticsTracker` déclenchait un 401 silencieux sur `/api/analytics` à chaque visite de `/login` (avant toute session). Corrigé à la source, déployé et reconfirmé.
 - ✅ `[LES DEUX]` Scripts de parcours chronométrés réutilisables ajoutés (`scripts/dev-journey-test.mjs`), zéro coût Groq par défaut.
 
+## Fait le 15 sept. 2026 (Partie 4 — vérification ciblée P2/P3 sur demande, **déployé et vérifié en prod**)
+
+> Voir `AUDIT-PRODUCTION-READINESS-2026-09-15.md` §13. Re-test réel (pas une relecture de code) des correctifs P2 (exports STUDIO cassés par HTTPS) et P3 (anti-invention de chiffres STUDIO), avec sortie brute du LLM montrée pour les deux cas testés.
+
+- ✅ `[STUDIO]` **P3 reconfirmé** : thème avec fait réel ("Mini GT Edition 1998") → titres/paragraphes reprennent les vrais faits (1969, JCW, Cooper S), aucun chiffre inventé. Thème sans fait ("Ferrari Purosangue hybride 2029", fictif) → `matched: false`, texte reste qualitatif, aucun chiffre inventé. ⚠️ Nuance signalée, pas corrigée (hors périmètre P3) : le texte sans fait fabrique quand même des affirmations qualitatives non vérifiées ("les premiers retours des pilotes d'essai soulignent...") — pas un chiffre inventé, mais un risque de crédibilité voisin.
+- ✅ `[STUDIO]` **P2 reconfirmé** (correctif HTTPS/origin interne intact, 4 points d'appel vérifiés) mais **nouveau bug réel trouvé et corrigé en testant** : plafond mémoire PM2 de `studio` (400M) jamais mesuré, causait de vrais 502/crashs pendant un export réel — mesuré à 1052 Mo de pic (2,6× la limite) pour un export simple. Même piège que celui déjà documenté et corrigé pour `radar`, jamais appliqué à `studio`. Porté à 2000M, déployé, reconfirmé par un export réel réussi (PNG téléchargeable, vraie photo affichée).
+
 - ✅ `[LES DEUX]` **[CRITIQUE]** Next.js 16.3.1 → 16.3.5 — advisory critique (RCE non authentifiée, Image Optimization API) confirmée par `npm audit`, et `/_next/image` vérifié joignable sans session en prod avant correctif (curl réel). Build OK des deux apps après bump.
 - ✅ `[LES DEUX]` Bypass du rate limiting login (`X-Forwarded-For` spoofable, nginx ne le remplace pas) — `getClientIp()` préfère maintenant `x-real-ip`. Extrait en `lib/loginSecurity.ts`, testé (8 tests RADAR + 6 STUDIO, dont un test qui reproduit l'ancien bug pour prouver qu'il était réel).
 - ✅ `[LES DEUX]` `SESSION_SECRET` : repli silencieux vers une valeur codée en dur remplacé par un fail-fast explicite en prod (`lib/sessionSecret.ts`, résolution paresseuse pour ne pas casser `next build`). Testé.

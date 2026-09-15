@@ -869,3 +869,85 @@ lent**, pas que le produit est complet. La liste des ⬜ dans `TODO.md`
 Drive complet, calibration anti-plagiat, poids u2net/realesrgan sur la VM)
 reste largement ouverte — voir la réponse donnée à "mon app est-elle
 production ready" plus tôt dans la session, toujours valable.
+
+---
+
+## 13. Partie 4 — Vérification ciblée des correctifs P2/P3, sur demande explicite (15 sept. 2026, suite)
+
+Demande : re-tester réellement (pas relire le code) les correctifs P2
+(exports STUDIO cassés par HTTPS) et P3 (anti-invention de chiffres), pour
+confirmer qu'ils tiennent toujours, avec la sortie brute du LLM montrée.
+
+### 13.1 P3 — confirmé solide sur le point précis qu'il visait
+
+Deux cas réels testés (2 appels Groq), sortie brute montrée dans la
+conversation :
+
+- **Thème avec fait réel disponible** ("Mini GT Edition 1998", event prod
+  174996) : `/api/facts-lookup` renvoie le vrai fait ("hommage à la 1275 GT
+  de 1969... décals orange et pièces JCW... Cooper C... moins de
+  puissance"). Les 3 titres et les 3 paragraphes générés reprennent ces
+  éléments réels mot pour mot ou presque (1969, JCW, Cooper C, Cooper S,
+  décals orange) — **aucun chiffre technique inventé** (pas de puissance,
+  pas de prix chiffrés fabriqués).
+- **Thème sans fait disponible** ("Ferrari Purosangue hybride 2029",
+  volontairement fictif) : `/api/facts-lookup` renvoie bien `matched:
+  false`. Les titres/paragraphes générés restent qualitatifs — **aucun
+  chiffre concret inventé** (pas de puissance, pas d'autonomie, pas de prix,
+  pas de 0-100 chiffré) : exactement ce que P3 devait empêcher.
+
+**Nuance honnête, hors périmètre initial de P3** : sans chiffre inventé, le
+texte du cas 2 fabrique quand même des **affirmations qualitatives non
+vérifiées présentées comme des faits** ("les premiers retours des pilotes
+d'essai soulignent un équilibre rare", "Ferrari affirme que...") — un
+risque de crédibilité voisin de celui que P3 visait, mais un chiffre
+inventé et une citation/scène inventée ne sont pas le même problème
+technique. P3 corrige précisément ce qu'il annonçait corriger ; ce
+problème adjacent n'a jamais été dans son périmètre et reste ouvert si le
+rédacteur en chef veut le traiter.
+
+### 13.2 P2 — le correctif original tient, mais un second bug (différent) a été trouvé et corrigé au passage
+
+**Le correctif HTTPS/origin interne (`getInternalRenderOrigin()`) est
+intact et fonctionne** : les 4 points d'appel confirmés présents dans le
+code, aucune régression sur ce point précis. Le deuxième sous-bug déjà
+documenté (bouton "Exporter" cliquable avant la fin de l'import image) est
+aussi confirmé présent et correct (le bloc export ne s'affiche que quand
+`images.length >= requiredImages`) — vérifié en conditions réelles :
+immédiatement après navigation avec un prefill contenant une vraie image
+externe, le bouton est absent ; il apparaît ~3s plus tard une fois l'import
+résolu, jamais avant.
+
+**Mais un export réel déclenché en conditions réelles a quand même produit
+un 502 nginx / "Échec inconnu"** — cause différente de P2, pas une
+régression du correctif P2 lui-même. Diagnostic mesuré, pas supposé :
+mémoire de `studio` interrogée toutes les 1,5s pendant un export réel
+(gabarit simple, 1 image, sans bulles/détourage/upscale) — pic à **1052
+Mo**, soit 2,6× la limite PM2 configurée (`--max-memory-restart 400M`,
+jamais mesurée, un "point de départ prudent" resté tel quel depuis le
+début du projet, exactement le même piège déjà documenté et corrigé pour
+`radar` — jamais appliqué à `studio`). PM2 tuait le process en plein
+export (`restart_time` passé de 3 à 4 pendant un seul test), provoquant le
+502 côté utilisateur. Mémoire retombée à ~139 Mo après coup — un pic
+transitoire de rendu Playwright/Chromium, pas une fuite.
+
+**Corrigé** : `--max-memory-restart` de `studio` porté de 400M à 2000M
+dans `deploy.sh` (marge large au-dessus du pic mesuré sur ce cas simple —
+un gabarit à bulles avec détourage/upscale sollicitera forcément plus).
+Même filet de sécurité (`pm2 restart --update-env`) et même vérification
+bloquante post-déploiement qu'existait déjà pour `radar`, étendus à
+`studio`. **Déployé et reconfirmé par un nouvel export réel** : même pic
+mémoire mesuré (~1067 Mo) cette fois sans crash, export terminé avec succès
+("Terminé !", PNG réel téléchargeable, vraie photo Citroën Ami affichée,
+pas de placeholder), `studio` toujours à 0 restart depuis ce déploiement.
+
+### 13.3 Verdict pour l'utilisateur
+
+- P3 : **fonctionne comme annoncé**, sur le périmètre exact qu'il visait
+  (chiffres). Nuance sur les affirmations qualitatives non chiffrées
+  signalée, pas corrigée (hors périmètre P3, décision éditoriale à
+  prendre séparément si voulue).
+- P2 : **le correctif original tient**. Un second problème, réel et
+  distinct (plafond mémoire studio jamais mesuré), causait des échecs
+  d'export intermittents malgré le correctif P2 — trouvé, corrigé, déployé,
+  reconfirmé par export réel réussi.
