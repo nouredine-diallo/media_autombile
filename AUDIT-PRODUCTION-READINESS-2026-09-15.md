@@ -951,3 +951,53 @@ pas de placeholder), `studio` toujours à 0 restart depuis ce déploiement.
   distinct (plafond mémoire studio jamais mesuré), causait des échecs
   d'export intermittents malgré le correctif P2 — trouvé, corrigé, déployé,
   reconfirmé par export réel réussi.
+
+---
+
+## 14. Partie 5 — Correction de l'hallucination qualitative (16 sept. 2026)
+
+Sur demande explicite ("vérifie le meilleur moyen... sans duplication") :
+la nuance signalée en §13.1 (affirmations qualitatives fabriquées, hors
+périmètre initial de P3) a été corrigée, avec un choix technique délibéré
+contre l'option la plus intuitive.
+
+**Option écartée** : extraction de chaque affirmation du texte généré puis
+vérification LLM une par une contre les sources (approche RAG/grounding
+classique, conforme OWASP LLM09/NIST AI 600-1). Écartée parce qu'elle
+ajoute au moins un appel Groq supplémentaire par génération — double le
+coût/latence de chaque titre STUDIO, contraire à la consigne explicite
+("pas lourd, exploiter au maximum ce qu'on a, sans duplication") sur une VM
+à 2 vCPU et un quota Groq déjà partagé par toute l'équipe.
+
+**Option retenue, coût Groq nul** :
+1. `lib/titles/router.ts` (`buildFactsSection`, branche sans fait) durci
+   pour interdire explicitement — même unique appel de génération —
+   réactions/citations inventées, déclarations officielles inventées,
+   résultats d'essai/certifications/comparaisons inventés, événements
+   futurs présentés comme certains, superlatifs présentés comme des faits.
+2. `TitleGenerationResult.factsMatched: boolean` ajouté et propagé jusqu'à
+   l'UI (`titres/page.tsx`) : bandeau d'avertissement visible quand la
+   génération n'a aucune source RADAR derrière — rend efficace le contrôle
+   humain qui existe déjà avant tout export plutôt que de dupliquer un
+   système de vérification automatique.
+
+**Vérifié réellement (2 appels Groq, mêmes thèmes qu'en §13.1 pour
+comparaison directe)** :
+- "Ferrari Purosangue hybride 2029" (sans fait, `factsMatched: false`
+  confirmé côté API) : la fabrication la plus problématique du run
+  précédent ("les premiers retours des pilotes d'essai soulignent un
+  équilibre rare") **n'apparaît plus**. Le texte reste centré sur des
+  intentions de design/philosophie de marque, plus proche du qualitatif
+  prudent demandé au prompt — amélioration mesurable, pas une garantie
+  absolue (un LLM reste faillible par nature, d'où le bandeau §2 comme
+  filet plutôt que comme solution seule).
+- "Mini GT Edition 1998" (avec fait, `factsMatched: true` confirmé) :
+  non-régression — les vrais faits (1969, Cooper S, JCW) toujours utilisés
+  correctement.
+
+**Limite assumée, dite explicitement** : un prompt plus précis réduit le
+risque, il ne l'élimine pas — c'est exactement ce que NIST/OWASP appellent
+un risque intrinsèque des systèmes génératifs. Le bandeau `factsMatched`
+est le vrai filet : il ne bloque rien (cohérent avec "l'outil prépare,
+l'humain valide", studio/CLAUDE.md §1), il rend le moment de vigilance
+visible à qui relit avant publication.
