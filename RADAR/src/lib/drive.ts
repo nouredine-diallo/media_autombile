@@ -28,31 +28,22 @@ export interface DriveFolder {
 // Local sync directory
 const SYNC_DIR = path.join(process.cwd(), 'drive-sync');
 
-// Initialize drive tables
+/**
+ * Trouvé le 15 sept. 2026 (test réel de parcours en prod) : cette fonction
+ * dupliquait la définition de `drive_files` avec un schéma DIFFÉRENT
+ * (`path TEXT NOT NULL`, pas de `is_cloud`) de celui réellement créé au
+ * démarrage par `initDb()` (db.ts, qui s'exécute avant toute route) — donc
+ * ce `CREATE TABLE IF NOT EXISTS` ne s'exécutait jamais réellement, mais
+ * l'`INDEX ... (path)` juste après, lui, s'exécutait quand même et
+ * plantait (`no such column: path`) puisque la vraie table n'avait pas
+ * cette colonne. La migration qui ajoute `path` vit maintenant dans db.ts
+ * (source de vérité unique du schéma), à côté de celle pour `is_cloud` —
+ * ne plus dupliquer la définition de table ici.
+ */
 export function initDriveDb() {
-  const db = getDb();
-  
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS drive_files (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      drive_id TEXT UNIQUE NOT NULL,
-      name TEXT NOT NULL,
-      mime_type TEXT,
-      path TEXT NOT NULL,
-      size INTEGER DEFAULT 0,
-      modified_at TEXT,
-      created_at TEXT,
-      parent_id TEXT,
-      is_folder INTEGER DEFAULT 0,
-      thumbnail_url TEXT,
-      web_view_link TEXT,
-      synced_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_drive_files_name ON drive_files(name);
-    CREATE INDEX IF NOT EXISTS idx_drive_files_parent ON drive_files(parent_id);
-    CREATE INDEX IF NOT EXISTS idx_drive_files_path ON drive_files(path);
-  `);
+  // La table et ses colonnes sont garanties par initDb() (db.ts) au
+  // démarrage — rien à faire ici, gardé comme point d'appel existant pour
+  // ne pas toucher tous les appelants.
 }
 
 // Scan local directory and update database

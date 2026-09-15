@@ -286,7 +286,21 @@ function initializeDb(db: any) {
   if (!driveColumns.some(col => col.name === 'is_cloud')) {
     db.exec("ALTER TABLE drive_files ADD COLUMN is_cloud INTEGER DEFAULT 0");
   }
+  // Migration : colonne `path` (finding découvert le 15 sept. 2026, test réel
+  // de parcours en prod) — `lib/drive.ts` (`initDriveDb()`, `syncLocalDirectory()`)
+  // suppose depuis toujours une colonne `path` sur `drive_files`, mais SA
+  // PROPRE `CREATE TABLE IF NOT EXISTS` (schéma dupliqué, désormais retiré de
+  // drive.ts) ne s'exécutait jamais : cette table est déjà créée ici, sans
+  // `path`, au tout premier démarrage. Conséquence vérifiée en prod :
+  // `GET /api/drive?stats=true` plantait en 500 (`no such column: path`) et
+  // la synchronisation du dossier local drive-sync/ insérait dans une
+  // colonne inexistante — cassé depuis le début, pas une régression récente.
+  // Nullable : les fichiers cloud (is_cloud=1) n'ont pas de chemin local.
+  if (!driveColumns.some(col => col.name === 'path')) {
+    db.exec("ALTER TABLE drive_files ADD COLUMN path TEXT");
+  }
   db.exec("CREATE INDEX IF NOT EXISTS idx_drive_files_cloud ON drive_files(is_cloud)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_drive_files_path ON drive_files(path)");
 
   // Migration: add content_id to existing tables if missing
   const eventColumns = db.prepare("PRAGMA table_info(events)").all() as { name: string }[];
