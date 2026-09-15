@@ -50,6 +50,25 @@ build_app() {
     shift 2
 
     cd "$app_dir"
+
+    # Trouvé le 15 sept. 2026 (Partie 2, même session que le correctif
+    # d'auto-modification ci-dessus) : ce script n'a JAMAIS lancé `npm
+    # install` avant de builder. `git pull` met à jour package.json/
+    # package-lock.json, mais node_modules reste figé sur ce qui était
+    # installé au tout premier déploiement — vérifié concrètement sur la VM
+    # après le tout premier déploiement du correctif Next.js critique de
+    # cette session : `node_modules/next/package.json` affichait encore
+    # 16.3.1 alors que `package.json` avait bien 16.3.5 et que le build/
+    # déploiement s'étaient "réussis" sans aucune erreur. Toute mise à jour
+    # de dépendance de tout ce projet, y compris de sécurité critique,
+    # n'avait donc jamais réellement atteint la prod tant que personne ne
+    # lançait `npm install` à la main sur la VM.
+    echo "[2/6] Installation des dépendances $label..."
+    if ! npm install; then
+        echo "  ❌ npm install $label a échoué — build annulé, .next précédent conservé"
+        exit 1
+    fi
+
     rm -rf .next.bak
     [ -d .next ] && mv .next .next.bak
 
