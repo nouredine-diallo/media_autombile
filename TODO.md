@@ -12,6 +12,19 @@
 
 ---
 
+## Fait le 15 sept. 2026 (déployé, vérifié en prod) — pas dans les objectifs 1-5 ci-dessous, ajouté en session
+
+- ✅ `[RADAR]` Faux timeout client (15s) + doublons de génération LLM sur brief/article — `apiFetch` accepte un timeout par appel, `generationLock.ts` empêche un calcul dupliqué (verrou au niveau des fonctions partagées, couvre aussi le chemin cron/auto-génération, pas seulement les routes HTTP). Vérifié par requêtes concurrentes réelles en prod.
+- ✅ `[STUDIO]` Tous les exports cassés en prod (`ERR_SSL_PROTOCOL_ERROR`, séquelle HTTPS) — `getInternalRenderOrigin()` force l'adresse interne en clair pour les 4 points d'entrée du rendu Playwright. Vérifié par export réel en prod (PNG téléchargé).
+- ✅ `[STUDIO]` Ancrage factuel du mode "thème seul" — `GET /api/facts-lookup` (RADAR) donne de vrais faits déjà ingérés au LLM plutôt que de le laisser inventer des chiffres. Vérifié en prod (1 seul appel Groq, quota préservé).
+- ✅ `[LES DEUX]` Chatbot déplaçable par glisser-déposer (gêne mobile signalée).
+- ✅ `[STUDIO]` Logo en-tête → logo Média Automobile + lien retour accueil (3 pages, composant partagé `BrandHomeLink.tsx`).
+- ✅ `[STUDIO]` Recadrage manuel (zoom/déplacement) du titre et du texte CTA fin de carrousel — réutilise `RecadrageFond` tel quel.
+- ✅ `[LES DEUX]` Icône Sparkles retirée de toute l'UI, labels de section en casse normale (au lieu d'ALL-CAPS) — signatures visuelles "IA générique" reconnues.
+- ✅ `[INFRA]` `deploy.sh` : `pm2 start --max-memory-restart 3000M` n'appliquait pas fiablement la limite sur `radar` — filet de sécurité `pm2 restart --update-env` ajouté. À surveiller au prochain déploiement (voir `SESSION-START.md`).
+
+---
+
 ## Objectif 1 — Comprendre le contenu réel de LMA
 
 > **But** : alimenter le routeur LLM (titres, surtitres, paragraphes 1B, descriptions)
@@ -149,6 +162,12 @@
 
 ### 3.3 Pipeline automatique
 
+- ⬜ `[INFRA] Séparer le pipeline (cron) du serveur web dans un process distinct` — **trouvé le 14 sept. 2026, prod réelle** : le site devient totalement inaccessible (aucune réponse HTTP, pas une lenteur) pendant toute la durée d'un cycle pipeline (30-50 min), parce que le calcul intensif (embeddings + traduction locale, `@xenova/transformers`/ONNX) tourne dans le **même process Node** que le serveur HTTP (`next start`) — un seul thread JS, bloqué par l'inférence, ne peut plus répondre aux requêtes. Mesuré aussi sur le chemin à la demande (génération de brief à l'ouverture d'un event) : un item au contenu dégénéré (liste de titres sans ponctuation, cas réel event 171948 "Bring a Trailer") a bloqué un seul appel de traduction 40-60s d'affilée — un timeout `Promise.race`/`setTimeout` posé autour ne s'est **jamais déclenché**, la preuve empirique que Node ne peut pas interrompre un calcul natif bloquant en cours, quel que soit le wrapper JS utilisé autour.
+  - **Mitigations déjà en place** (pas une solution complète, juste moins de risque en attendant) : cron réduit à 2 exécutions/jour hors heures de bureau (`0 4,16 * * *`, 6h/18h Paris) au lieu de toutes les 4h ; traduction du `content` brut désactivée dans `generateBrief()` (seuls titre/résumé, courts et fiables, sont traduits) ; limite mémoire PM2 de `radar` relevée 400M→3000M (le vrai plafond mesuré du pic embeddings+traduction est ~1.5-1.6 Go).
+  - **Solutions explorées et écartées** : webhook/service externe (interdit par CLAUDE.md §3, sur-ingénierie pour 10 users) ; traitement par lots avec pauses entre items (n'aide pas — un item **seul** peut bloquer 40-60s, les pauses entre items ne changent rien pendant qu'un item est en cours) ; alléger le pipeline (réduit la durée du blocage, ne l'élimine pas).
+  - **Solution recommandée** : sortir `startCron()`/`runPipeline()` (`src/lib/cron.ts`) de l'app Next.js vers un **3ᵉ process PM2 autonome** (`radar-pipeline`), même pattern que RADAR/STUDIO déjà séparés aujourd'hui — isolation totale, vrai parallélisme (VM à 2 vCPU, 11 Go RAM, vérifié `nproc`/`free -h`), aucune nouvelle dépendance. Le serveur web ne fait alors plus jamais de calcul lourd. Nécessite : (1) un point d'entrée standalone (`src/pipeline-worker.ts`) qui appelle `startCron()` et écoute un petit serveur HTTP interne `127.0.0.1` (ex: port 3010) avec `POST /run` (déclenchement manuel, remplace l'appel direct actuel dans `api/cron/route.ts`) et `POST /reload-config` (relit la config après un changement d'horaire) ; (2) retirer l'appel à `startCron()` de `instrumentation.ts`/`startup.ts` côté app web ; (3) faire pointer `POST /api/cron {action:'run'}` et `{action:'update_config'}` vers ce process interne au lieu d'exécuter en local ; (4) `getCronStatus().running` doit venir d'une requête `SELECT` sur `pipeline_runs` (état partagé via la même base SQLite) plutôt que du booléen `isRunning` en mémoire, qui vivrait sinon dans le mauvais process ; (5) déplacer le handler d'arrêt propre (`registerGracefulShutdown`, `startup.ts`) vers le nouveau process ; (6) ajouter la ligne `pm2 start` correspondante dans `deploy/deploy.sh` avec sa propre limite mémoire généreuse (~3000M, mêmes modèles chargés).
+  - **Limite honnête de cette solution** : ne couvre que le cycle automatique. Le chemin à la demande (brief généré au clic sur un event, toujours dans le process web) resterait exposé en théorie à un futur cas dégénéré, même si le risque a été fortement réduit ce soir (traduction du `content` désactivée). Un `worker_thread` scopé juste à `translateTextLocal`/`embeddings.ts` serait le complément pour une garantie totale des deux chemins — pas fait, à évaluer séparément si le besoin réapparaît.
+  - **Pourquoi pas fait tout de suite** : changement structurel touchant scheduling, IPC entre process et arrêt propre — mérite du temps pour tester correctement plutôt qu'une implémentation à la hâte tard le soir, décision explicite de l'utilisateur (14 sept. 2026).
 - ⬜ `Tester le cron toutes les 4h en environnement Docker` — ingestion RSS, visual search, clustering
 - ⬜ `Vérifier l'extraction images RSS` — enclosure, media:content, media:thumbnail
 - ⬜ `Vérifier le visual search Playwright` — og:image, twitter:image, srcset, `<img>`

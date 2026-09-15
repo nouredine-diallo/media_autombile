@@ -8,12 +8,13 @@ Ce fichier est le point d'entrée pour tout agent OpenCode travaillant sur ce pr
 
 | Fichier | Portée | Rôle |
 |---------|--------|------|
-| `ECOSYSTEM.md` |全局 | **Comportement réel vérifié** — ports, session partagée, assistant, mascotte, brouillons IA, empty states |
-| `ONBOARDING.md` |全局 | **POINT D'ENTRÉE** — état actuel, workflow, fichiers à lire, architecture |
+| `SESSION-START.md` | Global | **Prompt à coller en début de session** — pointe vers les 3 fichiers ci-dessous, résume ce qui est fait/échoué, évite la duplication de travail |
+| `ECOSYSTEM.md` | Global | **Comportement réel vérifié** — ports, session partagée, assistant, mascotte, brouillons IA, empty states, infra/déploiement |
+| `ONBOARDING.md` | Global | **POINT D'ENTRÉE** — état actuel, procédure de déploiement, ce qui a échoué, fichiers à lire, architecture |
 | `RADAR/CLAUDE.md` | RADAR | Constitution du projet RADAR — interdits, stack, anti-hallucination, qualité |
 | `studio/CLAUDE.md` | STUDIO | Constitution du projet STUDIO — décisions visuelles, gabarits, auth |
-| `RADAR/CLAUDE_DASHBOARD.md` |全局 | Vue d'ensemble — parcours utilisateur, architecture, statut modules |
-| `TODO.md` |全局 | Toutes les tâches, statuts, blocages, priorités |
+| `RADAR/CLAUDE_DASHBOARD.md` | Global | Vue d'ensemble — parcours utilisateur, architecture, statut modules |
+| `TODO.md` | Global | Toutes les tâches, statuts, blocages, priorités |
 
 **Règle** : en cas de conflit entre ce fichier et un CLAUDE.md, le CLAUDE.md du dossier concerné gagne.
 
@@ -65,8 +66,8 @@ Design guidance pour interfaces frontend. Utilise quand tu touches à l'UI du ST
 2. **Ne jamais changer le comportement RADAR sans vérifier les contraintes.** Lire `RADAR/CLAUDE.md` §4 (graphe de contraintes).
 3. **Toute dépendance nouvelle** doit être vérifiée contre la stack figée (§3 des CLAUDE.md).
 4. **Tests avant merge** — pas de push sans que `npm run build` passe.
-5. **Un seulMerge** — pas de push sans que `npm run build` passe.
 5. **Un seul développeur** — ne pas paralléliser les tâches qui touchent les mêmes fichiers.
+6. **Jamais de commit, push ou déploiement en prod sans demande explicite de l'utilisateur.**
 
 ---
 
@@ -76,24 +77,23 @@ Design guidance pour interfaces frontend. Utilise quand tu touches à l'UI du ST
 media_autombile/
 ├── RADAR/              ← App Next.js (veille, articles, pipeline)
 │   ├── CLAUDE.md       ← Constitution
-│   ├── src/            ← Code source
-│   └── docker-compose.yml
+│   └── src/            ← Code source
 ├── studio/             ← App Next.js (création de posts)
 │   ├── CLAUDE.md       ← Constitution
-│   ├── src/            ← Code source
-│   └── Dockerfile
-├── nginx/              ← Config Nginx (subdomain routing)
+│   └── src/            ← Code source
+├── nginx/              ← Config nginx (HTTPS + routing sous-domaine, utilisée en prod)
+├── deploy/             ← Scripts de déploiement réels (deploy.sh, start-radar.sh, start-studio.sh)
 ├── _agents/            ← Repos d'agents (superpowers, impeccable)
 ├── CLAUDE_DASHBOARD.md ← Vue d'ensemble
 ├── opencode.json       ← Config plugins OpenCode
-└── docker-compose.yml  ← Orchestration des deux apps
+└── docker-compose.yml  ← Présent mais jamais utilisé en prod (voir ECOSYSTEM.md §8) — prod réelle = PM2 direct
 ```
 
 ---
 
 ## Contacts
 
-- **Développeur** : Daniel (nouredine-diallo)
-- **Équipe** : 5-10 personnes
+- **Développeur** : nouredine-diallo
+- **Équipe** : 5 personnes
 - **Budget** : 0€
-- **Hébergement** : Oracle Cloud Always Free (VM ARM)
+- **Hébergement** : Oracle Cloud Always Free (VM ARM, 2 vCPU, 11-12 Go RAM, sans GPU) — PM2 direct, pas de Docker en prod

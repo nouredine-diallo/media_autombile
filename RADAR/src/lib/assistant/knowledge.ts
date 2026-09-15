@@ -388,7 +388,7 @@ export const RADAR_KNOWLEDGE: AssistantFiche[] = [
   },
   {
     id: "pipeline",
-    title: "Comprendre le pipeline (cron 4h)",
+    title: "Comprendre le pipeline (cron 2x/jour)",
     keywords: [
       "pipeline", "cron", "automatique", "robot", "tache planifiee", "planification",
       "ingestion", "rss", "clustering", "score", "embeddings", "generation matinale",
@@ -405,9 +405,9 @@ export const RADAR_KNOWLEDGE: AssistantFiche[] = [
       "comment relancer le pipeline",
     ],
     description:
-      "RADAR tourne en continu (toutes les 4 heures) un pipeline automatique : ingestion des flux RSS, calcul d'embeddings locaux (aucun coût API), regroupement en sujets, calcul du score composite (pertinence, urgence, marginalité) et auto-génération matinale des brouillons. Un brouillon dont le score de confiance dépasse un second seuil (plus strict que le simple contrôle qualité) saute aussi la revue humaine du texte et devient directement un post à confirmer sur /ready — voir la fiche « confirmer ». Vous pouvez aussi lancer le pipeline à la demande.",
+      "RADAR lance automatiquement un pipeline deux fois par jour (6h et 18h, heure de Paris) : ingestion des flux RSS, calcul d'embeddings locaux (aucun coût API), regroupement en sujets, calcul du score composite (pertinence, urgence, marginalité) et auto-génération matinale des brouillons. Un brouillon dont le score de confiance dépasse un second seuil (plus strict que le simple contrôle qualité) saute aussi la revue humaine du texte et devient directement un post à confirmer sur /ready — voir la fiche « confirmer ». Vous pouvez aussi lancer le pipeline à la demande. Pendant qu'il tourne (quelques dizaines de minutes), le site peut répondre plus lentement le temps du traitement — c'est normal, pas une panne.",
     steps: [
-      "Sans action de votre part, le pipeline tourne toutes les 4 heures.",
+      "Sans action de votre part, le pipeline tourne automatiquement à 6h et 18h (heure de Paris).",
       "Observez le résultat du matin : le tableau de bord distingue les brouillons « prêts à confirmer » (auto-validés, score au-dessus du seuil) des brouillons « à valider » (le reste).",
       "Pour forcer une exécution, utilisez le bouton de relance disponible (démarrage pipeline).",
     ],

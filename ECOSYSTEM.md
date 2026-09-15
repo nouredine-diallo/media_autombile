@@ -4,8 +4,10 @@
 > (RADAR + STUDIO) : ports, session partagée, assistant (`/api/assistant`),
 > kill-switch, mascotte, brouillons IA, empty states.
 >
-> **Vérifié le 2026-08-28** contre le code source et l'état réel des serveurs
-> (`ss`, lecture des routes/du moteur/du widget, tests navigateur de la session).
+> **Vérifié le 2026-08-28**, puis **corrections ciblées le 2026-09-14** (HTTPS,
+> infra PM2 réelle, horaire pipeline — voir §10) contre le code source et l'état
+> réel des serveurs (`ss`, lecture des routes/du moteur/du widget, tests
+> navigateur de la session, SSH direct sur la VM prod).
 > Ce fichier est la vérité tant que le code dit pareil — s'il y a divergence,
 > **corriger ce fichier** (et/ou le code) et non un autre doc.
 
@@ -17,16 +19,21 @@
 |---|---|---|
 | Rôle | Veille auto, événements, articles, pipeline RSS, publication | Création visuelle de posts (6 gabarits), export HD / Google Drive |
 | Stack | Next.js (App Router) + SQLite (better-sqlite3) | Next.js (App Router), modeles d'image locaux |
-| Port dev réel | **3000** | **3002** |
-| Port prod Docker | 127.0.0.1:**3001** → conteneur 3000 | 127.0.0.1:**3002** → conteneur 3000 |
+| Port (dev = prod, PM2 direct, pas de Docker) | **3000** | **3002** |
+| Accès public prod | `https://89.168.53.133.nip.io/` (nginx → 127.0.0.1:3000) | `https://studio.89.168.53.133.nip.io/` (nginx → 127.0.0.1:3002) |
 | Auth | Mot de passe (`AUTH_PASSWORD`, défaut `work`) + session cookie `session` | Mot de passe (`AUTH_PASSWORD`, défaut `work`) + session cookie `session` |
 | Session | **Partagée** avec STUDIO (même cookie `session`, même clé `SESSION_SECRET`) | **Partagée** avec RADAR |
 | Fiches assistant | 18 | 10 |
 
-Domaines : dev/nginx → `89.168.53.133.nip.io` (RADAR :3000, STUDIO :3002) ;
-prod annoncée → `radar.media-labs.is-a.dev` et `studio.media-labs.is-a.dev`
-(référencés dans `GOOGLE_REDIRECT_URI` / `STUDIO_URL` du docker-compose).
-Budget : 0 €, VM Oracle Cloud ARM (2 cœurs, sans GPU).
+Domaines : **prod réelle et unique** → `89.168.53.133.nip.io` (RADAR) /
+`studio.89.168.53.133.nip.io` (STUDIO), servis en **HTTPS** (Let's Encrypt,
+`setup-ssl.sh`) depuis le 14 sept. 2026 — redirection automatique depuis le
+HTTP. `radar.media-labs.is-a.dev` / `studio.media-labs.is-a.dev`
+(référencés dans `GOOGLE_REDIRECT_URI` du `.env` prod) sont un **domaine mort,
+jamais activé** — ne jamais le documenter comme « prod annoncée », c'est une
+config OAuth orpheline, pas une adresse réelle du produit.
+Budget : 0 €, VM Oracle Cloud ARM (2 vCPU, 11 Go RAM, sans GPU — vérifié
+`nproc`/`free -h` le 14 sept. 2026).
 
 > ⚠️ Correction de la session (2026-08-28) : `ONBOARDING.md` disait « RADAR port 3001 »
 > en dev. La réalité vérifiée : **dev = 3000**, 3001 n'existe qu'en prod Docker.
@@ -37,7 +44,14 @@ Budget : 0 €, VM Oracle Cloud ARM (2 cœurs, sans GPU).
 
 - Cookie unique **`session`** posé par les deux apps :
   `httpOnly: true`, `sameSite: "lax"`, `path: "/"`, expiration **7 jours**
-  (`Date.now() + 7*24*60*60*1000`), pas de `secure` (HTTP sans SSL en l'état).
+  (`Date.now() + 7*24*60*60*1000`).
+  **Depuis le 14 sept. 2026 (HTTPS actif)** : `secure: true` +
+  `domain: .89.168.53.133.nip.io` (`SESSION_COOKIE_SECURE`/`SESSION_COOKIE_DOMAIN`
+  dans le `.env` prod partagé, lus par `src/lib/session.ts` des deux apps) — c'est
+  ce qui fait qu'une connexion sur RADAR est **réellement reconnue par STUDIO sans
+  redemander le mot de passe**, testé en conditions réelles (login RADAR →
+  navigation STUDIO, aucune re-connexion). Avant cette date, le cookie n'avait pas
+  `secure` (tout tournait en HTTP) — ne plus documenter ce comportement.
 - Les deux apps signent/déchiffrent avec le **même `SESSION_SECRET`** (les valeurs
   des deux `.env.local` sont strictement identiques — hash vérifié) et le **même
   fallback codé en dur** dans `src/lib/session.ts`.
@@ -150,6 +164,12 @@ une seule fois au démarrage par l'URL réelle, dans l'ordre de priorité
   chip starter / fiche liée — jamais de re-recherche floue).
 - `.lma-avatar` rend la mascotte ; les chips starters s'affichent même sans
   coupure d'état (l'état du widget est local au composant).
+- **Déplaçable depuis le 15 sept. 2026** : le bouton flottant (`.lma-launcher`)
+  se glisse (Pointer Events, `touch-action: none` pour le tactile), position
+  mémorisée par appareil (`localStorage`, clampée à la fenêtre). Un tap simple
+  (déplacement < 6px) garde son comportement d'origine (ouvrir/fermer) —
+  ajouté suite à une gêne signalée sur mobile (le bouton fixe pouvait
+  recouvrir un bouton d'action selon la page).
 
 ### 3.6 Kill-switch côté UI
 
@@ -189,9 +209,16 @@ le kill-switch agit au niveau de l'API (503). Le launcher n'est masqué que par
 
 ## 5. Brouillons IA (« du matin »)
 
-- Le **pipeline tourne toutes les 4 h** (`cron '0 */4 * * *'`, configurable en base
-  via `pipeline_config` — `RADAR/src/lib/cron.ts`) : ingestion RSS, scoring,
-  clustering (embeddings e5-small), fact-checking, contrôle qualité automatique.
+- Le **pipeline tourne 2x/jour, 6h et 18h heure de Paris** (`cron '0 4,16 * * *'`,
+  configurable en base via `pipeline_config` — `RADAR/src/lib/cron.ts`) : ingestion
+  RSS, scoring, clustering (embeddings e5-small), fact-checking, contrôle qualité
+  automatique. **Changé le 14 sept. 2026** (était toutes les 4h) — cause : le
+  pipeline tourne dans le **même process Node que le serveur web** (pas de worker
+  séparé), son calcul intensif (embeddings + traduction locale ONNX) bloque le
+  thread JS et rend le site **totalement inaccessible** pendant toute sa durée
+  (30-50 min), vérifié en prod réelle. 2x/jour hors heures de bureau réduit le
+  risque sans l'éliminer — voir `TODO.md` §3.3 pour l'analyse complète et la
+  solution structurelle recommandée (process séparé), pas faite à ce jour.
 - Il **auto-génère des brouillons marqués « GÉNÉRÉ PAR L'IA »** (badge affiché dans
   l'UI). Ils ne sont **jamais publiés sans validation humaine**.
 - Écran d'accueil RADAR (Serveur) : `morningAutoGen` expose `attempted`, `passed`,
@@ -240,22 +267,50 @@ Règle UX maintenue dans la session : les états vides **calibrent l'attente**
 
 ## 8. Infra et déploiement
 
-- `docker-compose.yml` (racine) : services `radar` (conteneur `lma-radar`) et
-  `studio` (conteneur `lma-studio`), volume `radar-data` / `studio-uploads`.
-- Mapping prod : `127.0.0.1:3001:3000` (radar) et `127.0.0.1:3002:3000` (studio)
-  — NGINX expose déjà 3002 vu depuis l'extérieur (dev). En conteneur, chaque app
-  tourne en interne sur **3000** (`PORT=3000`).
-- `nginx/` : `server_name _` et `studio.89.168.53.133.nip.io` → proxy
-  `127.0.0.1:3000`/`3002`.
-- Variables d'env présentes (`.env.local`, présence vérifiée) :
+> **Corrigé le 14 sept. 2026** : cette section décrivait un déploiement Docker
+> (`docker-compose.yml`) qui n'a **jamais tourné en prod** — vérifié directement
+> sur la VM (`docker ps -a` → aucun conteneur, jamais créé). Le déploiement réel,
+> celui manipulé en session, est **PM2 direct** : chaque app tourne via
+> `next start` lancé par PM2 (`deploy/start-radar.sh` / `start-studio.sh`),
+> `deploy/deploy.sh` orchestrant pull/build/restart. `docker-compose.yml` existe
+> dans le dépôt mais est un vestige non utilisé — ne pas s'y fier pour comprendre
+> la prod réelle.
+
+- **PM2** (VM Oracle Cloud) : 2 process applicatifs, `radar` (port 3000) et
+  `studio` (port 3002), plus `pm2-logrotate`. Lancés par `deploy/start-radar.sh` /
+  `start-studio.sh` (source `/opt/media-labs/.env`, partagé, non versionné),
+  orchestrés par `deploy/deploy.sh` (pull, build, copie configs, restart PM2,
+  vérification post-déploiement avec retour arrière automatique si échec).
+- **Limites mémoire PM2** (`--max-memory-restart`) : `studio` à 400M ; `radar` à
+  **3000M** (relevé le 14 sept. 2026 depuis 400M — le pic réel mesuré au
+  chargement des modèles embeddings + traduction locale tourne autour de
+  1.5-1.6 Go, 400M causait des redémarrages en boucle en pleine ingestion,
+  `pm2.log` : `current_memory=1005432832`/`1634156544` octets contre
+  `max_memory_limit=419430500`/`1572864000`).
+  **Régression trouvée le 15 sept. 2026** : `pm2 start ... --max-memory-restart
+  3000M` (dans `deploy.sh`) n'applique pas toujours cette limite sur `radar` —
+  `pm2 describe radar` a montré `419430400` (400M, la valeur de STUDIO) après
+  un déploiement standard, alors que `--kill-timeout` de la même commande
+  s'appliquait bien. Cause exacte côté PM2 non identifiée. `pm2 restart radar
+  --update-env --max-memory-restart 3000M` corrige la valeur de façon fiable
+  (vérifié) — `deploy.sh` l'exécute désormais en filet de sécurité juste après
+  le `pm2 start`. Vérifier `pm2 jlist` après chaque déploiement.
+- `nginx/` : conf HTTPS finale (`nginx/media-labs-ssl.conf`, installée par
+  `setup-ssl.sh` une fois le certificat obtenu) — `server_name 89.168.53.133.nip.io`
+  → `127.0.0.1:3000`, `server_name studio.89.168.53.133.nip.io` →
+  `127.0.0.1:3002`, redirection HTTP→HTTPS + challenge ACME sur le bloc HTTP.
+  Conf bootstrap HTTP-only (`nginx/media-labs.conf`) gardée pour un tout premier
+  déploiement avant obtention du certificat.
+- Variables d'env présentes (`/opt/media-labs/.env`, partagé entre les deux apps,
+  présence vérifiée) :
   - **RADAR** : `AUTH_PASSWORD, SESSION_SECRET, GROQ_API_KEY, OPENROUTER_API_KEY,
     GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, IMPORT_SECRET,
-    STUDIO_URL, NEXT_PUBLIC_STUDIO_URL, STUDIO_IMPORT_URL`.
+    STUDIO_URL, NEXT_PUBLIC_STUDIO_URL, STUDIO_IMPORT_URL, SESSION_COOKIE_SECURE,
+    SESSION_COOKIE_DOMAIN`.
   - **STUDIO** : `AUTH_PASSWORD, SESSION_SECRET, GROQ_API_KEY, IMPORT_SECRET,
-    RADAR_URL`.
-- En prod Docker, `SESSION_SECRET` et `AUTH_PASSWORD` doivent être fournis via
-  l'environnement de l'hôte (`${SESSION_SECRET:-...}`) — même valeur pour les deux
-  apps (c'est ce qui matérialise la session partagée en prod aussi).
+    RADAR_URL, SESSION_COOKIE_SECURE, SESSION_COOKIE_DOMAIN`.
+- Même fichier `.env` pour les deux apps (`SESSION_SECRET`/`AUTH_PASSWORD`
+  identiques) — c'est ce qui matérialise la session partagée en prod.
 
 ### 8.1 Pare-feu à deux niveaux (finding F7, audit 2026-09-07)
 
@@ -318,3 +373,28 @@ inversement.
 2. **`AGENTS.md`** : la référence à `CLAUDE_DASHBOARD.md` (racine) pointait sur un
    fichier **inexistant** (seul `RADAR/CLAUDE_DASHBOARD.md` existe) ; référencé le
    bon chemin et ajouté `ECOSYSTEM.md` dans la table des sources de vérité.
+
+## 10.1 Corrections du 2026-09-14 (activation HTTPS + passage prod réel)
+
+Ce fichier décrivait un état antérieur à l'activation HTTPS et contenait une
+section infra jamais réellement en service. Corrigé après vérification directe
+sur la VM prod (SSH, `pm2`, `docker ps -a`, tests navigateur réels) :
+
+1. **§1** : domaine « prod annoncée » (`*.media-labs.is-a.dev`) clarifié comme
+   config OAuth morte, jamais servie — la seule prod réelle est
+   `89.168.53.133.nip.io` (HTTPS). Table de ports corrigée (pas de mapping
+   Docker, PM2 direct).
+2. **§2** : cookie de session documenté comme non-`secure` (HTTP) — faux depuis
+   l'activation HTTPS ; `secure: true` + `domain` partagé confirmés actifs et
+   testés (partage de session RADAR↔STUDIO réel, sans re-connexion).
+3. **§5** : horaire du pipeline « toutes les 4h » → **2x/jour (6h/18h Paris)**,
+   changé ce jour pour limiter (pas éliminer) le blocage du site pendant les
+   cycles — cause de fond et solution recommandée documentées dans `TODO.md`
+   §3.3. La fiche assistant correspondante (`RADAR/src/lib/assistant/knowledge.ts`,
+   id `pipeline`) a aussi été corrigée pour ne plus induire l'équipe en erreur.
+4. **§8** : section infra réécrite — décrivait un déploiement Docker
+   (`docker-compose.yml`) **jamais utilisé en prod** (`docker ps -a` vérifié :
+   aucun conteneur). Le vrai déploiement est PM2 direct (`next start` via
+   `deploy/start-radar.sh`/`start-studio.sh`), documenté avec les limites
+   mémoire réelles (`radar` relevé 400M→3000M après des redémarrages en boucle
+   mesurés en prod) et la conf nginx HTTPS finale.
