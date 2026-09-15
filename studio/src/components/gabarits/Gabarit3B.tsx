@@ -96,7 +96,7 @@ export default function Gabarit3B(props: Record<string, string>) {
           style={{ height: hauteurPhoto, zIndex: 5, transform: transformFond }}
         />
       )}
-      <TitleFooter title={title} hauteurPhoto={hauteurPhoto} />
+      <TitleFooter title={title} hauteurPhoto={hauteurPhoto} titreCadre={props.titreCadre} />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import Gabarit1A from "@/components/gabarits/Gabarit1A";
 
 interface RenderPageProps {
-  searchParams: Promise<{ title?: string; imageUrl?: string; imageCadre?: string; photoHeight?: string }>;
+  searchParams: Promise<{ title?: string; imageUrl?: string; imageCadre?: string; titreCadre?: string; photoHeight?: string }>;
 }
 
 /**
@@ -21,13 +21,14 @@ interface RenderPageProps {
  * le fait déjà la route générique `/render/[gabaritId]`.
  */
 export default async function Render1APage({ searchParams }: RenderPageProps) {
-  const { title, imageUrl, imageCadre, photoHeight } = await searchParams;
+  const { title, imageUrl, imageCadre, titreCadre, photoHeight } = await searchParams;
 
   return (
     <Gabarit1A
       title={title ?? ""}
       imageUrl={imageUrl ?? "/test/placeholder-photo.jpg"}
       imageCadre={imageCadre}
+      titreCadre={titreCadre}
       photoHeight={photoHeight}
     />
   );

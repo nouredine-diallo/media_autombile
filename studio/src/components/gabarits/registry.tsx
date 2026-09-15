@@ -58,6 +58,7 @@ export const GABARITS: Record<string, GabaritDef> = {
     fields: [
       { key: "imageUrl", label: "Image", kind: "image" },
       { key: "imageCadre", label: "Cadrage du fond", kind: "geometry" },
+      { key: "titreCadre", label: "Cadrage du titre", kind: "geometry" },
       { key: "title", label: "Titre", kind: "textarea" },
     ],
     // Gabarit1A a une signature typée (props nommées) là où le registre
@@ -77,12 +78,14 @@ export const GABARITS: Record<string, GabaritDef> = {
         imageUrl={props.imageUrl ?? ""}
         title={props.title ?? ""}
         imageCadre={props.imageCadre}
+        titreCadre={props.titreCadre}
         photoHeight={props.photoHeight}
       />
     ),
     defaults: {
       imageUrl: PLACEHOLDER,
       imageCadre: "",
+      titreCadre: "",
       title: "Titre d'exemple pour le gabarit 1A",
     },
   },
@@ -98,6 +101,7 @@ export const GABARITS: Record<string, GabaritDef> = {
     fields: [
       { key: "imageUrl", label: "Image", kind: "image" },
       { key: "imageCadre", label: "Cadrage du fond", kind: "geometry" },
+      { key: "titreCadre", label: "Cadrage du titre", kind: "geometry" },
       { key: "eyebrow", label: "Surtitre", kind: "textarea" },
       { key: "title", label: "Titre", kind: "textarea" },
     ],
@@ -114,12 +118,14 @@ export const GABARITS: Record<string, GabaritDef> = {
           title={props.title ?? ""}
           eyebrow={props.eyebrow || undefined}
           imageCadre={props.imageCadre}
+          titreCadre={props.titreCadre}
         />
       </div>
     ),
     defaults: {
       imageUrl: PLACEHOLDER,
       imageCadre: "",
+      titreCadre: "",
       eyebrow: "Une touche japonaise pour séduire les internautes",
       title: "Titre d'exemple pour le gabarit 1C",
     },
@@ -156,6 +162,7 @@ export const GABARITS: Record<string, GabaritDef> = {
     fields: [
       { key: "imageUrl", label: "Image d'ambiance", kind: "image" },
       { key: "imageCadre", label: "Cadrage du fond", kind: "geometry" },
+      { key: "ctaCadre", label: "Cadrage du texte", kind: "geometry" },
       { key: "message", label: "Message (préchargé, éditable)", kind: "textarea" },
     ],
     Component: (props: Record<string, string>) => (
@@ -163,11 +170,13 @@ export const GABARITS: Record<string, GabaritDef> = {
         imageUrl={props.imageUrl ?? ""}
         message={props.message}
         imageCadre={props.imageCadre}
+        ctaCadre={props.ctaCadre}
       />
     ),
     defaults: {
       imageUrl: PLACEHOLDER,
       imageCadre: "",
+      ctaCadre: "",
       message: CTA_DEFAUT,
     },
   },
@@ -182,6 +191,7 @@ export const GABARITS: Record<string, GabaritDef> = {
       { key: "bulleGeom", label: "Position de la bulle", kind: "geometry" },
       { key: "bulleCadre", label: "Cadrage de la bulle", kind: "geometry" },
       { key: "imageCadre", label: "Cadrage du fond", kind: "geometry" },
+      { key: "titreCadre", label: "Cadrage du titre", kind: "geometry" },
       { key: "title", label: "Titre", kind: "textarea" },
     ],
     Component: Gabarit2A,
@@ -193,6 +203,7 @@ export const GABARITS: Record<string, GabaritDef> = {
       bulleGeom: "",
       bulleCadre: "",
       imageCadre: "",
+      titreCadre: "",
       title: "Titre d'exemple pour le gabarit 2A",
     },
   },
@@ -207,6 +218,7 @@ export const GABARITS: Record<string, GabaritDef> = {
       { key: "bulleGeom", label: "Position de la bulle", kind: "geometry" },
       { key: "bulleCadre", label: "Cadrage de la bulle", kind: "geometry" },
       { key: "imageCadre", label: "Cadrage du fond", kind: "geometry" },
+      { key: "titreCadre", label: "Cadrage du titre", kind: "geometry" },
       { key: "title", label: "Titre", kind: "textarea" },
     ],
     Component: Gabarit2B,
@@ -218,6 +230,7 @@ export const GABARITS: Record<string, GabaritDef> = {
       bulleGeom: "",
       bulleCadre: "",
       imageCadre: "",
+      titreCadre: "",
       title: "Titre d'exemple pour le gabarit 2B",
     },
   },
@@ -236,6 +249,7 @@ export const GABARITS: Record<string, GabaritDef> = {
       { key: "bulle1Cadre", label: "Cadrage bulle 1", kind: "geometry" },
       { key: "bulle2Cadre", label: "Cadrage bulle 2", kind: "geometry" },
       { key: "imageCadre", label: "Cadrage du fond", kind: "geometry" },
+      { key: "titreCadre", label: "Cadrage du titre", kind: "geometry" },
       { key: "title", label: "Titre", kind: "textarea" },
     ],
     Component: Gabarit3A,
@@ -251,6 +265,7 @@ export const GABARITS: Record<string, GabaritDef> = {
       bulle1Cadre: "",
       bulle2Cadre: "",
       imageCadre: "",
+      titreCadre: "",
       title: "Titre d'exemple pour le gabarit 3A",
     },
   },
@@ -269,6 +284,7 @@ export const GABARITS: Record<string, GabaritDef> = {
       { key: "bulle1Cadre", label: "Cadrage bulle 1", kind: "geometry" },
       { key: "bulle2Cadre", label: "Cadrage bulle 2", kind: "geometry" },
       { key: "imageCadre", label: "Cadrage du fond", kind: "geometry" },
+      { key: "titreCadre", label: "Cadrage du titre", kind: "geometry" },
       { key: "title", label: "Titre", kind: "textarea" },
     ],
     Component: Gabarit3B,
@@ -284,6 +300,7 @@ export const GABARITS: Record<string, GabaritDef> = {
       bulle1Cadre: "",
       bulle2Cadre: "",
       imageCadre: "",
+      titreCadre: "",
       title: "Titre d'exemple pour le gabarit 3B",
     },
   },

@@ -73,6 +73,8 @@ export interface Gabarit1AProps {
   photoHeight?: string;
   /** Cadrage de la photo de fond : `"zoom,dx,dy"`. */
   imageCadre?: string;
+  /** Cadrage manuel du bloc titre (P7) : `"zoom,dx,dy"` — voir TitleFooter.tsx. */
+  titreCadre?: string;
 }
 
 /**
@@ -98,7 +100,7 @@ export function lireHauteurPhoto(valeur: string | undefined): number {
   return Number.isFinite(n) && n > 0 && n <= GABARIT_1A_HEIGHT ? n : GABARIT_PHOTO_HEIGHT;
 }
 
-export default function Gabarit1A({ imageUrl, title, eyebrow, photoHeight, imageCadre }: Gabarit1AProps) {
+export default function Gabarit1A({ imageUrl, title, eyebrow, photoHeight, imageCadre, titreCadre }: Gabarit1AProps) {
   const hauteurPhoto = lireHauteurPhoto(photoHeight);
   const cf = lireCadre(imageCadre);
   const transformFond = `translate(${cf.dx}%, ${cf.dy}%) scale(${cf.zoom})`;
@@ -115,7 +117,7 @@ export default function Gabarit1A({ imageUrl, title, eyebrow, photoHeight, image
         className="absolute inset-x-0 top-0 w-full object-cover"
         style={{ height: hauteurPhoto, transform: transformFond }}
       />
-      <TitleFooter title={title} eyebrow={eyebrow} hauteurPhoto={hauteurPhoto} />
+      <TitleFooter title={title} eyebrow={eyebrow} hauteurPhoto={hauteurPhoto} titreCadre={titreCadre} />
     </div>
   );
 }

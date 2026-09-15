@@ -1,4 +1,5 @@
-import { GABARIT_1A_HEIGHT, GABARIT_PHOTO_HEIGHT } from "./Gabarit1A";
+import { GABARIT_1A_WIDTH, GABARIT_1A_HEIGHT, GABARIT_PHOTO_HEIGHT } from "./Gabarit1A";
+import { lireCadre } from "./Bulle";
 import {
   tailleTitre,
   TITLE_FONT_SIZE,
@@ -18,11 +19,19 @@ export interface TitleFooterProps {
    * fond flou en bandes (voir `hauteurZonePhoto`).
    */
   hauteurPhoto?: number;
+  /**
+   * Cadrage manuel du bloc titre (P7, 15 sept. 2026) : `"zoom,dx,dy"`, même
+   * format et même composant d'interaction (`RecadrageFond`) que le
+   * recadrage déjà en place pour l'image de fond — un décalage/zoom du
+   * texte, jamais du logo (bloc de marque fixe, jamais déplacé par
+   * l'opérateur). Absent → comportement mesuré inchangé.
+   */
+  titreCadre?: string;
 }
 
 /** Le bloc occupe de 54 % à 100 % du canevas, soit 46 points de hauteur. */
-const BLOCK_TOP_PERCENT = 54;
-const BLOCK_SPAN = 100 - BLOCK_TOP_PERCENT;
+export const BLOCK_TOP_PERCENT = 54;
+export const BLOCK_SPAN = 100 - BLOCK_TOP_PERCENT;
 
 /** Convertit une hauteur en % du canevas vers un % de la hauteur du bloc. */
 const toBlock = (canvasPercent: number) =>
@@ -127,7 +136,18 @@ const gradientCss = (hauteurPhotoPx: number) =>
  * se produise). Le titre est une zone de sécurité, il ne se fait jamais
  * recouvrir (CLAUDE.md §5).
  */
-export function TitleFooter({ title, eyebrow, hauteurPhoto }: TitleFooterProps) {
+export function TitleFooter({ title, eyebrow, hauteurPhoto, titreCadre }: TitleFooterProps) {
+  // Transform en PIXELS, pas en % CSS : le wrapper eyebrow+titre a une
+  // hauteur intrinsèque (celle du texte), pas la hauteur du bloc entier —
+  // un `translate(dy%)` CSS y aurait une amplitude différente selon la
+  // longueur du titre. Calculé sur les mêmes dimensions de référence
+  // (largeur du canevas, hauteur du bloc) que celles passées à
+  // `RecadrageFond` dans titres/page.tsx, pour que le geste et le rendu
+  // s'accordent exactement.
+  const cf = lireCadre(titreCadre);
+  const blockHeightPx = GABARIT_1A_HEIGHT * (BLOCK_SPAN / 100);
+  const titreTransform = `translate(${((cf.dx / 100) * GABARIT_1A_WIDTH).toFixed(1)}px, ${((cf.dy / 100) * blockHeightPx).toFixed(1)}px) scale(${cf.zoom})`;
+
   return (
     <div
       className="absolute inset-x-0 bottom-0 flex flex-col justify-end px-[8.7%] pb-[3.5%]"
@@ -151,6 +171,7 @@ export function TitleFooter({ title, eyebrow, hauteurPhoto }: TitleFooterProps) 
         background: gradientCss(hauteurPhoto ?? GABARIT_PHOTO_HEIGHT),
       }}
     >
+      <div style={{ transform: titreTransform, transformOrigin: "left bottom" }}>
       {eyebrow && (
         <p
           className="mb-[1%] font-medium text-white"
@@ -188,6 +209,7 @@ export function TitleFooter({ title, eyebrow, hauteurPhoto }: TitleFooterProps) 
       >
         {title}
       </p>
+      </div>
       {/* eslint-disable-next-line @next/next/no-img-element -- capture Playwright pixel-exacte */}
       <img
         src={LOGO_SRC}

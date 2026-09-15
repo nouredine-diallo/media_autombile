@@ -20,7 +20,18 @@ export interface GabaritCTAProps {
   message?: string;
   /** Cadrage de la photo : `"zoom,dx,dy"`. */
   imageCadre?: string;
+  /**
+   * Cadrage manuel du texte du CTA (P7, 15 sept. 2026) : `"zoom,dx,dy"`,
+   * même format et même mécanisme (`RecadrageFond`) que `imageCadre`
+   * ci-dessus et que `titreCadre` (TitleFooter.tsx). Absent → position
+   * mesurée inchangée (11,5% du haut, centré).
+   */
+  ctaCadre?: string;
 }
+
+/** Zone de référence du texte CTA, pour que le geste (RecadrageFond, dans
+ * titres/page.tsx) et ce calcul de transform utilisent les mêmes bornes. */
+export const CTA_TEXT_ZONE_HEIGHT = GABARIT_1A_HEIGHT * 0.20;
 
 /**
  * Gabarit CTA — toujours la dernière slide d'un carrousel (Outro).
@@ -41,11 +52,15 @@ export interface GabaritCTAProps {
  *   pas une valeur mesurée elle-même : à revoir si un post réel montre le
  *   contraire.
  */
-export default function GabaritCTA({ imageUrl, message, imageCadre }: GabaritCTAProps) {
+export default function GabaritCTA({ imageUrl, message, imageCadre, ctaCadre }: GabaritCTAProps) {
   const texte = message?.trim() || CTA_DEFAUT;
   const cf = lireCadre(imageCadre);
   const transformFond = `translate(${cf.dx}%, ${cf.dy}%) scale(${cf.zoom})`;
   const corps = tailleTitre(texte);
+  // Pixels, pas % CSS — même raison que TitleFooter.tsx : la hauteur
+  // intrinsèque du texte varie avec sa longueur.
+  const ctf = lireCadre(ctaCadre);
+  const texteTransform = `translate(${((ctf.dx / 100) * GABARIT_1A_WIDTH).toFixed(1)}px, ${((ctf.dy / 100) * CTA_TEXT_ZONE_HEIGHT).toFixed(1)}px) scale(${ctf.zoom})`;
 
   return (
     <div
@@ -72,6 +87,8 @@ export default function GabaritCTA({ imageUrl, message, imageCadre }: GabaritCTA
           letterSpacing: TITLE_LETTER_SPACING,
           textShadow: "0 2px 10px rgba(0,0,0,0.55)",
           textWrap: "balance",
+          transform: texteTransform,
+          transformOrigin: "center top",
         }}
       >
         {texte}
