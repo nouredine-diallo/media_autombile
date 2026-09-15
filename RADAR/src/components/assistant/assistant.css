@@ -94,7 +94,7 @@
   100% { transform: scale(1); }
 }
 
-/* ---- Launcher (bouton flottant) ---- */
+/* ---- Launcher (bouton flottant, déplaçable — voir AssistantLauncher.tsx) ---- */
 .lma-launcher {
   position: fixed;
   right: 22px;
@@ -108,6 +108,10 @@
   box-shadow: var(--shadow-lg);
   display: grid;
   place-items: center;
+  /* Sans ça, un glisser tactile est intercepté par le scroll de la page
+     avant que les Pointer Events n'atteignent le bouton — le déplacement
+     ne fonctionnerait qu'à la souris, pas au doigt. */
+  touch-action: none;
   cursor: pointer;
   padding: 0;
   transition: transform var(--dur, 180ms) var(--ease, ease), box-shadow var(--dur, 180ms) var(--ease, ease);

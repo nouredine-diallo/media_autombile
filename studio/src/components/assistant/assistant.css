@@ -113,7 +113,7 @@
   100% { transform: scale(1); }
 }
 
-/* ---- Launcher (bouton flottant) ---- */
+/* ---- Launcher (bouton flottant, déplaçable — voir AssistantLauncher.tsx) ---- */
 .lma-launcher {
   position: fixed;
   right: 22px;
@@ -130,6 +130,9 @@
   cursor: pointer;
   padding: 0;
   transition: transform 160ms ease, box-shadow 160ms ease;
+  /* Sans ça, un glisser tactile est intercepté par le scroll de la page
+     avant que les Pointer Events n'atteignent le bouton. */
+  touch-action: none;
 }
 
 .lma-launcher:hover {
