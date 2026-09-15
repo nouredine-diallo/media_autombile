@@ -713,18 +713,75 @@ sécurité/robustesse de cette Partie 2, mériterait sa propre investigation
 dédiée) — signalé pour ne pas laisser croire que "tous les gabarits sont
 vérifiés" pendant que ce script échoue en réalité.
 
-### 11.10 Vérifications finales
+### 11.10 Déploiement réel en production — et deux bugs supplémentaires trouvés en le faisant
+
+Sur demande explicite de l'utilisateur, les correctifs ci-dessus ont été
+commités, poussés et **réellement déployés en production** le 15 sept.
+2026. Le déploiement a révélé deux bugs réels dans `deploy.sh` lui-même,
+**non liés aux findings de sécurité de la Partie 1**, trouvés uniquement
+parce que chaque étape a été vérifiée sur la vraie VM plutôt que supposée
+réussie à la sortie `0` du script :
+
+**Bug A — `deploy.sh` s'auto-modifiait pendant sa propre exécution.**
+Le script fait `git pull` sur lui-même à l'étape [1/6]. `git pull` remplace
+le fichier par un nouvel inode (rename), mais bash garde son descripteur
+ouvert sur l'ancien inode, désormais orphelin — toute la suite du script
+continuait silencieusement à exécuter l'ancien contenu déjà chargé, même
+après que le fichier sur disque contienne le nouveau code. Découvert
+concrètement : le premier déploiement de la vérification PM2 (§11.6)
+n'affichait pas cette vérification dans sa sortie, alors que le fichier sur
+disque la contenait déjà après le `git pull`. Corrigé en se ré-exécutant
+depuis une copie figée en `/tmp` avant que le `git pull` de l'étape
+suivante ne puisse affecter le processus en cours.
+
+**Conséquence à retenir pour toute future session** : à cause de ce
+correctif lui-même, une modification de `deploy.sh` prend effet **au
+déploiement suivant**, pas à celui qui l'introduit — le run qui pousse le
+changement s'exécute encore depuis la copie figée d'avant. C'est resté vrai
+un cran plus loin avec le Bug B ci-dessous : il a fallu un 4ᵉ run pour que
+le correctif du 3ᵉ run s'applique réellement.
+
+**Bug B — `deploy.sh` n'a jamais lancé `npm install`.** Plus grave : le
+script faisait `git pull` (qui met à jour `package.json`/
+`package-lock.json`) puis `next build` **directement sur les
+`node_modules` existants**, sans jamais les mettre à jour. Découvert en
+vérifiant le tout premier déploiement du correctif Next.js critique :
+`pm2 logs` affichait encore "Next.js 16.3.1" après un déploiement
+"réussi". Confirmé sur la VM : `node_modules/next/package.json` indiquait
+toujours 16.3.1 alors que `package.json` indiquait déjà 16.3.5. **Ce bug
+existait avant cette session** (jamais introduit par la Partie 2) — il
+veut dire que toute mise à jour de dépendance de l'histoire de ce projet,
+correctifs de sécurité compris, n'a jamais réellement atteint la prod par
+`deploy.sh` seul, sans qu'un `npm install` manuel soit lancé à côté.
+Corrigé : `npm install` ajouté dans `build_app()`, avant le build, avec le
+même traitement d'échec bloquant que le reste du script.
+
+**Vérification finale, après le 4ᵉ et dernier run de déploiement** (celui
+qui a réellement exécuté les deux correctifs ci-dessus) :
+- `node_modules/next/package.json` → **16.3.5** confirmé sur la VM, RADAR
+  et STUDIO.
+- `node_modules/sharp/package.json` → **0.35.4** confirmé sur la VM,
+  STUDIO.
+- `pm2 jlist` → `radar` et `studio` tous deux `online`, `radar` restart
+  count = 1 (le redémarrage normal du déploiement, pas un crash), `studio`
+  = 0.
+- `curl` réel contre la prod : `X-Frame-Options: SAMEORIGIN` et
+  `Strict-Transport-Security` tous deux présents sur `/login` — le
+  correctif 1.7 est bien actif en prod, pas seulement en local.
+- Toutes les actions VM sont restées en lecture seule pour la partie
+  restauration (§11.5) — seule la copie de sauvegarde hors-VM a écrit
+  localement, jamais sur la VM.
+
+### 11.11 Vérifications finales (résumé)
 
 - `npm run build` : RADAR ✅, STUDIO ✅ (après chaque changement de
   dépendance, pas juste à la fin).
 - `npm run test:unit` : RADAR 16/16 ✅, STUDIO 9/9 ✅.
-- `npm audit` : RADAR 0 vulnérabilité ✅, STUDIO 0 vulnérabilité ✅.
+- `npm audit` : RADAR 0 vulnérabilité ✅, STUDIO 0 vulnérabilité ✅ — **en
+  local et confirmé identique en prod** après déploiement (versions
+  installées vérifiées directement sur la VM, §11.10).
 - `bash -n deploy/deploy.sh` : syntaxe valide ✅.
-- Aucun appel Groq consommé sur l'ensemble de la Partie 2.
-- **Rien de tout ceci n'a encore été déployé en production** — tous les
-  correctifs sont dans l'arborescence locale, pas commités/poussés/
-  déployés (règle non négociable `RADAR/CLAUDE.md` §2 : jamais sans
-  demande explicite). Les seules actions ayant touché la VM prod dans
-  cette Partie 2 sont en lecture seule (vérification `pm2 jlist`,
-  restauration en `/tmp` supprimée ensuite) plus la copie de sauvegarde
-  hors-VM (lecture seule côté VM, écriture seulement en local).
+- Aucun appel Groq consommé sur l'ensemble de la Partie 2, déploiement
+  compris.
+- **Déployé et vérifié en production** le 15 sept. 2026 — voir §11.10 pour
+  le détail des 4 runs de déploiement et des deux bugs trouvés en route.

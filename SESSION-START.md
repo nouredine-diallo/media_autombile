@@ -60,11 +60,18 @@ ci-dessus reste utile en diagnostic, mais n'est plus le seul filet.
 `AUDIT-PRODUCTION-READINESS-2026-09-15.md`** : correctifs de sécurité
 (RCE Next.js critique, bypass rate limiting, secret de session, etc.) et de
 robustesse (backup/restore réellement testé, `deploy.sh` durci) écrits,
-testés (builds + 25 tests unitaires réels + vérifications SSH/curl en
-lecture seule contre la prod) — **mais pas encore commités/poussés/
-déployés** au moment où cette ligne a été écrite. Vérifier `git log`/`git
-status` en début de session pour savoir si c'est toujours le cas avant de
-supposer l'un ou l'autre état.
+testés et **déployés en production le 15 sept. 2026** — versions
+installées (`next@16.3.5`, `sharp@0.35.4`) vérifiées directement sur la VM
+après déploiement, pas juste supposées à partir du code de retour du
+script. **Piège découvert en déployant** : `deploy.sh` n'avait jamais lancé
+`npm install` (depuis le tout début du projet, pas introduit ce jour-là) —
+`git pull` mettait à jour `package.json` mais laissait `node_modules`
+figé, donc aucune mise à jour de dépendance n'atteignait réellement la prod
+par ce script seul jusqu'à ce correctif. Un second piège (le script
+s'auto-modifiait pendant sa propre exécution via son `git pull` sur
+lui-même) est aussi corrigé — **conséquence à connaître** : un futur
+changement à `deploy.sh` lui-même ne prend pleinement effet qu'au
+déploiement *suivant* celui qui l'introduit.
 
 **Ne re-tente pas ce qui a déjà échoué** (détail dans `ONBOARDING.md` §3) :
 contrôle d'un navigateur visible en local (pas de Chrome/sudo — utiliser

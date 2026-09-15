@@ -23,9 +23,11 @@
 - ✅ `[LES DEUX]` Icône Sparkles retirée de toute l'UI, labels de section en casse normale (au lieu d'ALL-CAPS) — signatures visuelles "IA générique" reconnues.
 - ✅ `[INFRA]` `deploy.sh` : `pm2 start --max-memory-restart 3000M` n'appliquait pas fiablement la limite sur `radar` — filet de sécurité `pm2 restart --update-env` ajouté. À surveiller au prochain déploiement (voir `SESSION-START.md`).
 
-## Fait le 15 sept. 2026 (Partie 2 — audit production-ready, en local, **pas encore déployé/commité**)
+## Fait le 15 sept. 2026 (Partie 2 — audit production-ready, **déployé et vérifié en prod**)
 
-> Voir `AUDIT-PRODUCTION-READINESS-2026-09-15.md` §11 pour le détail complet et les preuves de vérification (builds, tests unitaires réels, SSH prod en lecture seule). Rien ci-dessous n'a été poussé en prod — règle non négociable `RADAR/CLAUDE.md` §2.
+> Voir `AUDIT-PRODUCTION-READINESS-2026-09-15.md` §11 pour le détail complet et les preuves de vérification (builds, tests unitaires réels, SSH prod en lecture seule, versions installées relues directement sur la VM après déploiement).
+>
+> **Deux bugs supplémentaires trouvés en déployant réellement** (§11.10, pas des findings de sécurité — des bugs d'outillage) : `deploy.sh` s'auto-modifiait pendant sa propre exécution (git pull sur lui-même, bash continuait sur l'ancien contenu déjà chargé) — corrigé en se ré-exécutant depuis une copie figée. Et surtout : `deploy.sh` n'a **jamais lancé `npm install`** depuis le début du projet — `git pull` mettait à jour `package.json` mais `node_modules` restait figé, donc aucune mise à jour de dépendance (y compris de sécurité) n'atteignait jamais réellement la prod par ce script seul. Corrigé. A nécessité 4 runs de déploiement pour que tout s'applique réellement (conséquence du premier correctif : un changement à `deploy.sh` prend effet au run suivant, pas à celui qui l'introduit).
 
 - ✅ `[LES DEUX]` **[CRITIQUE]** Next.js 16.3.1 → 16.3.5 — advisory critique (RCE non authentifiée, Image Optimization API) confirmée par `npm audit`, et `/_next/image` vérifié joignable sans session en prod avant correctif (curl réel). Build OK des deux apps après bump.
 - ✅ `[LES DEUX]` Bypass du rate limiting login (`X-Forwarded-For` spoofable, nginx ne le remplace pas) — `getClientIp()` préfère maintenant `x-real-ip`. Extrait en `lib/loginSecurity.ts`, testé (8 tests RADAR + 6 STUDIO, dont un test qui reproduit l'ancien bug pour prouver qu'il était réel).
