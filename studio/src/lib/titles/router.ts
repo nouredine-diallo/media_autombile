@@ -6,6 +6,20 @@ export interface TitleGenerationResult {
   surtitres: string[];
   paragraphs: string[];
   provider: string;
+  /**
+   * Finding "hallucination qualitative" (16 sept. 2026, vérification réelle
+   * P3) : `false` quand aucun fait RADAR n'a été trouvé pour ce thème — le
+   * texte généré n'est alors ancré sur rien de vérifié, même sans chiffre
+   * inventé (ex. "les premiers retours des pilotes d'essai soulignent...",
+   * une scène entièrement fabriquée mais sans chiffre à détecter). Le
+   * contrôle programmatique de chaque affirmation qualitative serait un
+   * second appel LLM par génération — trop lourd pour ce projet (VM 2 vCPU,
+   * quota Groq partagé). À la place, ce booléen rend visible à l'humain qui
+   * relit déjà chaque titre avant export (studio/CLAUDE.md §1 : "l'outil ne
+   * publie jamais seul") le moment précis où sa vigilance doit être maximale
+   * — on renforce le contrôle qui existe déjà plutôt que d'en dupliquer un.
+   */
+  factsMatched: boolean;
 }
 
 export const MIN_LEN = 30;
@@ -55,11 +69,24 @@ const PARAGRAPH_EXAMPLES = [
  */
 function buildFactsSection(facts: LookupFact[]): string {
   if (facts.length === 0) {
+    // Durci le 16 sept. 2026 (finding "hallucination qualitative", vérification
+    // réelle P3) : interdire seulement les chiffres laissait passer des
+    // affirmations fabriquées SANS chiffre, avec la même confiance que du
+    // contenu vrai — ex. mesuré en test réel : "les premiers retours des
+    // pilotes d'essai soulignent un équilibre rare" pour un thème
+    // entièrement inventé. Catégories reprises de OWASP LLM09 (misinformation)
+    // et NIST AI 600-1 (confabulation) : une affirmation non chiffrée reste
+    // une affirmation fabriquée si rien ne la supporte.
     return [
       "",
       "Aucune donnée vérifiée n'est disponible pour ce thème.",
       "N'invente AUCUN chiffre technique précis (puissance, vitesse, prix, autonomie, 0-100...).",
-      "Reste qualitatif si besoin (\"la nouvelle génération\", \"récemment\") plutôt que d'en inventer un.",
+      "N'invente AUCUNE réaction, opinion ou citation attribuée à qui que ce soit (pilote d'essai, journaliste, client, expert).",
+      "N'invente AUCUNE déclaration officielle du constructeur (\"affirme que\", \"annonce que\", \"promet que\").",
+      "N'invente AUCUN résultat d'essai, certification, récompense ou comparaison avec un concurrent précis.",
+      "N'invente AUCUN événement futur présenté comme certain (\"sortira en\", \"sera commercialisé\").",
+      "N'utilise PAS de superlatif présenté comme un fait établi (\"le meilleur\", \"unique en son genre\", \"révolutionnaire\") sauf si ces mots viennent du thème fourni tel quel.",
+      "Reste qualitatif et prudent (\"la nouvelle génération\", \"récemment\", \"pourrait\") plutôt que d'affirmer quoi que ce soit comme un fait établi.",
     ].join("\n");
   }
   return [
@@ -204,7 +231,7 @@ async function generateAvecGroq(theme: string, facts: LookupFact[] = []): Promis
   if (!content) {
     throw new TitleGenerationError("Réponse Groq sans contenu");
   }
-  return parseUnifiedResponse(content, "groq");
+  return parseUnifiedResponse(content, "groq", facts.length > 0);
 }
 
 /**
@@ -271,13 +298,13 @@ async function generateAvecOllama(theme: string, facts: LookupFact[] = []): Prom
   if (!content) {
     throw new TitleGenerationError("Réponse Ollama sans contenu");
   }
-  return parseUnifiedResponse(content, "ollama");
+  return parseUnifiedResponse(content, "ollama", facts.length > 0);
 }
 
 /** Parsing JSON commun à tous les fournisseurs — seul le transport diffère
  * (voir generateAvecGroq / generateAvecOllama), le contrat de sortie est
  * identique quel que soit le fournisseur actif. */
-function parseUnifiedResponse(content: string, provider: "groq" | "ollama"): TitleGenerationResult {
+function parseUnifiedResponse(content: string, provider: "groq" | "ollama", factsMatched: boolean): TitleGenerationResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
@@ -317,5 +344,6 @@ function parseUnifiedResponse(content: string, provider: "groq" | "ollama"): Tit
     surtitres: surtitreList.slice(0, titles.length),
     paragraphs: paragraphList.slice(0, 3),
     provider,
+    factsMatched,
   };
 }

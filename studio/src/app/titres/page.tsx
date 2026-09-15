@@ -109,6 +109,11 @@ export default function TitresPage() {
   const [surtitres, setSurtitres] = useState<string[]>([]);
   const [paragraphs, setParagraphs] = useState<string[]>([]);
   const [provider, setProvider] = useState<string | null>(null);
+  // Finding "hallucination qualitative" (16 sept. 2026) : true seulement une
+  // fois qu'une génération a eu lieu ET n'avait aucun fait RADAR derrière —
+  // rend visible à la relecture humaine le moment où le texte n'est ancré
+  // sur rien de vérifié (voir router.ts, TitleGenerationResult.factsMatched).
+  const [factsMatched, setFactsMatched] = useState<boolean | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -192,6 +197,7 @@ export default function TitresPage() {
             setSurtitres(gen.surtitres ?? []);
             setParagraphs(gen.paragraphs ?? []);
             setProvider(gen.provider);
+            setFactsMatched(gen.factsMatched ?? false);
             setSelectedIndex(gen.titles.length > 0 ? 0 : null);
             if (gen.paragraphs && gen.paragraphs.length > 0) {
               setSelectedParagraph(0);
@@ -368,6 +374,7 @@ export default function TitresPage() {
       setSurtitres(data.surtitres ?? []);
       setParagraphs(data.paragraphs ?? []);
       setProvider(data.provider);
+      setFactsMatched(data.factsMatched ?? false);
       // Auto-sélectionner le premier surtitre valide pour gabarit 1B
       const firstSurtitre = (data.surtitres as string[] | undefined ?? []).find((s: string) => s.length > 0);
       if (firstSurtitre) setSelectedSurtitre(firstSurtitre);
@@ -729,6 +736,26 @@ export default function TitresPage() {
                   <span className="text-[10px] text-zinc-400">via {provider}</span>
                 )}
               </div>
+
+              {/* Finding "hallucination qualitative" (16 sept. 2026) : aucun
+                  chiffre inventé ne garantit pas l'absence de scène/réaction/
+                  déclaration inventée (ex. mesuré en test réel : "les premiers
+                  retours des pilotes d'essai soulignent..." pour un thème sans
+                  aucune source). Le prompt l'interdit maintenant explicitement,
+                  mais un LLM reste faillible — ce bandeau rend visible à la
+                  relecture humaine (déjà obligatoire avant export,
+                  studio/CLAUDE.md §1) le moment précis où elle doit être la
+                  plus exigeante, plutôt que de dupliquer un contrôle
+                  automatique coûteux (un appel Groq de plus par génération). */}
+              {factsMatched === false && (
+                <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <span aria-hidden>⚠️</span>
+                  <span>
+                    Aucune source vérifiée trouvée pour ce thème — relis attentivement avant de publier,
+                    le texte peut contenir des affirmations non vérifiées (réactions, déclarations, comparaisons).
+                  </span>
+                </div>
+              )}
 
               {/* Mode gabarit 1B : afficher les paragraphes */}
               {isGabarit1B ? (
