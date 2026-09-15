@@ -154,7 +154,23 @@ pm2 delete all 2>/dev/null || true
 # process (run 86) au même endroit. 3000M laisse une marge large au-dessus
 # du pic réel observé, sur une VM à 11 Go (10 Go dispo, `free -h` vérifié).
 pm2 start /opt/media-labs/start-radar.sh --name radar --cwd "$REPO_DIR/RADAR" --max-memory-restart 3000M --kill-timeout 10000
-pm2 start /opt/media-labs/start-studio.sh --name studio --cwd "$REPO_DIR/studio" --max-memory-restart 400M
+# Finding P2-bis (15 sept. 2026, test réel de vérification du correctif P2) :
+# 400M n'a jamais été mesuré pour STUDIO, seulement un "point de départ
+# prudent" comme RADAR l'était avant sa propre mesure réelle. Exactement le
+# même piège reproduit : un export réel (gabarit simple, 1 image, sans
+# bulles/détourage/upscale) mesuré à 1052 Mo en pic (`pm2 jlist` interrogé
+# toutes les 1,5s pendant l'export, RADAR/CLAUDE.md §4.1 — mesuré, pas
+# supposé), soit 2,6× la limite. Conséquence vérifiée : le process crashait
+# et PM2 le redémarrait (`restart_time` passé de 3 à 4 pendant un seul test),
+# provoquant un vrai 502 nginx côté utilisateur au milieu d'un export — la
+# mémoire retombe à ~139 Mo une fois l'export terminé (pas une fuite, un pic
+# transitoire de rendu Playwright/Chromium). Un gabarit à 3 bulles avec
+# détourage (u2net) et upscale (realesrgan) sollicite forcément plus que ce
+# cas simple. 2000M laisse une marge large au-dessus du pic mesuré, sur la
+# même VM à 11 Go déjà validée pour RADAR (10 Go dispo, `free -h` vérifié) —
+# 3000M (radar) + 2000M (studio) = 5000M, largement sous la capacité même si
+# les deux pics se produisent simultanément.
+pm2 start /opt/media-labs/start-studio.sh --name studio --cwd "$REPO_DIR/studio" --max-memory-restart 2000M
 # Trouvé le 15 sept. 2026, en vérifiant un déploiement réel : `pm2 start
 # --max-memory-restart 3000M` juste au-dessus n'applique PAS la limite sur
 # ce process precis — `pm2 describe radar` affichait encore 419430400 (400M,
@@ -168,6 +184,11 @@ pm2 start /opt/media-labs/start-studio.sh --name studio --cwd "$REPO_DIR/studio"
 # chaque fois. Filet de sécurité explicite plutôt que de faire confiance au
 # flag de la commande `start` ci-dessus.
 pm2 restart radar --update-env --max-memory-restart 3000M
+# Même filet de sécurité pour studio (finding P2-bis, 15 sept. 2026) —
+# le piège PM2 documenté ci-dessus n'a jamais été observé spécifiquement
+# sur studio, mais rien ne garantit qu'il en soit à l'abri : même classe de
+# bug (flag ignoré sur un `start` frais), même correctif préventif.
+pm2 restart studio --update-env --max-memory-restart 2000M
 pm2 save
 
 # Finding 3.2 (AUDIT-PRODUCTION-READINESS, 15 sept. 2026) : ce script
@@ -176,23 +197,31 @@ pm2 save
 # après ce premier constat manuel. Un déploiement où PM2 ignorerait le flag
 # une troisième fois serait passé inaperçu jusqu'au prochain OOM en pleine
 # ingestion. Vérification bloquante plutôt qu'une confiance renouvelée à
-# chaque déploiement.
-echo "  Vérification du plafond mémoire radar..."
-RADAR_MEM_LIMIT=$(pm2 jlist | node -e "
+# chaque déploiement. Étendue à studio (finding P2-bis) pour la même raison.
+echo "  Vérification des plafonds mémoire radar/studio..."
+MEM_LIMITS=$(pm2 jlist | node -e "
   let data = '';
   process.stdin.on('data', d => data += d);
   process.stdin.on('end', () => {
     const procs = JSON.parse(data);
     const radar = procs.find(p => p.name === 'radar');
-    console.log(radar ? radar.pm2_env.max_memory_restart : '0');
+    const studio = procs.find(p => p.name === 'studio');
+    console.log((radar ? radar.pm2_env.max_memory_restart : '0') + ' ' + (studio ? studio.pm2_env.max_memory_restart : '0'));
   });
 ")
+RADAR_MEM_LIMIT=$(echo "$MEM_LIMITS" | cut -d' ' -f1)
+STUDIO_MEM_LIMIT=$(echo "$MEM_LIMITS" | cut -d' ' -f2)
 if [ "$RADAR_MEM_LIMIT" != "3145728000" ]; then
     echo "  ❌ Plafond mémoire radar incorrect après redémarrage : $RADAR_MEM_LIMIT (attendu 3145728000 = 3000M)"
     echo "     PM2 a de nouveau ignoré --max-memory-restart — voir SESSION-START.md, 'Piège PM2'."
     exit 1
 fi
-echo "  ✅ Plafond mémoire radar : 3000M confirmé"
+if [ "$STUDIO_MEM_LIMIT" != "2097152000" ]; then
+    echo "  ❌ Plafond mémoire studio incorrect après redémarrage : $STUDIO_MEM_LIMIT (attendu 2097152000 = 2000M)"
+    echo "     PM2 a ignoré --max-memory-restart sur studio — même piège que radar, voir SESSION-START.md."
+    exit 1
+fi
+echo "  ✅ Plafonds mémoire confirmés : radar 3000M, studio 2000M"
 
 # 5. Open firewall
 echo "[5/6] Opening ports..."
