@@ -7,7 +7,7 @@ import { Badge, ButtonLink } from '@/components/ui';
 import { Mascot } from '@/components/assistant/Mascot';
 import { PlanifierButton } from '@/components/PlanifierButton';
 import { AssociatePartnerButton } from '@/components/AssociatePartnerButton';
-import { IconAlert, IconCheck, IconClose, IconGenerate, IconRefresh, IconStudio } from '@/components/icons';
+import { IconAlert, IconCheck, IconClose, IconRefresh, IconStudio } from '@/components/icons';
 
 const POLL_INTERVAL_MS = 4000;
 const MAX_POLLS = 20; // ~80s — au-delà, on arrête de spammer et on laisse "Actualiser" manuel
@@ -132,7 +132,7 @@ export function PostConfirmCard({
       <div className="min-w-0 flex-1">
         <div className="mb-1.5 flex flex-wrap items-center gap-2">
           {status === 'ready' && (
-            <Badge tone="studio" icon={IconGenerate}>
+            <Badge tone="studio">
               Visuel généré par l&apos;IA
             </Badge>
           )}

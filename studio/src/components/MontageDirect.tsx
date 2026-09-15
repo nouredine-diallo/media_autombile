@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Crop, Move, Repeat2, RotateCcw, Sparkles } from "lucide-react";
+import { Crop, Move, Repeat2, RotateCcw } from "lucide-react";
 import { GABARIT_HEIGHT, GABARIT_WIDTH } from "@/components/gabarits/registry";
 import { lireCadre, lireGeometrie, type BulleGeometry } from "@/components/gabarits/Bulle";
 
@@ -301,7 +301,6 @@ export function MontageDirect({ echelle, cibles, valeurs, onChange, photos }: Pr
                       }`}
                       title="Laisser le sujet dépasser du cercle"
                     >
-                      <Sparkles className="size-3.5" aria-hidden />
                       Débordement
                     </button>
                   )}

@@ -151,13 +151,15 @@ body {
 .t-label   { font-size: 0.8125rem;line-height: 1.4;  font-weight: 550; letter-spacing: -0.004em; }
 .t-caption { font-size: 0.75rem;  line-height: 1.4;  font-weight: 450; }
 
-/* Intitulé de section : petites capitales espacées, discret mais net */
+/* Intitulé de section — casse normale, poids de police pour la hiérarchie
+   plutôt que les majuscules trackées (P8, 15 sept. 2026) : l'ALL-CAPS
+   espacé est un des tics visuels les plus reconnaissables des interfaces
+   "générées par IA" — supprimé pour que l'UI ne le lise plus comme tel. */
 .t-eyebrow {
-  font-size: 0.6875rem;
-  line-height: 1;
-  font-weight: 600;
-  letter-spacing: 0.075em;
-  text-transform: uppercase;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  font-weight: 650;
+  letter-spacing: -0.006em;
   color: var(--text-muted);
 }
 

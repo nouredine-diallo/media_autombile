@@ -46,7 +46,6 @@ export {
   // Actions
   Play as IconRun,
   RefreshCw as IconRefresh,
-  Sparkles as IconGenerate,
   Plus as IconPlus,
   Download as IconDownload,
   Upload as IconUpload,

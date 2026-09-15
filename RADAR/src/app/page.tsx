@@ -24,7 +24,6 @@ import {
   IconCalendar,
   IconCheck,
   IconClock,
-  IconGenerate,
   IconImageOff,
   IconInbox,
   IconPenLine,
@@ -174,10 +173,8 @@ export default async function Home() {
         {morningAutoGen && (
           <section className="mb-6">
             <div className="mb-2.5 flex items-center gap-2">
-              <IconGenerate size={14} strokeWidth={2} className="text-[var(--accent)]" />
               <h2 className="t-eyebrow">Brouillons du matin</h2>
               <span className="inline-flex items-center gap-1.5 rounded-[var(--radius-full)] bg-[var(--accent-soft)] px-2 py-0.5 text-[11px] font-medium leading-5 text-[var(--accent)]">
-                <IconGenerate size={11} strokeWidth={2} />
                 GÉNÉRÉ PAR L&apos;IA
               </span>
               <div className="ml-auto flex items-center gap-2">
@@ -246,7 +243,6 @@ export default async function Home() {
                   >
                     <div className="flex items-center gap-1.5">
                       <span className="inline-flex items-center gap-1 rounded-full bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent)]">
-                        <IconGenerate size={10} strokeWidth={2} />
                         Généré par l&apos;IA
                       </span>
                       <span className="ml-auto t-caption text-[var(--text-muted)]">à valider</span>

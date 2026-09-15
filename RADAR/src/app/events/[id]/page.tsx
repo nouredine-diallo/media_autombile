@@ -10,10 +10,11 @@ import { Badge, Button, EmptyState } from '@/components/ui';
 import {
   IconAlert,
   IconArrowRight,
+  IconArticle,
   IconCheck,
   IconChevronRight,
   IconClose,
-  IconGenerate,
+  IconFile,
   IconImageOff,
   IconPlus,
   IconRefresh,
@@ -966,7 +967,7 @@ export default function EventDetail() {
                   </>
                 ) : (
                   <>
-                    <IconGenerate size={12} strokeWidth={2} />
+                    <IconPlus size={12} strokeWidth={2} />
                     Brief + Article
                   </>
                 )}
@@ -1029,7 +1030,7 @@ export default function EventDetail() {
             ) : (
               <EmptyState
                 compact
-                icon={IconGenerate}
+                icon={IconFile}
                 title="Aucun brief généré"
                 hint="Le brief agrège les faits vérifiables des sources — c'est la seule autorité factuelle de l'article."
               />
@@ -1064,7 +1065,7 @@ export default function EventDetail() {
                     </>
                   ) : (
                     <>
-                      <IconGenerate size={12} strokeWidth={2} />
+                      <IconPlus size={12} strokeWidth={2} />
                       Générer
                     </>
                   )}
@@ -1132,7 +1133,6 @@ export default function EventDetail() {
                           }`}
                           title={article.provenance === 'généré' ? 'Généré automatiquement ce matin, contrôle qualité déjà passé — reste à valider' : "Provenance de l'article"}
                         >
-                          {article.provenance === 'généré' && <IconGenerate size={10} strokeWidth={2} />}
                           {article.provenance === 'généré' ? 'généré auto' : article.provenance}
                         </span>
                       )}
@@ -1171,7 +1171,7 @@ export default function EventDetail() {
               brief && !generatingArticle && (
                 <EmptyState
                   compact
-                  icon={IconGenerate}
+                  icon={IconArticle}
                   title="Aucun article généré"
                   hint="L'article est rédigé à partir du brief uniquement — aucun fait n'est ajouté."
                 />
