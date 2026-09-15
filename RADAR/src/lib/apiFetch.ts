@@ -17,10 +17,20 @@ import { useEffect, useRef, useState } from "react";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
-export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+/**
+ * Trouvé le 15 sept. 2026 : ce timeout de 15s s'appliquait aussi aux appels
+ * de génération LLM (brief/article/correction), qui peuvent légitimement
+ * prendre 30s à 2min (RADAR/CLAUDE.md §11) — le client abandonnait presque
+ * systématiquement avant le serveur, affichant un faux timeout alors que le
+ * calcul continuait en fond et finissait par aboutir (visible seulement au
+ * rechargement suivant). `timeoutMs` permet aux appelants qui savent qu'un
+ * appel est lent de repousser ce plafond sans changer le défaut, plus
+ * adapté, des appels rapides (liste, statut, verrous).
+ */
+export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Response> {
   const res = await fetch(input, {
     ...init,
-    signal: init.signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+    signal: init.signal ?? AbortSignal.timeout(timeoutMs),
   });
 
   if (res.status === 401 && typeof window !== "undefined") {

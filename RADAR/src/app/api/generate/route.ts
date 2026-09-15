@@ -5,6 +5,8 @@ import { generateVerificationReport } from '@/lib/verification';
 import { getDb } from '@/lib/db';
 import { recordDecision, getDegradedModeStatus } from '@/lib/killswitch';
 import { finalizeArticleValidation } from '@/lib/validation';
+import { withTimeout } from '@/lib/withTimeout';
+import { AlreadyGeneratingError } from '@/lib/generationLock';
 
 export async function POST(request: Request) {
   try {
@@ -26,15 +28,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, article });
     }
 
+    // Trouvé le 15 sept. 2026 : la génération d'article (routeur LLM,
+    // chaîné en 2 passes) n'avait AUCUNE limite de temps côté serveur alors
+    // que le timeout client (apiFetch) est plus court que ce qu'elle peut
+    // légitimement prendre (RADAR/CLAUDE.md §11 : 30s à 2min) — un client
+    // qui abandonne avant la fin ne l'arrête pas. Le verrou anti-doublon vit
+    // au niveau de generateAndVerifyArticle() (articles.ts), pas ici : il
+    // protège aussi bien cet appel HTTP que l'appel direct fait par
+    // runMorningAutoGeneration (autoGenerate.ts, cron), qui ne passe jamais
+    // par cette route.
     let result;
     try {
-      result = await generateAndVerifyArticle(event_id);
+      result = await withTimeout(
+        generateAndVerifyArticle(event_id),
+        110_000,
+        'La génération de l\'article a dépassé 110s (fournisseur LLM probablement lent/occupé) — réessayez dans un instant'
+      );
     } catch (err) {
       if (err instanceof DegradedModeError) {
         return NextResponse.json(
           { error: err.message, degraded: true, status: getDegradedModeStatus() },
           { status: 423 }
         );
+      }
+      if (err instanceof AlreadyGeneratingError) {
+        return NextResponse.json({ error: err.message }, { status: 409 });
       }
       throw err;
     }

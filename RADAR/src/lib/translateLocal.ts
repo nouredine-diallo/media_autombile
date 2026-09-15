@@ -58,9 +58,32 @@ function getTranslator(): Promise<any> {
  * dépasser. Découpage par phrase plutôt que par caractères bruts : évite de
  * couper un mot en deux au milieu d'un lot, chaque phrase reste traduite
  * dans son propre contexte.
+ *
+ * Trouvé le 14 sept. 2026 (event 171948, Bring a Trailer) : un `content`
+ * scrapé qui est en fait une liste de titres d'annonces concaténés ("1951
+ * Aston Martin DB2 Vantage 1971 Mercedes-Benz 280SE 3.5 Cabriolet...") n'a
+ * presque aucune ponctuation — le regex de phrase produit alors des
+ * "phrases" de 700-1000+ caractères d'un coup, largement au-dessus du
+ * `maxCharsPerChunk` visé, parce que le découpage précédent ne coupait
+ * QU'ENTRE deux phrases, jamais à l'intérieur d'une seule. Un texte hors
+ * distribution de cette taille en une seule passe peut faire dégénérer la
+ * génération du modèle de traduction (répétitions, temps de calcul
+ * anormalement long) — confirmé par un test isolé réel sur cet item exact.
+ * Découpe forcée à la taille max si une "phrase" seule dépasse déjà la
+ * limite, plutôt que de compter uniquement sur les limites de phrase.
  */
 function splitIntoChunks(text: string, maxCharsPerChunk = 400): string[] {
-  const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [text];
+  const rawSentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [text];
+  const sentences: string[] = [];
+  for (const s of rawSentences) {
+    if (s.length <= maxCharsPerChunk) {
+      sentences.push(s);
+    } else {
+      for (let i = 0; i < s.length; i += maxCharsPerChunk) {
+        sentences.push(s.slice(i, i + maxCharsPerChunk));
+      }
+    }
+  }
   const chunks: string[] = [];
   let current = '';
   for (const sentence of sentences) {
@@ -74,12 +97,32 @@ function splitIntoChunks(text: string, maxCharsPerChunk = 400): string[] {
   return chunks;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`Traduction d'un bloc au-delà de ${ms}ms`)), ms)),
+  ]);
+}
+
 /**
  * Traduit un texte anglais en français. Retourne `null` (jamais une chaîne
  * vide ou le texte anglais tel quel) si le modèle est indisponible — jamais
  * une dégradation silencieuse (RADAR/CLAUDE.md §6) : l'appelant doit savoir
  * distinguer "traduit" de "pas encore traduit" pour ne jamais confondre les
  * deux en base (colonnes `*_fr` NULL tant que non traduit).
+ *
+ * `max_new_tokens` et le timeout par bloc, trouvés le 14 sept. 2026 (event
+ * 171948, Bring a Trailer) : un chunk de 400 caractères SANS structure de
+ * phrase réelle (liste de noms de voitures concaténés, `1951 Aston Martin
+ * DB2 Vantage 1971 Mercedes-Benz...`) a mesuré 59.7s de génération pour ce
+ * seul bloc — entrée hors distribution du modèle, la génération dégénère
+ * sans jamais atteindre l'EOS naturellement. Sans plafond, aucun nombre de
+ * blocs "sûrs" ne protège contre un seul bloc pathologique : `max_new_tokens`
+ * borne la génération elle-même (un français ~30% plus long que l'anglais
+ * en moyenne, marge large), le timeout est la deuxième ligne de défense si
+ * malgré tout un bloc traîne. Une traduction ratée renvoie `null` (jamais
+ * un résultat partiel silencieusement tronqué) — cohérent avec le reste de
+ * cette fonction.
  */
 export async function translateTextLocal(text: string): Promise<string | null> {
   const trimmed = text?.trim();
@@ -92,7 +135,7 @@ export async function translateTextLocal(text: string): Promise<string | null> {
     const chunks = splitIntoChunks(trimmed);
     const translated: string[] = [];
     for (const chunk of chunks) {
-      const output = await t(chunk);
+      const output = await withTimeout<any>(t(chunk, { max_new_tokens: 256 }), 15_000);
       const text = Array.isArray(output) ? output[0]?.translation_text : output?.translation_text;
       if (typeof text !== 'string') return null;
       translated.push(text);

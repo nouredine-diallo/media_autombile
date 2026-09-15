@@ -2,6 +2,7 @@ import { getDb, Item, Event } from './db';
 import { generateCarouselParagraphs } from './llm';
 import { translateTextLocal } from './translateLocal';
 import { isMostlyFrench } from './translate';
+import { tryAcquireGenerationLock, releaseGenerationLock, AlreadyGeneratingError } from './generationLock';
 
 /**
  * Retire les balises HTML (et leurs attributs) d'un texte source RSS.
@@ -80,16 +81,54 @@ function translateIfNeeded(text: string): Promise<string | null> {
  * coût (quelques secondes par item, modèle local) reste borné à ce qui est
  * vraiment consulté, jamais à tous les événements ingérés.
  */
+// Trouvé le 14 sept. 2026 : un item scrapé (Bring a Trailer/Hagerty, pages
+// listicle "X Auctions Closing Today") peut avoir un `content` de plusieurs
+// dizaines de milliers de caractères (cas réel observé : 61963 caractères,
+// event 171948) — translateTextLocal (traduction locale, ~400 caractères
+// par bloc, séquentielle) a alors dû traduire ~155 blocs d'affilée, chacun
+// un appel ONNX bloquant, plusieurs minutes de CPU à 100%+ ont gelé tout le
+// site pour tout le monde (radar sert le HTTP dans le même process). Un
+// timeout côté route (api/brief/route.ts) protège la réponse HTTP mais PAS
+// le CPU : la boucle de traduction déjà lancée continue en tâche de fond
+// jusqu'au bout même après le timeout. extractFacts() ne retient que les 10
+// premiers faits trouvés — le début d'un article contient l'essentiel de
+// l'information factuelle, tronquer avant traduction ne dégrade pas
+// significativement le brief tout en bornant strictement le coût CPU.
+const MAX_CHARS_TO_TRANSLATE = 1500;
+
+function truncateForTranslation(text: string): string {
+  const clean = stripHtml(text);
+  return clean.length > MAX_CHARS_TO_TRANSLATE ? clean.slice(0, MAX_CHARS_TO_TRANSLATE) : clean;
+}
+
+// Trouvé le 14 sept. 2026 (event 171948, Bring a Trailer) : `item.content`
+// scrapé peut être du HTML brut (widgets d'enchères) ou une liste de titres
+// concaténés sans structure de phrase réelle. Un seul bloc de 400
+// caractères de ce type a mesuré 40-60s de génération — un timeout JS
+// (Promise.race/setTimeout) ne peut PAS interrompre ce calcul, l'inférence
+// ONNX bloque le thread JS de façon synchrone tant qu'elle tourne (vérifié
+// par test réel : le timeout de 15s posé sur chaque bloc ne s'est jamais
+// déclenché, le bloc a fini en 40s quand même). Aucun plafond de longueur
+// ou de génération ne borne fiablement ce risque tant que la traduction
+// tourne dans le même process que le serveur HTTP. Le contenu brut complet
+// (`content`, potentiellement très long et de qualité éditoriale
+// imprévisible) n'est donc plus jamais traduit — seuls title/summary
+// (champs RSS courts et structurés, jamais du markup ou une liste brute)
+// le sont. extractFacts() bascule déjà sur le texte anglais brut quand
+// `content_fr` est absent (repli documenté plus bas) : le brief reste
+// utilisable, juste partiellement en anglais pour les faits tirés du corps
+// de l'article plutôt que du titre/résumé — situation déjà acceptée par la
+// conception existante, très inférieure en gravité à un site indisponible.
 async function ensureItemTranslated(db: ReturnType<typeof getDb>, item: Item): Promise<Item> {
   if (item.title_fr && item.summary_fr !== undefined && item.content_fr !== undefined) {
     return item;
   }
 
-  const [titleFr, summaryFr, contentFr] = await Promise.all([
-    item.title_fr ?? translateIfNeeded(item.title),
-    item.summary_fr ?? (item.summary ? translateIfNeeded(item.summary) : Promise.resolve(null)),
-    item.content_fr ?? (item.content ? translateIfNeeded(item.content) : Promise.resolve(null)),
+  const [titleFr, summaryFr] = await Promise.all([
+    item.title_fr ?? translateIfNeeded(stripHtml(item.title)),
+    item.summary_fr ?? (item.summary ? translateIfNeeded(truncateForTranslation(item.summary)) : Promise.resolve(null)),
   ]);
+  const contentFr = item.content_fr ?? null;
 
   db.prepare('UPDATE items SET title_fr = ?, summary_fr = ?, content_fr = ? WHERE id = ?')
     .run(titleFr, summaryFr, contentFr, item.id);
@@ -98,6 +137,25 @@ async function ensureItemTranslated(db: ReturnType<typeof getDb>, item: Item): P
 }
 
 export async function generateBrief(eventId: number): Promise<Brief | null> {
+  // Trouvé le 15 sept. 2026 : le verrou anti-doublon était posé seulement
+  // dans api/brief/route.ts — il ne protégeait donc pas contre l'autre
+  // appelant réel de cette fonction, `generateArticle()` (articles.ts),
+  // utilisé aussi bien par la route /api/generate que par la génération
+  // automatique du matin (autoGenerate.ts, hors requête HTTP). Posé ici, au
+  // niveau de la fonction elle-même, il protège les DEUX chemins d'appel
+  // avec un seul verrou partagé (voir generationLock.ts).
+  if (!tryAcquireGenerationLock('brief', eventId)) {
+    throw new AlreadyGeneratingError();
+  }
+
+  try {
+    return await generateBriefUnlocked(eventId);
+  } finally {
+    releaseGenerationLock('brief', eventId);
+  }
+}
+
+async function generateBriefUnlocked(eventId: number): Promise<Brief | null> {
   const db = getDb();
 
   const event = db.prepare('SELECT * FROM events WHERE id = ?').get(eventId) as Event | undefined;

@@ -27,6 +27,24 @@ import { AssociatePartnerButton } from '@/components/AssociatePartnerButton';
 import { buildStudioLink, buildCarouselStudioLink } from '@/lib/studio-prefill';
 import { apiFetch } from '@/lib/apiFetch';
 
+// Trouvé le 15 sept. 2026 : ces trois appels peuvent légitimement dépasser
+// le timeout par défaut d'apiFetch (15s) — brief/article vont jusqu'à
+// 30s/110s côté serveur (voir api/brief et api/generate routes),
+// correction jusqu'à 60s (appel Groq direct). Une marge est ajoutée
+// au-dessus de chaque plafond serveur pour que ce soit TOUJOURS le serveur
+// qui réponde avec un message clair en premier, jamais un abandon client
+// silencieux.
+const GENERATION_TIMEOUT_MS = 40_000; // serveur : 30s (api/brief)
+const ARTICLE_GENERATION_TIMEOUT_MS = 120_000; // serveur : 110s (api/generate)
+const REFINE_TIMEOUT_MS = 70_000; // serveur : 60s (api/generate/refine)
+
+function formatGenerationError(err: unknown): string {
+  if (err instanceof DOMException && err.name === 'AbortError') {
+    return 'La requête a pris trop de temps côté navigateur — le calcul continue peut-être en arrière-plan, rouvrez cette fiche dans une minute pour vérifier avant de réessayer.';
+  }
+  return err instanceof Error ? err.message : 'Erreur inconnue';
+}
+
 function getUsername(): string {
   if (typeof window === 'undefined') return 'unknown';
   return localStorage.getItem('lma-username') || 'unknown';
@@ -323,18 +341,18 @@ export default function EventDetail() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: parseInt(eventId) }),
-      });
-      
+      }, GENERATION_TIMEOUT_MS);
+
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Erreur lors de la génération');
       }
-      
+
       const data = await response.json();
       setBrief(data.brief);
       trackAction(pathname, 'Générer le brief');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur inconnue');
+      setError(formatGenerationError(err));
     } finally {
       setGeneratingBrief(false);
     }
@@ -351,7 +369,7 @@ export default function EventDetail() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: parseInt(eventId) }),
-      });
+      }, GENERATION_TIMEOUT_MS);
       if (!briefRes.ok) {
         const d = await briefRes.json();
         throw new Error(d.error || 'Erreur brief');
@@ -364,7 +382,7 @@ export default function EventDetail() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: parseInt(eventId) }),
-      });
+      }, ARTICLE_GENERATION_TIMEOUT_MS);
       if (!artRes.ok) {
         const d = await artRes.json();
         if (artRes.status === 423 || d.degraded) setDegraded(true);
@@ -375,7 +393,7 @@ export default function EventDetail() {
       setSelectedArticle(artData.article);
       trackAction(pathname, 'Générer le brief et l\'article');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur inconnue');
+      setError(formatGenerationError(err));
     } finally {
       setGeneratingBrief(false);
       setGeneratingArticle(false);
@@ -391,7 +409,7 @@ export default function EventDetail() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event_id: parseInt(eventId) }),
-      });
+      }, ARTICLE_GENERATION_TIMEOUT_MS);
 
       if (!response.ok) {
         const data = await response.json();
@@ -406,7 +424,7 @@ export default function EventDetail() {
       setSelectedArticle(data.article);
       trackAction(pathname, 'Générer l\'article');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur inconnue');
+      setError(formatGenerationError(err));
     } finally {
       setGeneratingArticle(false);
     }
@@ -498,8 +516,8 @@ export default function EventDetail() {
           article_id: selectedArticle.id,
           instruction: refineInstruction.trim(),
         }),
-      });
-      
+      }, REFINE_TIMEOUT_MS);
+
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Erreur lors de la correction');
@@ -513,7 +531,7 @@ export default function EventDetail() {
       setRefineInstruction('');
       addToast({ type: 'success', title: 'Article corrigé', message: 'Le LLM a appliqué la correction.' });
     } catch (err) {
-      addToast({ type: 'error', title: 'Erreur', message: err instanceof Error ? err.message : 'Erreur inconnue' });
+      addToast({ type: 'error', title: 'Erreur', message: formatGenerationError(err) });
     } finally {
       setRefining(false);
     }

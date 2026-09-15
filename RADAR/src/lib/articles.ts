@@ -4,6 +4,7 @@ import { generateChained, generateArticleSmart } from './llm';
 import { getActiveStyleRulesForPrompt, recordStyleRuleUsage, formatStyleRulesForPrompt } from './styleRules';
 import { getDegradedModeStatus } from './killswitch';
 import { verifyArticleAgainstBrief, VerificationResult } from './verification';
+import { tryAcquireGenerationLock, releaseGenerationLock, AlreadyGeneratingError } from './generationLock';
 
 export interface Article {
   id: number;
@@ -130,6 +131,28 @@ export async function generateArticle(eventId: number, provenance: string = 'ass
 export async function generateAndVerifyArticle(
   eventId: number,
   provenance: string = 'assisté',
+): Promise<{ article: Article; verification: VerificationResult } | null> {
+  // Trouvé le 15 sept. 2026 : cette fonction a DEUX appelants réels — la
+  // route /api/generate (un humain qui clique) ET runMorningAutoGeneration
+  // (autoGenerate.ts, cron 8h-12h, hors requête HTTP). Un verrou posé
+  // seulement côté route ne protège pas contre une collision entre les
+  // deux : un humain qui génère un article pendant que le cron traite le
+  // même événement déclencherait deux appels LLM indépendants sur le même
+  // event_id. Verrou ici, au niveau de la fonction partagée par les deux
+  // chemins (voir generationLock.ts).
+  if (!tryAcquireGenerationLock('article', eventId)) {
+    throw new AlreadyGeneratingError();
+  }
+  try {
+    return await generateAndVerifyArticleUnlocked(eventId, provenance);
+  } finally {
+    releaseGenerationLock('article', eventId);
+  }
+}
+
+async function generateAndVerifyArticleUnlocked(
+  eventId: number,
+  provenance: string,
 ): Promise<{ article: Article; verification: VerificationResult } | null> {
   const article = await generateArticle(eventId, provenance);
   if (!article) return null;

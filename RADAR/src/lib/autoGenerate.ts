@@ -6,6 +6,7 @@ import { getBestImageForEvent } from './visualSearch';
 import { getDegradedModeStatus } from './killswitch';
 import { finalizeArticleValidation } from './validation';
 import { getAutoValidateConfig } from './autoValidateConfig';
+import { AlreadyGeneratingError } from './generationLock';
 
 /**
  * TODO: seuils provisoires (RADAR/CLAUDE.md §4.3 — jamais un seuil métier
@@ -88,6 +89,17 @@ export async function runMorningAutoGeneration(runId: number): Promise<void> {
         autoValidated += await tryAutoValidate(event.id, article.id, verification.confidenceScore);
       }
     } catch (err) {
+      // Trouvé le 15 sept. 2026 : si un rédacteur génère déjà manuellement
+      // cet événement (route /api/generate) au moment où le cron l'atteint
+      // aussi, generateAndVerifyArticle() refuse le doublon plutôt que de
+      // lancer un second appel LLM en parallèle (generationLock.ts) — ce
+      // n'est pas un échec du pipeline, juste une collision bénigne à
+      // sauter, pas à compter comme un `[AUTO-GEN] Échec`.
+      if (err instanceof AlreadyGeneratingError) {
+        console.log(`[AUTO-GEN] Événement ${event.id} : déjà en cours de génération manuelle, ignoré ce cycle`);
+        attempted--;
+        continue;
+      }
       console.error(`[AUTO-GEN] Échec pour l'événement ${event.id}:`, err);
     }
   }
