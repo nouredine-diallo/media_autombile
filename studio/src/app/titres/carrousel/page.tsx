@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, CheckCircle2, Download, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Download, Loader2, X } from "lucide-react";
 import { decodePrefill } from "@/lib/prefill";
 import { useExportJobPolling } from "@/lib/export/useExportJobPolling";
+import { apiFetch } from "@/lib/apiFetch";
 import { GABARITS, GABARIT_HEIGHT, GABARIT_WIDTH } from "@/components/gabarits/registry";
 import { BrandHomeLink } from "@/components/BrandHomeLink";
 import { RecadrageFond } from "@/components/RecadrageFond";
@@ -73,6 +74,9 @@ export default function CarrouselPage() {
      un aller-retour de rendu inutile — react-hooks/set-state-in-effect). ── */
   const exportBusy = exporting || (!!exportJob && exportJob.status !== "done" && exportJob.status !== "error");
   const [previewScale, setPreviewScale] = useState(PREVIEW_SCALE_MAX);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadingOwn, setUploadingOwn] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   /* ── Aperçu responsive : ne dépasse jamais la largeur de l'écran (même
      correctif que titres/page.tsx, 2026-08-29) ── */
@@ -166,6 +170,63 @@ export default function CarrouselPage() {
     });
   }
 
+  /**
+   * Ajoute des visuels personnels au pool partagé du carrousel (15 sept.
+   * 2026, demande explicite) — même endpoint et même limite par appel que
+   * `/titres` (`upload-batch`, timeout généreux : recadrage serveur
+   * ~1.5-2s/image). Contrairement à `/titres`, ce pool est partagé par
+   * toutes les slides via le sélecteur "Image N" déjà existant — pas besoin
+   * de UI par slide, juste plus de choix dans le même menu.
+   */
+  async function uploadOwnFiles(files: FileList | File[]) {
+    const arr = Array.from(files);
+    if (uploaded.length + arr.length > MAX_CAROUSEL_IMAGES) {
+      setUploadError(`Maximum ${MAX_CAROUSEL_IMAGES} images au total pour un carrousel.`);
+      return;
+    }
+    setUploadingOwn(true);
+    setUploadError(null);
+    try {
+      const form = new FormData();
+      arr.forEach((f) => form.append("images", f));
+      const res = await apiFetch("/api/images/upload-batch", {
+        method: "POST",
+        body: form,
+        signal: AbortSignal.timeout(60_000),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
+      setUploaded((prev) => [...prev, ...(data.images as UploadedImage[])]);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Import impossible");
+    } finally {
+      setUploadingOwn(false);
+    }
+  }
+
+  /**
+   * Retire un visuel du pool. Les slides qui le référençaient retombent sur
+   * la première image restante plutôt que de rester sur un index qui ne
+   * pointerait plus vers rien — jamais de fond cassé après suppression.
+   */
+  function removeUploadedImage(idx: number) {
+    if (uploaded.length <= 1) return; // au moins 1 image doit toujours rester
+    const nextUploaded = uploaded.filter((_, i) => i !== idx);
+    setUploaded(nextUploaded);
+    setSlides((prev) =>
+      prev.map((s) => {
+        const newIndex = Math.min(
+          s.imageIndex === idx ? 0 : s.imageIndex > idx ? s.imageIndex - 1 : s.imageIndex,
+          nextUploaded.length - 1,
+        );
+        const img = nextUploaded[newIndex];
+        return img
+          ? { ...s, imageIndex: newIndex, fieldValues: { ...s.fieldValues, imageUrl: img.backdropUrl || img.croppedUrl } }
+          : s;
+      }),
+    );
+  }
+
   async function handleExport() {
     if (!pkg) return;
     setExporting(true);
@@ -203,7 +264,14 @@ export default function CarrouselPage() {
               {pkg ? `${pkg.title} — ${totalSlides} slides` : "Préparation du carrousel…"}
             </p>
           </div>
-          <Link href="/titres" className="ml-auto text-xs font-medium text-zinc-500 hover:text-zinc-800">
+          <Link
+            href={
+              pkg
+                ? `/titres?pool=${uploaded.map((u) => u.id).join(",")}&title=${encodeURIComponent(pkg.title)}&contentId=${encodeURIComponent(pkg.contentId)}&gabarit=1a`
+                : "/titres"
+            }
+            className="ml-auto text-xs font-medium text-zinc-500 hover:text-zinc-800"
+          >
             Basculer sur slide unique →
           </Link>
         </div>
@@ -242,6 +310,54 @@ export default function CarrouselPage() {
                 rows={2}
                 placeholder="La légende qui accompagne les visuels du post…"
                 className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-medium text-zinc-600">
+                Visuels disponibles (choisis dans le sélecteur "Image N" de chaque slide)
+              </label>
+              <div className="flex flex-wrap gap-3">
+                {uploaded.map((img, i) => (
+                  <div key={img.id} className="relative h-20 w-16 overflow-hidden rounded-lg border border-zinc-200">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={img.croppedUrl} alt="" className="h-full w-full object-cover" />
+                    <span className="absolute bottom-0 left-0 rounded-tr bg-black/60 px-1 text-[10px] text-white">
+                      {i + 1}
+                    </span>
+                    {uploaded.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeUploadedImage(i)}
+                        className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-bl bg-black/60 text-white hover:bg-black/80"
+                      >
+                        <X className="size-3.5" aria-hidden />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {uploaded.length < MAX_CAROUSEL_IMAGES && (
+                  <button
+                    type="button"
+                    onClick={() => fileInput.current?.click()}
+                    disabled={uploadingOwn}
+                    className="flex h-20 w-16 items-center justify-center rounded-lg border-2 border-dashed border-zinc-300 text-lg text-zinc-400 transition-colors hover:border-zinc-400 hover:text-zinc-600 disabled:opacity-50"
+                  >
+                    {uploadingOwn ? <Loader2 className="size-4 animate-spin" aria-hidden /> : "+"}
+                  </button>
+                )}
+              </div>
+              {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/avif"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files) uploadOwnFiles(e.target.files);
+                  e.target.value = "";
+                }}
               />
             </div>
 

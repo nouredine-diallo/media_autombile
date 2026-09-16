@@ -157,9 +157,90 @@ export default function TitresPage() {
     return () => window.removeEventListener("resize", recalcScale);
   }, []);
 
+  /** Auto-génère titres/surtitres/paragraphes pour un thème — factorisé
+   * (16 sept. 2026) : utilisé aussi bien par le prefill RADAR classique que
+   * par le passage carrousel → slide unique ci-dessous, même logique, pas
+   * de copie. */
+  function autoGenerateTitles(theme: string) {
+    if (theme.trim().length === 0) return;
+    setStatus("loading");
+    apiFetch("/api/titles/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theme }),
+    })
+      .then((r) => r.json())
+      .then((gen) => {
+        if (gen.titles) {
+          setTitles(gen.titles);
+          setSurtitres(gen.surtitres ?? []);
+          setParagraphs(gen.paragraphs ?? []);
+          setProvider(gen.provider);
+          setFactsMatched(gen.factsMatched ?? false);
+          setSelectedIndex(gen.titles.length > 0 ? 0 : null);
+          if (gen.paragraphs && gen.paragraphs.length > 0) {
+            setSelectedParagraph(0);
+          }
+          const firstSurtitre = (gen.surtitres ?? []).find((s: string) => s.length > 0);
+          if (firstSurtitre) setSelectedSurtitre(firstSurtitre);
+        }
+        setStatus("idle");
+      })
+      .catch(() => {
+        // L'utilisateur peut réessayer manuellement via le bouton
+        setStatus("idle");
+      });
+  }
+
   /* ── Prefill depuis RADAR : auto-remplit le thème, uploade l'image, génère les titres ── */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
+    /**
+     * Passage carrousel → slide unique (16 sept. 2026, demande explicite) :
+     * la page arrivait vide (aucune image, aucun titre) — trouvé en testant
+     * réellement le lien "Basculer sur slide unique". Ces images sont déjà
+     * uploadées côté STUDIO (le carrousel les a importées et recadrées) :
+     * on reconstruit juste les URLs de variantes déjà connues
+     * (`/api/images/{id}?variant=...`), sans réimporter ni recalculer quoi
+     * que ce soit. `pool` est trié par pertinence par RADAR
+     * (carousel-package/route.ts) — le premier est déjà le meilleur visuel,
+     * pas besoin d'un score séparé côté STUDIO.
+     */
+    const pool = params.get("pool");
+    if (pool) {
+      const ids = pool.split(",").filter(Boolean);
+      const title = params.get("title") ?? "";
+      const contentId = params.get("contentId");
+      const gabarit = params.get("gabarit");
+
+      if (title) setTheme(title);
+      if (contentId) setContentId(contentId);
+      if (gabarit) {
+        // Forcé, pas juste suggéré : gabaritAuto=false empêche
+        // appliquerGabaritAuto() de le changer quand les images arrivent.
+        setGabaritAuto(false);
+        setSelectedGabarit(gabarit);
+      }
+
+      const reconstruites: UploadedImage[] = ids.map((id) => ({
+        id,
+        croppedUrl: `/api/images/${id}?variant=cropped`,
+        backdropUrl: `/api/images/${id}?variant=backdrop`,
+        bulleUrl: `/api/images/${id}?variant=bulle`,
+        role: "fond",
+      }));
+      setImages(reconstruites);
+      // Même calcul que pour un import RADAR classique (sujet/débordement) —
+      // le carrousel avait déjà ces images, mais pas forcément déjà ce calcul.
+      void detourer(reconstruites);
+
+      autoGenerateTitles(title);
+
+      window.history.replaceState({}, "", "/titres");
+      return;
+    }
+
     const raw = params.get("prefill");
     if (!raw) return;
     const data = decodePrefill(raw);
@@ -183,35 +264,7 @@ export default function TitresPage() {
     }
 
     // Auto-générer les titres si on a un thème (élimine 1 clic)
-    if (data.t && data.t.trim().length > 0) {
-      setStatus("loading");
-      apiFetch("/api/titles/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ theme: data.t }),
-      })
-        .then((r) => r.json())
-        .then((gen) => {
-          if (gen.titles) {
-            setTitles(gen.titles);
-            setSurtitres(gen.surtitres ?? []);
-            setParagraphs(gen.paragraphs ?? []);
-            setProvider(gen.provider);
-            setFactsMatched(gen.factsMatched ?? false);
-            setSelectedIndex(gen.titles.length > 0 ? 0 : null);
-            if (gen.paragraphs && gen.paragraphs.length > 0) {
-              setSelectedParagraph(0);
-            }
-            const firstSurtitre = (gen.surtitres ?? []).find((s: string) => s.length > 0);
-            if (firstSurtitre) setSelectedSurtitre(firstSurtitre);
-          }
-          setStatus("idle");
-        })
-        .catch(() => {
-          // L'utilisateur peut réessayer manuellement via le bouton
-          setStatus("idle");
-        });
-    }
+    if (data.t) autoGenerateTitles(data.t);
 
     // Nettoyer l'URL pour ne pas re-déclencher au refresh
     window.history.replaceState({}, "", "/titres");
