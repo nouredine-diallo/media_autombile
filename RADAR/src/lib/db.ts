@@ -663,6 +663,24 @@ export function cleanupStaleRuns(): number {
   return result.changes;
 }
 
+/**
+ * Finding "pipeline bloque le serveur web" (TODO.md §3.3, résolu le 16 sept.
+ * 2026) : `getCronStatus().running` vivait comme un booléen en mémoire dans
+ * `cron.ts` — correct tant qu'un seul process exécutait à la fois le
+ * pipeline ET le serveur web. Depuis la séparation en process PM2 dédié
+ * (`radar-pipeline`), le web (`radar`) et le worker qui exécute réellement
+ * `runPipeline()` sont deux process Node distincts, chacun avec sa propre
+ * mémoire — le booléen de l'un n'est jamais visible depuis l'autre. Cette
+ * fonction lit l'état partagé déjà persisté (`pipeline_runs.status`,
+ * `startPipelineRun`/`completePipelineRun`, en place depuis le début),
+ * gratuite : aucune nouvelle table, aucun nouveau mécanisme d'IPC.
+ */
+export function isPipelineRunning(): boolean {
+  const db = getDb();
+  const row = db.prepare("SELECT 1 FROM pipeline_runs WHERE status = 'running' LIMIT 1").get();
+  return row !== undefined;
+}
+
 export function getPipelineStatus(): { lastRun: PipelineRun | null; recentRuns: PipelineRun[] } {
   const db = getDb();
   const lastRun = db.prepare(

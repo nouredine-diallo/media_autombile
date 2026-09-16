@@ -1,73 +1,48 @@
-import { startCron, stopCron, getCronStatus } from './cron';
 import { closeDb } from './db';
 
 let initialized = false;
 let shuttingDown = false;
 
-export function initCron() {
+/**
+ * Finding "pipeline bloque le serveur web" (TODO.md §3.3, résolu le 16
+ * sept. 2026) : cette fonction démarrait autrefois `startCron()` dans le
+ * même process que le serveur web — c'est exactement la cause du blocage
+ * de 30-50 min corrigé ici. Le pipeline tourne désormais dans son propre
+ * process PM2 (`radar-pipeline`, voir src/pipeline-worker.ts). Cette
+ * fonction ne fait plus qu'enregistrer un arrêt propre pour la connexion
+ * SQLite du process web — renommée `initWebApp` (elle n'initialise plus de
+ * cron, garder l'ancien nom aurait été trompeur).
+ */
+export function initWebApp() {
   if (initialized) return;
 
-  // CRITICAL FIX: DO NOT RUN CRON OR NATIVE MODULES DURING NEXT.JS SSG BUILD PHASE
+  // CRITICAL FIX: ne rien faire pendant la phase de build Next.js
   if (
     process.env.npm_lifecycle_event === 'build' ||
-    process.env.NEXT_PHASE === 'phase-production-build' ||
-    process.env.NODE_ENV !== 'production' // avoid starting cron in dev to prevent multiple instances
+    process.env.NEXT_PHASE === 'phase-production-build'
   ) {
-    if (process.env.NODE_ENV === 'production') {
-      console.log('[STARTUP] Build phase detected, skipping cron initialization');
-      return;
-    }
+    return;
   }
 
   initialized = true;
-
-  // Start cron scheduler
-  startCron();
-
-  console.log('[STARTUP] Cron scheduler initialized');
-
   registerGracefulShutdown();
 }
 
 /**
- * Finding E6 (audit 2026-09-07) : rien ne gérait SIGTERM — `pm2 restart`/
- * `pm2 reload` (ou un simple redéploiement, `deploy.sh`) tuait le process
- * en pleine écriture SQLite ou en plein cycle d'ingestion (`runPipeline`,
- * cron.ts) sans lui laisser la moindre chance de finir proprement. PM2
- * envoie SIGKILL par défaut 1600ms après SIGTERM (`kill_timeout`) si le
- * process ne s'est pas arrêté seul — `deploy.sh` relève ce délai pour
- * laisser cette attente bornée se dérouler (voir commentaire associé).
- *
- * Bornée à MAX_SHUTDOWN_WAIT_MS : mieux vaut couper un cycle d'ingestion en
- * cours (chaque écriture individuelle reste atomique, better-sqlite3 est
- * synchrone — pas de corruption partielle d'une ligne) que de laisser PM2
- * attendre indéfiniment un process qui ne finit jamais.
+ * Finding E6 (audit 2026-09-07), simplifié le 16 sept. 2026 : plus besoin
+ * d'attendre la fin d'un cycle d'ingestion ici — ce process ne lance plus
+ * jamais `runPipeline()` (déplacé dans radar-pipeline, qui a son propre
+ * arrêt propre borné, voir pipeline-worker.ts). Fermer la connexion SQLite
+ * (better-sqlite3, synchrone) suffit ; aucune attente nécessaire.
  */
-const MAX_SHUTDOWN_WAIT_MS = 8000;
-const SHUTDOWN_POLL_INTERVAL_MS = 250;
-
 function registerGracefulShutdown(): void {
   const handle = (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[STARTUP] ${signal} reçu — arrêt propre en cours...`);
-
-    stopCron();
-
-    const deadline = Date.now() + MAX_SHUTDOWN_WAIT_MS;
-    const waitLoop = () => {
-      if (!getCronStatus().running || Date.now() >= deadline) {
-        if (getCronStatus().running) {
-          console.log('[STARTUP] Cycle en cours non terminé après le délai — arrêt quand même');
-        }
-        closeDb();
-        console.log('[STARTUP] Arrêt propre terminé');
-        process.exit(0);
-        return;
-      }
-      setTimeout(waitLoop, SHUTDOWN_POLL_INTERVAL_MS);
-    };
-    waitLoop();
+    closeDb();
+    console.log('[STARTUP] Arrêt propre terminé');
+    process.exit(0);
   };
 
   process.on('SIGTERM', () => handle('SIGTERM'));

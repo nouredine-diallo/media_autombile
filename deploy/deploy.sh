@@ -99,11 +99,42 @@ build_app() {
 build_app "$REPO_DIR/RADAR" "RADAR" env NEXT_PUBLIC_STUDIO_URL="https://studio.89.168.53.133.nip.io" npm run build
 build_app "$REPO_DIR/studio" "STUDIO" npm run build
 
+# Finding "pipeline bloque le serveur web" (TODO.md §3.3, résolu le 16 sept.
+# 2026) : le pipeline (cron, ingestion, embeddings, traduction) tourne
+# maintenant dans son propre process PM2 (radar-pipeline), un script Node
+# autonome — PAS une route Next.js — compilé séparément en CommonJS
+# (tsconfig.worker.json, voir src/pipeline-worker.ts pour le détail complet
+# du pourquoi). Même filet de sécurité que build_app() : sauvegarde avant
+# d'écraser, échec bloquant si la compilation ne produit rien d'exploitable.
+build_worker() {
+    cd "$REPO_DIR/RADAR"
+    rm -rf dist-worker.bak
+    [ -d dist-worker ] && mv dist-worker dist-worker.bak
+
+    echo "[2/6] Compilation du pipeline worker..."
+    if ! npx tsc -p tsconfig.worker.json; then
+        echo "  ❌ Compilation du worker échouée — dist-worker précédent conservé"
+        [ -d dist-worker.bak ] && mv dist-worker.bak dist-worker
+        exit 1
+    fi
+
+    if [ ! -f dist-worker/pipeline-worker.js ]; then
+        echo "  ❌ Compilation du worker incomplète (pipeline-worker.js absent) — dist-worker précédent restauré"
+        rm -rf dist-worker
+        [ -d dist-worker.bak ] && mv dist-worker.bak dist-worker
+        exit 1
+    fi
+
+    echo "  ✅ Worker compilé OK"
+}
+build_worker
+
 # 3. Copy start scripts + nginx
 echo "[3/6] Updating configs..."
 cp "$REPO_DIR/deploy/start-radar.sh" /opt/media-labs/start-radar.sh
 cp "$REPO_DIR/deploy/start-studio.sh" /opt/media-labs/start-studio.sh
-chmod +x /opt/media-labs/start-radar.sh /opt/media-labs/start-studio.sh
+cp "$REPO_DIR/deploy/start-radar-pipeline.sh" /opt/media-labs/start-radar-pipeline.sh
+chmod +x /opt/media-labs/start-radar.sh /opt/media-labs/start-studio.sh /opt/media-labs/start-radar-pipeline.sh
 # Bug trouvé le 14 sept. 2026, une fois HTTPS activé pour de vrai (setup-ssl.sh) :
 # ceci copiait toujours le bootstrap HTTP-only, même après activation de
 # HTTPS — le déploiement suivant aurait silencieusement désactivé le SSL
@@ -171,6 +202,19 @@ pm2 start /opt/media-labs/start-radar.sh --name radar --cwd "$REPO_DIR/RADAR" --
 # 3000M (radar) + 2000M (studio) = 5000M, largement sous la capacité même si
 # les deux pics se produisent simultanément.
 pm2 start /opt/media-labs/start-studio.sh --name studio --cwd "$REPO_DIR/studio" --max-memory-restart 2000M
+# Finding "pipeline bloque le serveur web" (TODO.md §3.3, résolu le 16 sept.
+# 2026) : même charge que radar avant la séparation (mêmes modèles
+# embeddings+traduction chargés dans ce process désormais), donc même
+# plafond mémoire mesuré (3000M). `--kill-timeout` bien plus généreux que
+# radar/studio (60s contre 10s) : vérifié réellement qu'un SIGTERM envoyé
+# en pleine traduction ONNX n'est traité par Node qu'une fois le calcul
+# natif en cours terminé — observé jusqu'à 35s d'attente sur un test réel
+# avant que le process ne réagisse au signal. Sans coût pour la
+# disponibilité perçue : contrairement à radar/studio, aucune requête
+# utilisateur ne dépend de ce process pour répondre — le laisser prendre
+# son temps pour s'arrêter proprement (fermeture SQLite, cf.
+# pipeline-worker.ts) ne retarde jamais un déploiement visible.
+pm2 start /opt/media-labs/start-radar-pipeline.sh --name radar-pipeline --cwd "$REPO_DIR/RADAR" --max-memory-restart 3000M --kill-timeout 60000
 # Trouvé le 15 sept. 2026, en vérifiant un déploiement réel : `pm2 start
 # --max-memory-restart 3000M` juste au-dessus n'applique PAS la limite sur
 # ce process precis — `pm2 describe radar` affichait encore 419430400 (400M,
@@ -189,6 +233,7 @@ pm2 restart radar --update-env --max-memory-restart 3000M
 # sur studio, mais rien ne garantit qu'il en soit à l'abri : même classe de
 # bug (flag ignoré sur un `start` frais), même correctif préventif.
 pm2 restart studio --update-env --max-memory-restart 2000M
+pm2 restart radar-pipeline --update-env --max-memory-restart 3000M
 pm2 save
 
 # Finding 3.2 (AUDIT-PRODUCTION-READINESS, 15 sept. 2026) : ce script
@@ -198,7 +243,7 @@ pm2 save
 # une troisième fois serait passé inaperçu jusqu'au prochain OOM en pleine
 # ingestion. Vérification bloquante plutôt qu'une confiance renouvelée à
 # chaque déploiement. Étendue à studio (finding P2-bis) pour la même raison.
-echo "  Vérification des plafonds mémoire radar/studio..."
+echo "  Vérification des plafonds mémoire radar/studio/radar-pipeline..."
 MEM_LIMITS=$(pm2 jlist | node -e "
   let data = '';
   process.stdin.on('data', d => data += d);
@@ -206,11 +251,13 @@ MEM_LIMITS=$(pm2 jlist | node -e "
     const procs = JSON.parse(data);
     const radar = procs.find(p => p.name === 'radar');
     const studio = procs.find(p => p.name === 'studio');
-    console.log((radar ? radar.pm2_env.max_memory_restart : '0') + ' ' + (studio ? studio.pm2_env.max_memory_restart : '0'));
+    const worker = procs.find(p => p.name === 'radar-pipeline');
+    console.log((radar ? radar.pm2_env.max_memory_restart : '0') + ' ' + (studio ? studio.pm2_env.max_memory_restart : '0') + ' ' + (worker ? worker.pm2_env.max_memory_restart : '0'));
   });
 ")
 RADAR_MEM_LIMIT=$(echo "$MEM_LIMITS" | cut -d' ' -f1)
 STUDIO_MEM_LIMIT=$(echo "$MEM_LIMITS" | cut -d' ' -f2)
+WORKER_MEM_LIMIT=$(echo "$MEM_LIMITS" | cut -d' ' -f3)
 if [ "$RADAR_MEM_LIMIT" != "3145728000" ]; then
     echo "  ❌ Plafond mémoire radar incorrect après redémarrage : $RADAR_MEM_LIMIT (attendu 3145728000 = 3000M)"
     echo "     PM2 a de nouveau ignoré --max-memory-restart — voir SESSION-START.md, 'Piège PM2'."
@@ -221,7 +268,12 @@ if [ "$STUDIO_MEM_LIMIT" != "2097152000" ]; then
     echo "     PM2 a ignoré --max-memory-restart sur studio — même piège que radar, voir SESSION-START.md."
     exit 1
 fi
-echo "  ✅ Plafonds mémoire confirmés : radar 3000M, studio 2000M"
+if [ "$WORKER_MEM_LIMIT" != "3145728000" ]; then
+    echo "  ❌ Plafond mémoire radar-pipeline incorrect après redémarrage : $WORKER_MEM_LIMIT (attendu 3145728000 = 3000M)"
+    echo "     PM2 a ignoré --max-memory-restart sur radar-pipeline — même piège que radar, voir SESSION-START.md."
+    exit 1
+fi
+echo "  ✅ Plafonds mémoire confirmés : radar 3000M, studio 2000M, radar-pipeline 3000M"
 
 # 5. Open firewall
 echo "[5/6] Opening ports..."
@@ -255,7 +307,13 @@ check_url() {
     return 1
 }
 
-if ! check_url "http://127.0.0.1:3000" || ! check_url "http://127.0.0.1:3002"; then
+# Le worker pipeline vient de redémarrer sans avoir encore déclenché de
+# cycle (déclenchement immédiat uniquement si la base est vide, cron.ts) —
+# son endpoint /health répond donc rapidement ici, dans le cas normal d'un
+# déploiement. Un worker qui ne répond même pas à ça est un vrai échec de
+# déploiement (dist-worker cassé, dépendance manquante) — bloquant comme
+# radar/studio, pas juste informatif.
+if ! check_url "http://127.0.0.1:3000" || ! check_url "http://127.0.0.1:3002" || ! check_url "http://127.0.0.1:3010/health"; then
     echo ""
     echo "=== ÉCHEC — retour arrière automatique ==="
     for app in RADAR:radar studio:studio; do
@@ -267,7 +325,13 @@ if ! check_url "http://127.0.0.1:3000" || ! check_url "http://127.0.0.1:3002"; t
             echo "  ↩ $name : .next précédent restauré"
         fi
     done
-    pm2 restart radar studio 2>/dev/null || true
+    cd "$REPO_DIR/RADAR"
+    if [ -d dist-worker.bak ]; then
+        rm -rf dist-worker
+        mv dist-worker.bak dist-worker
+        echo "  ↩ radar-pipeline : dist-worker précédent restauré"
+    fi
+    pm2 restart radar studio radar-pipeline 2>/dev/null || true
     echo "  Les apps tournent sur le dernier build qui fonctionnait — le nouveau code n'a PAS été mis en ligne."
     exit 1
 fi
@@ -278,3 +342,4 @@ echo "  https://89.168.53.133.nip.io/        → RADAR  (via nginx, HTTPS)"
 echo "  https://studio.89.168.53.133.nip.io/ → STUDIO (via nginx, HTTPS)"
 echo "  http://89.168.53.133:3000 → RADAR direct (debug uniquement)"
 echo "  http://89.168.53.133:3002 → bloqué par la Security List Oracle Cloud, ne pas utiliser publiquement"
+echo "  radar-pipeline (127.0.0.1:3010, interne) → pipeline RSS/embeddings/traduction, séparé du serveur web depuis le 16 sept. 2026"

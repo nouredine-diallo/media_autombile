@@ -1,6 +1,6 @@
 import cron, { type ScheduledTask } from 'node-cron';
 import { getFeeds, fetchFeed, storeItems, recordFeedFetchSuccess, recordFeedFetchFailure } from './rss';
-import { startPipelineRun, completePipelineRun, cleanupStaleRuns, getDb } from './db';
+import { startPipelineRun, completePipelineRun, cleanupStaleRuns, getDb, isPipelineRunning } from './db';
 import { runCacheCleanup } from './cacheCleanup';
 import { runDatabaseBackupSafe } from './backup';
 import { runVacuumIfDueSafe } from './vacuum';
@@ -148,6 +148,18 @@ export function getCronConfig(): CronConfig {
   return DEFAULT_CONFIG;
 }
 
+/**
+ * Écrit la config en base uniquement — ne redémarre plus le cron elle-même
+ * (finding "pipeline séparé du web", 16 sept. 2026). Avant la séparation en
+ * process, cette fonction pouvait être appelée depuis le process web ET y
+ * redémarrer `currentTask` : ça n'aurait plus eu aucun effet réel une fois
+ * le cron déplacé dans `radar-pipeline` (le `currentTask` du process web
+ * serait toujours resté `null`, un redémarrage silencieusement sans effet —
+ * RADAR/CLAUDE.md §6, "aucune dégradation silencieuse"). L'appelant est
+ * maintenant explicitement responsable de faire relire la config au bon
+ * process : `pipeline-worker.ts` s'il tourne dans ce process, ou un ping
+ * HTTP vers son `/reload-config` sinon (voir `api/cron/route.ts`).
+ */
 export function saveCronConfig(config: Partial<CronConfig>): void {
   const db = getDb();
   // Ensure table exists
@@ -162,9 +174,6 @@ export function saveCronConfig(config: Partial<CronConfig>): void {
   db.prepare(
     "INSERT OR REPLACE INTO pipeline_config (key, value) VALUES ('cron_config', ?)"
   ).run(JSON.stringify(merged));
-  // Restart cron with new config
-  stopCron();
-  startCron();
 }
 
 export function startCron(): void {
@@ -241,7 +250,10 @@ export function getCronStatus(): {
 } {
   const config = getCronConfig();
   return {
-    running: isRunning,
+    // Lu depuis pipeline_runs (état partagé entre process, voir db.ts) —
+    // pas le booléen `isRunning` local, invisible depuis le process web une
+    // fois le pipeline exécuté dans `radar-pipeline`.
+    running: isPipelineRunning(),
     enabled: config.enabled,
     interval: config.ingestInterval,
     nextRun: null, // node-cron doesn't expose next run time
