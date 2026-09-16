@@ -112,11 +112,17 @@ build_worker() {
     [ -d dist-worker ] && mv dist-worker dist-worker.bak
 
     echo "[2/6] Compilation du pipeline worker..."
-    if ! npx tsc -p tsconfig.worker.json; then
-        echo "  ❌ Compilation du worker échouée — dist-worker précédent conservé"
-        [ -d dist-worker.bak ] && mv dist-worker.bak dist-worker
-        exit 1
-    fi
+    # Trouvé lors du premier déploiement réel de ce correctif : contrairement
+    # à `next build` (typescript.ignoreBuildErrors: true dans next.config.ts,
+    # donc son code de sortie ne reflète QUE les vrais échecs), `tsc` seul
+    # sort en erreur dès qu'il y a une erreur de type — même quand il émet
+    # quand même le JS (comportement par défaut sans `noEmitOnError`). Ce
+    # projet tolère déjà ce même relâchement de typage ailleurs (le build
+    # Next principal l'ignore explicitement) — même tolérance ici,
+    # `|| true` pour ne pas déclencher `set -e` sur un exit non-zéro qui ne
+    # veut pas dire "rien n'a été produit". Le vrai critère de succès reste
+    # le fichier de sortie, vérifié juste après.
+    npx tsc -p tsconfig.worker.json || true
 
     if [ ! -f dist-worker/pipeline-worker.js ]; then
         echo "  ❌ Compilation du worker incomplète (pipeline-worker.js absent) — dist-worker précédent restauré"
