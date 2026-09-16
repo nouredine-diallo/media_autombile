@@ -13,7 +13,12 @@ const nextConfig: NextConfig = {
     workerThreads: false,
     cpus: 1,
   },
-  serverExternalPackages: ["sharp", "onnxruntime-node"],
+  // `playwright` manquant ici (trouvé le 16 sept. 2026, logs prod) : sans
+  // cette déclaration, Turbopack bundle le module au lieu de le laisser en
+  // `require()` runtime — l'ID de module généré ne correspond plus à ce que
+  // Playwright résout au chargement, d'où l'échec observé sur TOUS les
+  // exports (/api/export) après le déploiement du 16 sept. (commit 67db401).
+  serverExternalPackages: ["sharp", "onnxruntime-node", "playwright"],
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
   // Finding 1.7 (AUDIT-PRODUCTION-READINESS, 15 sept. 2026) — même correctif

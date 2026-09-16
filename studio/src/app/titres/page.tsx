@@ -478,14 +478,19 @@ export default function TitresPage() {
     // Recadrer/zoomer (RecadrageFond, geste déjà existant) depuis une image
     // proche de l'originale plutôt que sur `backdropUrl`, déjà rogné par le
     // recadrage automatique — l'utilisateur ne perd plus la marge coupée.
-    // Limité au gabarit 1A : c'est le seul dont la route d'export
-    // (`/render/1a`) transmet `photoHeight` tel quel plutôt que de le
-    // recalculer depuis le fichier `imageUrl` (les autres gabarits
-    // déduiraient alors une mauvaise hauteur de zone photo d'un fichier à un
-    // autre ratio), et le seul sans 3e couche (`sujetUrl`) qui devrait sinon
-    // être réalignée sur ce nouveau cadre.
+    // Limité à la famille 1 (1a/1b/1c, seuls gabarits où RecadrageFond est
+    // proposé, voir plus bas) : ce sont les seuls sans 3e couche (`sujetUrl`)
+    // qui devrait sinon être réalignée sur ce nouveau cadre. Étendu à 1b/1c
+    // le 16 sept. 2026, après avoir fait déclarer `photoHeight` à leur route
+    // d'export générique (registry.tsx, render/[gabaritId]/page.tsx) — sans
+    // ça elle le recalculait depuis le fichier `imageUrl`, correct pour
+    // `backdrop.jpg` mais faux pour `preview.jpg` (autre ratio).
     const utiliserPreview = Boolean(
-      fond && selectedGabarit === "1a" && !fond.usedBackdrop && fond.previewUrl && fond.cadreFond,
+      fond &&
+        ["1a", "1b", "1c"].includes(selectedGabarit) &&
+        !fond.usedBackdrop &&
+        fond.previewUrl &&
+        fond.cadreFond,
     );
     if (fond) {
       values.imageUrl = utiliserPreview ? fond.previewUrl! : fond.backdropUrl;

@@ -104,6 +104,16 @@ export const GABARITS: Record<string, GabaritDef> = {
       { key: "titreCadre", label: "Cadrage du titre", kind: "geometry" },
       { key: "eyebrow", label: "Surtitre", kind: "textarea" },
       { key: "title", label: "Titre", kind: "textarea" },
+      // Hauteur de zone photo calculée à l'upload (voir hauteurZonePhoto,
+      // smartCrop.ts) — pas un champ éditable, un passage de valeur au même
+      // titre que sur le parcours principal (titres/page.tsx, qui la
+      // transmet déjà en aperçu direct). Sans elle déclarée ici, la route
+      // d'export (générique, contrairement à /render/1a) la recalculait
+      // depuis le fichier `imageUrl` — correct pour `backdrop.jpg` (déjà à
+      // la bonne hauteur), faux pour `preview.jpg` (cadre complet, un autre
+      // ratio) : aperçu ≠ export dès que le recadrage automatique adapte
+      // cette hauteur pour la photo en cours.
+      { key: "photoHeight", label: "Hauteur photo (calculée)", kind: "text" },
     ],
     // `data-gabarit="1c"` en enveloppe : Gabarit1A porte en dur son propre
     // `data-gabarit="1a"` (utilisé par la route d'export Playwright pour
@@ -119,6 +129,7 @@ export const GABARITS: Record<string, GabaritDef> = {
           eyebrow={props.eyebrow || undefined}
           imageCadre={props.imageCadre}
           titreCadre={props.titreCadre}
+          photoHeight={props.photoHeight}
         />
       </div>
     ),
@@ -126,6 +137,7 @@ export const GABARITS: Record<string, GabaritDef> = {
       imageUrl: PLACEHOLDER,
       imageCadre: "",
       titreCadre: "",
+      photoHeight: "",
       eyebrow: "Une touche japonaise pour séduire les internautes",
       title: "Titre d'exemple pour le gabarit 1C",
     },
@@ -136,6 +148,10 @@ export const GABARITS: Record<string, GabaritDef> = {
     fields: [
       { key: "imageUrl", label: "Image de fond", kind: "image" },
       { key: "imageCadre", label: "Cadrage du fond", kind: "geometry" },
+      // Voir le commentaire équivalent sur "1c" : nécessaire pour que
+      // l'export (route générique) garde la même hauteur de zone photo que
+      // l'aperçu quand le fond utilise `preview.jpg`.
+      { key: "photoHeight", label: "Hauteur photo (calculée)", kind: "text" },
       { key: "paragraph", label: "Paragraphe ( supporte **gras** )", kind: "textarea" },
     ],
     Component: (props: Record<string, string>) => (
@@ -143,11 +159,13 @@ export const GABARITS: Record<string, GabaritDef> = {
         imageUrl={props.imageUrl ?? ""}
         paragraph={props.paragraph ?? ""}
         imageCadre={props.imageCadre}
+        photoHeight={props.photoHeight}
       />
     ),
     defaults: {
       imageUrl: PLACEHOLDER,
       imageCadre: "",
+      photoHeight: "",
       paragraph:
         "Forza Horizon 6 perd déjà une grande partie de ses joueurs, seulement trois mois après sa sortie. **302 645 joueurs simultanés**, soit une baisse de 88 % par rapport au pic de launch. Le studio Playground Games affirme travailler sur des mises à jour pour stabiliser la base.",
     },

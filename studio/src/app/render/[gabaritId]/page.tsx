@@ -212,7 +212,15 @@ export default async function RenderGabaritPage({
   // d'une image à l'autre depuis le 2026-08-22 (voir `hauteurZonePhoto`).
   // Le composant et le bandeau de titre doivent tous deux l'utiliser, sinon le
   // dégradé ne tombe plus sur le bord de la photo et une couture apparaît.
-  props.photoHeight = String(await hauteurFond(props.imageUrl));
+  //
+  // 1B/1C (16 sept. 2026) : quand `imageUrl` pointe vers `preview.jpg` (cadre
+  // complet, recadrage/zoom depuis une image proche de l'originale), son
+  // ratio de fichier n'est plus celui de la zone photo — la déduire du
+  // fichier donnerait une hauteur fausse. `photoHeight` est alors déjà
+  // transmis (calculé à l'upload, voir titres/page.tsx) : on le préfère,
+  // et on ne retombe sur la déduction par fichier que s'il est absent —
+  // comportement inchangé pour 2A/2B/3A/3B, qui ne l'envoient pas.
+  props.photoHeight = props.photoHeight || String(await hauteurFond(props.imageUrl));
 
   const shadows = await computeBulleShadows(gabaritId, props.imageUrl, props);
   Object.assign(props, shadows);
