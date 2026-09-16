@@ -80,11 +80,22 @@ publiques HTTPS, pas besoin d'être sur la VM), timeout JS pour interrompre un
 calcul de traduction bloquant (ne marche pas, Node ne peut pas interrompre un
 calcul natif en cours).
 
-**Limite connue, pas résolue** : le pipeline RADAR tourne dans le même process
-que le serveur web — le site est inaccessible pendant chaque cycle (30-50 min).
-La solution (process PM2 séparé) est analysée en détail dans `TODO.md` §3.3,
-prête à implémenter, mais pas faite — À FAIRE si le temps le permet cette
-session, sinon la garder pour une session dédiée plutôt que la bâcler.
+**RÉSOLU le 16 sept. 2026** (était documenté ici comme "limite connue, pas
+résolue") : le pipeline RADAR tournait dans le même process que le serveur
+web, rendant le site inaccessible pendant chaque cycle (30-50 min). Tourne
+maintenant dans son propre process PM2 (`radar-pipeline`,
+`RADAR/src/pipeline-worker.ts`) — voir `AUDIT-PRODUCTION-READINESS-2026-09-15.md`
+§15 pour la preuve complète (dont un test en prod réelle : 60 requêtes au
+vrai domaine public pendant 10 minutes continues pendant un vrai cycle
+pipeline, 60/60 en `200`). **Après tout déploiement, vérifier aussi**
+`pm2 jlist` → `radar-pipeline` doit être `online` avec
+`max_memory_restart` à `3145728000` (3000M), même piège PM2 que radar/
+studio (voir ci-dessus) potentiellement applicable ici aussi. Limite
+résiduelle assumée, non corrigée : le chemin à la demande (brief généré au
+clic sur un event) tourne toujours dans le process web, déjà atténué
+(traduction du contenu brut désactivée) mais pas totalement isolé —
+`worker_threads` prouvé viable en Node nu pour ce cas si le besoin
+réapparaît, pas implémenté.
 
 **Accès VM prod** : `ssh -i ~/.ssh/oracle-media-labs.key ubuntu@89.168.53.133`
 — si ça timeout, c'est probablement le réseau local qui bloque le port 22 (déjà

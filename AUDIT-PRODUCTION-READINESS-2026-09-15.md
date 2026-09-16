@@ -1001,3 +1001,101 @@ un risque intrinsèque des systèmes génératifs. Le bandeau `factsMatched`
 est le vrai filet : il ne bloque rien (cohérent avec "l'outil prépare,
 l'humain valide", studio/CLAUDE.md §1), il rend le moment de vigilance
 visible à qui relit avant publication.
+
+---
+
+## 15. Partie 6 — Séparation du pipeline RADAR du serveur web (16 sept. 2026)
+
+Le plus gros risque de disponibilité restant du projet (`TODO.md` §3.3,
+identifié en session précédente, jamais corrigé) : `startCron()`/
+`runPipeline()` tournaient dans le même process Node que le serveur HTTP —
+le calcul intensif (embeddings + traduction locale, ONNX synchrone)
+bloquait le seul thread JS, rendant le site **totalement inaccessible**
+(aucune réponse, pas une lenteur) pendant tout un cycle (30-50 min, mesuré
+en prod réelle le 14 sept. 2026).
+
+### 15.1 Solutions explorées, avec preuve à l'appui plutôt que suppositions
+
+| Option | Verdict |
+|---|---|
+| Chunking/pauses entre items | Déjà testé et écarté en session précédente : un item seul peut bloquer 40-60s, les pauses entre items n'aident pas pendant qu'un item est en cours |
+| `worker_threads` | **Testé réellement** : `@xenova/transformers` fonctionne dans un worker thread, le thread principal reste mesurablement réactif pendant le chargement du modèle. Techniquement viable — écarté pour cette itération car l'intégration à un serveur Next.js déjà en cours d'exécution est un risque de bundling non vérifié, à réserver à un chantier séparé et mieux scopé |
+| Subprocess jetable par cycle (`child_process.spawn`) | Résout le cron mais réintroduit un coût de rechargement de modèle à chaque déclenchement à la demande |
+| **Process PM2 dédié (retenu)** | Isolation OS complète, pattern déjà utilisé dans ce projet (radar/studio déjà séparés), risque le plus bas |
+
+### 15.2 Implémentation
+
+- **`RADAR/src/pipeline-worker.ts`** : script Node autonome (pas une route
+  Next.js) qui possède `startCron()`/`runPipeline()`. Deux endpoints HTTP
+  internes (`127.0.0.1:3010`, jamais exposés par nginx) : `POST /run`
+  (déclenchement manuel, remplace l'appel direct qu'avait
+  `api/cron/route.ts`) et `POST /reload-config`.
+- **Compilé en CommonJS** (`tsconfig.worker.json`, `tsc` déjà une
+  devDependency — zéro outil ajouté) plutôt qu'exécuté via `node
+  --experimental-strip-types` : Node 22 exige une extension explicite sur
+  chaque import relatif de toute la chaîne `lib/*` en ESM brut ; l'ancien
+  flag `--experimental-specifier-resolution=node` qui aurait contourné ça
+  n'existe plus (vérifié : absent de `node --help`).
+- **État partagé entre process** : `getCronStatus().running` lit
+  maintenant `pipeline_runs.status` (déjà en base depuis le début, aucune
+  nouvelle table) au lieu d'un booléen en mémoire invisible depuis l'autre
+  process. `saveCronConfig()` n'redémarre plus le cron elle-même (n'aurait
+  plus d'effet réel une fois séparée) — `api/cron/route.ts` proxy les
+  actions `run`/`update_config` vers le worker.
+- **`deploy.sh`** : nouvelle étape de build (`build_worker()`, même filet
+  de sécurité — sauvegarde/restauration si échec — que `build_app()`),
+  nouveau process PM2 `radar-pipeline` (3000M, même mesure que radar —
+  mêmes modèles désormais chargés ici), `--kill-timeout` volontairement
+  généreux (60s contre 10s pour radar/studio) puisqu'aucune requête
+  utilisateur ne dépend plus de la réactivité de ce process.
+
+### 15.3 Deux bugs supplémentaires trouvés en déployant réellement
+
+- **`tsc` traité comme un échec de build sur ses propres erreurs de type
+  préexistantes** (mêmes erreurs de typage déjà tolérées ailleurs dans ce
+  projet, `next.config.ts` les ignore explicitement) — `next build` a un
+  flag dédié pour ça, `tsc` seul non : son code de sortie reflète toute
+  erreur de type, pas seulement les échecs réels, alors qu'il émet quand
+  même le JS par défaut. Corrigé : le critère de succès redevient
+  l'existence du fichier de sortie, pas le code de sortie de `tsc`.
+
+### 15.4 Vérifié réellement, en trois temps
+
+**1. Local, radar.db réel (1763 events)** : un vrai cycle pipeline
+déclenché sur le worker (62 flux RSS interrogés, 54 items ingérés,
+chargement des modèles embeddings+traduction, traduction ONNX réelle en
+cours) pendant que le serveur web répond `200` en 16-80ms à **chaque**
+requête sur 140 secondes de sondage continu (40 puis 60 vérifications).
+SIGTERM envoyé au worker en pleine traduction : confirmé que Node ne
+traite le signal qu'une fois le calcul natif en cours terminé (jusqu'à 35s
+observés avant réaction) — attendu, déjà documenté comme limitation Node
+dans ce projet, sans impact puisque ce process ne sert plus aucune requête.
+
+**2. Déploiement réel** : 2 bugs d'outillage trouvés et corrigés en route
+(§15.3 ci-dessus, plus le piège habituel d'auto-modification de
+`deploy.sh` déjà connu — 4 runs au total pour que tout s'applique).
+Vérifié après coup : `pm2 jlist` confirme les 3 process (`radar`, `studio`,
+`radar-pipeline`) `online`, plafonds mémoire corrects, `GET
+http://127.0.0.1:3010/health` répond.
+
+**3. Prod réelle, chemin utilisateur complet** : pipeline déclenché via
+`POST https://89.168.53.133.nip.io/api/cron {action:'run'}` — le vrai
+bouton "Lancer maintenant" du dashboard, authentifié comme un vrai
+utilisateur, proxié jusqu'au worker. Pendant que ce cycle réel tournait
+(62 flux RSS, chargement des modèles, traduction ONNX en cours, confirmé
+dans `pm2 logs radar-pipeline`), **60 requêtes envoyées au vrai domaine
+public HTTPS toutes les 10 secondes pendant 10 minutes continues — 60/60
+en `200`**, aucun timeout, aucune erreur. C'est exactement l'opération qui
+rendait le site totalement injoignable pendant 30-50 minutes avant ce
+correctif.
+
+### 15.5 Limite honnête, non corrigée
+
+Le chemin à la demande (brief généré au clic sur un event) tourne toujours
+dans le process web — déjà largement atténué en session précédente
+(traduction du `content` brut désactivée dans `generateBrief()`), mais
+reste en théorie exposé à un futur cas dégénéré. `worker_threads`
+(§15.1, prouvé viable en Node nu) en serait le complément naturel — pas
+fait ici, périmètre volontairement limité au risque principal signalé par
+l'utilisateur (le blocage de 30-50 min), pas une couverture totale du
+risque résiduel plus faible.
