@@ -79,6 +79,17 @@ export function lireCadre(valeur: string | undefined): { zoom: number; dx: numbe
 }
 
 /**
+ * Formate un cadrage calculé (ex. `cadreEquivalent`, `smartCrop.ts`) en
+ * chaîne `"zoom,dx,dy"` prête à stocker dans un champ `*Cadre`, en le
+ * bornant aux mêmes limites que `lireCadre` — une seule source de vérité
+ * pour ces bornes, jamais dupliquées entre le calcul et la lecture.
+ */
+export function formatCadre(c: { zoom: number; dx: number; dy: number }): string {
+  const borne = lireCadre(`${c.zoom},${c.dx},${c.dy}`);
+  return `${borne.zoom},${borne.dx},${borne.dy}`;
+}
+
+/**
  * Lit une géométrie de bulle transmise par l'aperçu sous la forme
  * `"gauche,haut,diamètre"` (en % du canevas). Chaîne vide ou malformée →
  * on garde la géométrie mesurée sur la référence. L'opérateur ne saisit

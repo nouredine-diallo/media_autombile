@@ -2,7 +2,7 @@ import "server-only";
 import sharp from "sharp";
 import { spawn } from "node:child_process";
 import { computeSubjectBoundingBox, SegmentationUnavailableError } from "./segment";
-import { computeSubjectAwareCrop, hauteurZonePhoto } from "./smartCrop";
+import { computeSubjectAwareCrop, hauteurZonePhoto, type Rect } from "./smartCrop";
 
 export interface CropTarget {
   width: number;
@@ -40,6 +40,15 @@ export interface SmartCropOutcome extends CropTarget {
   fallbackToCenter: boolean;
   /** true si le sujet ne tenait dans aucun recadrage "cover" 4:5 — image entière affichée sur fond flou/assombri à la place. */
   usedBackdrop: boolean;
+  /**
+   * Fenêtre réellement extraite (coordonnées pixel de l'image source, avant
+   * tout redimensionnement) — permet de reproduire ce cadrage par un
+   * `imageCadre` CSS sur l'image PEU RETOUCHÉE (`preview.jpg`) plutôt que sur
+   * ce dérivé déjà rogné (voir `cadreEquivalent`, `smartCrop.ts`). Absent
+   * quand ça ne s'applique pas (repli centré ou fond flou) : ces deux cas
+   * n'ont pas de fenêtre de recadrage simple équivalente.
+   */
+  sourceCrop?: Rect & { sourceWidth: number; sourceHeight: number };
 }
 
 export interface UploadCropOutcome {
@@ -304,6 +313,14 @@ export async function cropToAspectSmart(
         fitsSubject: true,
         fallbackToCenter: false,
         usedBackdrop: false,
+        sourceCrop: {
+          left: backdropCrop.left,
+          top: backdropCrop.top,
+          width: backdropCrop.width,
+          height: backdropCrop.height,
+          sourceWidth,
+          sourceHeight,
+        },
       },
     };
   }
@@ -317,6 +334,27 @@ export async function cropToAspectSmart(
     ...(bulleOutcome ? { bulle: bulleOutcome } : {}),
     backdrop: { ...cibleFond, fitsFully: false, fitsSubject: false, fallbackToCenter: false, usedBackdrop: true },
   };
+}
+
+const PREVIEW_MAX_DIMENSION = 2000;
+
+/**
+ * Copie de travail plafonnée en résolution, cadre COMPLET (pas de recadrage)
+ * — sert à recadrer/zoomer depuis une image proche de l'originale (voir
+ * `cadreEquivalent`, `smartCrop.ts`) sans servir le fichier original,
+ * potentiellement très lourd (photo de téléphone, plusieurs Mo), à chaque
+ * affichage de l'aperçu. 2000px de long côté reste très au-dessus des ~1080px
+ * de sortie finale des gabarits : aucune perte de qualité perceptible sur le
+ * cadrage effectivement visible, pour un poids borné.
+ */
+export async function buildPreview(inputPath: string, outputPath: string): Promise<void> {
+  await sharp(inputPath)
+    .resize(PREVIEW_MAX_DIMENSION, PREVIEW_MAX_DIMENSION, {
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .jpeg({ quality: 90 })
+    .toFile(outputPath);
 }
 
 export class UpscaleUnavailableError extends Error {}

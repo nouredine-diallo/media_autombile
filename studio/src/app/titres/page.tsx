@@ -93,6 +93,12 @@ interface UploadedImage {
   sujetCentreX?: number;
   /** Détourage indisponible/sujet trop large : recadrage centré appliqué en repli (finding B8). */
   fallbackCrop?: boolean;
+  /** Cadre complet, résolution plafonnée — permet de recadrer/zoomer le fond depuis une image proche de l'originale (gabarit 1A uniquement, voir buildPreviewValues). */
+  previewUrl?: string;
+  /** Cadrage par défaut équivalent au recadrage automatique de `backdropUrl`, exprimé pour `previewUrl`. */
+  cadreFond?: string;
+  /** Fond flou/assombri (photo entière) : `previewUrl` n'a alors pas d'équivalent CSS simple, on garde `backdropUrl`. */
+  usedBackdrop?: boolean;
 }
 
 interface Verdict {
@@ -343,6 +349,9 @@ export default function TitresPage() {
         photoHeight: img.photoHeight,
         role: img.role,
         fallbackCrop: img.fallbackCrop,
+        previewUrl: img.previewUrl,
+        cadreFond: img.cadreFond,
+        usedBackdrop: img.usedBackdrop,
       }));
       setImages((prev) => {
         const suite = [...prev, ...nouvelles];
@@ -386,13 +395,16 @@ export default function TitresPage() {
       if (!res.ok || !Array.isArray(data.images) || data.images.length === 0) {
         throw new Error(data.error ?? "Image indisponible");
       }
-      const nouvelles: UploadedImage[] = data.images.map((img: { id: string; croppedUrl: string; backdropUrl: string; fallbackCrop?: boolean }) => ({
+      const nouvelles: UploadedImage[] = data.images.map((img: { id: string; croppedUrl: string; backdropUrl: string; previewUrl?: string; cadreFond?: string; usedBackdrop?: boolean; fallbackCrop?: boolean }) => ({
         id: img.id,
         croppedUrl: img.croppedUrl,
         backdropUrl: img.backdropUrl,
         bulleUrl: `/api/images/${img.id}?variant=bulle`,
         role: "fond",
         fallbackCrop: img.fallbackCrop,
+        previewUrl: img.previewUrl,
+        cadreFond: img.cadreFond,
+        usedBackdrop: img.usedBackdrop,
       }));
       setImages((prev) => {
         const suite = [...prev, ...nouvelles];
@@ -463,8 +475,21 @@ export default function TitresPage() {
     // montage que le pipeline sait produire.
     const fond = images[0];
     const bullesDispo = images.slice(1);
+    // Recadrer/zoomer (RecadrageFond, geste déjà existant) depuis une image
+    // proche de l'originale plutôt que sur `backdropUrl`, déjà rogné par le
+    // recadrage automatique — l'utilisateur ne perd plus la marge coupée.
+    // Limité au gabarit 1A : c'est le seul dont la route d'export
+    // (`/render/1a`) transmet `photoHeight` tel quel plutôt que de le
+    // recalculer depuis le fichier `imageUrl` (les autres gabarits
+    // déduiraient alors une mauvaise hauteur de zone photo d'un fichier à un
+    // autre ratio), et le seul sans 3e couche (`sujetUrl`) qui devrait sinon
+    // être réalignée sur ce nouveau cadre.
+    const utiliserPreview = Boolean(
+      fond && selectedGabarit === "1a" && !fond.usedBackdrop && fond.previewUrl && fond.cadreFond,
+    );
     if (fond) {
-      values.imageUrl = fond.backdropUrl;
+      values.imageUrl = utiliserPreview ? fond.previewUrl! : fond.backdropUrl;
+      if (utiliserPreview) values.imageCadre = fond.cadreFond!;
       if (fond.sujetUrl) values.sujetUrl = fond.sujetUrl;
       // Sans cette ligne, l'aperçu composerait la photo sur 74 % pendant que
       // le rendu utiliserait la hauteur réelle : aperçu ≠ export.
@@ -540,6 +565,12 @@ export default function TitresPage() {
       if (v) values[k] = v;
       else delete values[k];
     }
+
+    // "Rend la main à l'automatique" (ci-dessus) doit restituer LE cadrage
+    // mesuré pour cette image, pas l'identité générique : contrairement à
+    // `bulleGeom` (repli constant, lu par `lireGeometrie`), `cadreFond` est
+    // propre à chaque photo — `lireCadre` seul ne peut pas le retrouver.
+    if (utiliserPreview && !values.imageCadre) values.imageCadre = fond!.cadreFond!;
 
     return values;
   }

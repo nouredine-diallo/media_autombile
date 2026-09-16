@@ -238,6 +238,64 @@ export function computeSubjectAwareCrop(
 export const ZONE_PHOTO_REFERENCE = 0.74;
 export const ZONE_PHOTO_MINIMALE = 0.62;
 
+/**
+ * Cadrage `"zoom,dx,dy"` (voir `Bulle.tsx: lireCadre`) qui, appliqué par
+ * `transform: translate(dx%,dy%) scale(zoom)` sur l'image affichée en
+ * `object-fit: cover` dans une boîte `boxWidth × boxHeight`, reproduit la
+ * fenêtre `crop` (coordonnées pixel de la même image, avant tout recadrage)
+ * — permet de recadrer/zoomer depuis l'image non rognée plutôt qu'un dérivé
+ * déjà cadré, avec le geste et le champ déjà existants (RecadrageFond).
+ *
+ * Principe : `object-fit: cover` calcule d'abord SA PROPRE fenêtre par
+ * défaut (centrée, plein cadrage) — ce calcul l'annule en repositionnant/
+ * zoomant par-dessus pour retomber exactement sur `crop`. Vérifié contre la
+ * composition CSS réelle : `translate()` puis `scale()` dans l'ordre où
+ * `transform` les liste s'appliquent à un point dans l'ordre inverse
+ * (scale d'abord, translate ensuite), et les pourcentages de `translate()`
+ * se lisent contre la boîte de l'élément lui-même — exactement la
+ * convention déjà utilisée par `RecadrageFond.tsx` (dx/dy en % de sa propre
+ * zone) et par `lireCadre`.
+ */
+export function cadreEquivalent(
+  sourceWidth: number,
+  sourceHeight: number,
+  boxWidth: number,
+  boxHeight: number,
+  crop: Rect,
+): { zoom: number; dx: number; dy: number } {
+  const boxAspect = boxWidth / boxHeight;
+  const sourceAspect = sourceWidth / sourceHeight;
+
+  // Fenêtre par défaut d'`object-fit: cover` (zoom=1, dx=dy=0), en
+  // coordonnées pixel de l'image source.
+  let scale0: number;
+  let x0: number;
+  let y0: number;
+  if (sourceAspect > boxAspect) {
+    scale0 = boxHeight / sourceHeight;
+    x0 = (sourceWidth - boxWidth / scale0) / 2;
+    y0 = 0;
+  } else {
+    scale0 = boxWidth / sourceWidth;
+    x0 = 0;
+    y0 = (sourceHeight - boxHeight / scale0) / 2;
+  }
+
+  // Position (avant transform) du centre de `crop`, en pixels de la boîte.
+  const cx = crop.left + crop.width / 2;
+  const cy = crop.top + crop.height / 2;
+  const dispX = (cx - x0) * scale0;
+  const dispY = (cy - y0) * scale0;
+
+  // `crop` a le même ratio que la boîte (construit ainsi par
+  // `computeSubjectAwareCrop`) : une seule échelle finale suffit.
+  const zoom = (boxWidth / crop.width) / scale0;
+  const dx = (100 * zoom * (boxWidth / 2 - dispX)) / boxWidth;
+  const dy = (100 * zoom * (boxHeight / 2 - dispY)) / boxHeight;
+
+  return { zoom, dx, dy };
+}
+
 export function hauteurZonePhoto(
   canvasWidth: number,
   canvasHeight: number,

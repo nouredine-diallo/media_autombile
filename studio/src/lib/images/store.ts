@@ -12,6 +12,8 @@ const VARIANT_FILES: Record<string, string[]> = {
   source: ["source.jpg"],
   cropped: ["cropped.jpg"],
   backdrop: ["backdrop.jpg"],
+  /** Cadre complet, résolution plafonnée — voir `buildPreview` dans `pipeline.ts`. */
+  preview: ["preview.jpg"],
   upscaled: ["upscaled.png"],
   subject: ["subject.png"],
   // Détourage de la variante `cropped` (image d'une bulle), distinct du

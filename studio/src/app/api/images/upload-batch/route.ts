@@ -4,10 +4,12 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getSession } from "@/lib/session";
-import { cropToAspectSmart } from "@/lib/images/pipeline";
+import { cropToAspectSmart, buildPreview } from "@/lib/images/pipeline";
+import { cadreEquivalent } from "@/lib/images/smartCrop";
 import { retirerBandes } from "@/lib/images/trimBandes";
 import { UPLOADS_DIR } from "@/lib/images/store";
 import { suggestRoles } from "@/lib/images/roles";
+import { formatCadre } from "@/components/gabarits/Bulle";
 import {
   GABARIT_1A_HEIGHT,
   GABARIT_PHOTO_HEIGHT,
@@ -130,11 +132,33 @@ export async function POST(request: NextRequest) {
         target: { width: GABARIT_BULLE_WIDTH, height: GABARIT_BULLE_HEIGHT },
         occupancy: GABARIT_BULLE_OCCUPANCY,
       });
+
+      // Voir la route unitaire pour le détail : copie cadre complet à
+      // résolution plafonnée + cadrage par défaut équivalent au recadrage
+      // automatique, pour recadrer/zoomer depuis une image proche de
+      // l'originale (gabarit 1A) plutôt que sur `backdrop.jpg` déjà rogné.
+      const previewPath = path.join(item.dir, "preview.jpg");
+      await buildPreview(sourcePath, previewPath);
+      const cadreFond = outcome.backdrop.sourceCrop
+        ? formatCadre(
+            cadreEquivalent(
+              outcome.backdrop.sourceCrop.sourceWidth,
+              outcome.backdrop.sourceCrop.sourceHeight,
+              GABARIT_1A_WIDTH,
+              outcome.backdrop.height,
+              outcome.backdrop.sourceCrop,
+            ),
+          )
+        : undefined;
+
       return {
         id: item.id,
         originalUrl: `/api/images/${item.id}?variant=original`,
         croppedUrl: `/api/images/${item.id}?variant=cropped`,
         backdropUrl: `/api/images/${item.id}?variant=backdrop`,
+        previewUrl: `/api/images/${item.id}?variant=preview`,
+        cadreFond,
+        usedBackdrop: outcome.backdrop.usedBackdrop,
         // Hauteur réelle de la zone photo pour cette image : l'aperçu doit
         // l'appliquer comme le rendu, sinon aperçu ≠ export (CLAUDE.md §1).
         photoHeight: outcome.backdrop.height,

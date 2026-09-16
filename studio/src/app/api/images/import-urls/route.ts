@@ -6,9 +6,11 @@ import path from "node:path";
 import dns from "node:dns/promises";
 import net from "node:net";
 import { getSession } from "@/lib/session";
-import { cropToAspectSmart } from "@/lib/images/pipeline";
+import { cropToAspectSmart, buildPreview } from "@/lib/images/pipeline";
+import { cadreEquivalent } from "@/lib/images/smartCrop";
 import { retirerBandes } from "@/lib/images/trimBandes";
 import { UPLOADS_DIR } from "@/lib/images/store";
+import { formatCadre } from "@/components/gabarits/Bulle";
 import {
   GABARIT_1A_HEIGHT,
   GABARIT_PHOTO_HEIGHT,
@@ -110,7 +112,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `Maximum ${MAX_URLS} URLs par appel` }, { status: 400 });
   }
 
-  const results: Array<{ id: string; croppedUrl: string; backdropUrl: string; fallbackCrop: boolean }> = [];
+  const results: Array<{
+    id: string;
+    croppedUrl: string;
+    backdropUrl: string;
+    previewUrl: string;
+    cadreFond?: string;
+    usedBackdrop: boolean;
+    fallbackCrop: boolean;
+  }> = [];
 
   for (const url of urls) {
     try {
@@ -147,10 +157,30 @@ export async function POST(request: NextRequest) {
         { width: GABARIT_1A_WIDTH, height: GABARIT_PHOTO_HEIGHT },
       );
 
+      // Voir upload-batch/route.ts pour le détail : copie cadre complet à
+      // résolution plafonnée + cadrage par défaut équivalent, pour
+      // recadrer/zoomer depuis une image proche de l'originale (gabarit 1A).
+      const previewPath = path.join(dir, "preview.jpg");
+      await buildPreview(sourcePath, previewPath);
+      const cadreFond = outcome.backdrop.sourceCrop
+        ? formatCadre(
+            cadreEquivalent(
+              outcome.backdrop.sourceCrop.sourceWidth,
+              outcome.backdrop.sourceCrop.sourceHeight,
+              GABARIT_1A_WIDTH,
+              outcome.backdrop.height,
+              outcome.backdrop.sourceCrop,
+            ),
+          )
+        : undefined;
+
       results.push({
         id,
         croppedUrl: `/api/images/${id}?variant=cropped`,
         backdropUrl: `/api/images/${id}?variant=backdrop`,
+        previewUrl: `/api/images/${id}?variant=preview`,
+        cadreFond,
+        usedBackdrop: outcome.backdrop.usedBackdrop,
         // Finding B8 (audit 2026-09-07) : voir upload-batch/route.ts, même correctif.
         fallbackCrop: outcome.backdrop.fallbackToCenter,
       });

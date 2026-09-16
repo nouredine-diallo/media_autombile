@@ -4,9 +4,11 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getSession } from "@/lib/session";
-import { cropToAspectSmart } from "@/lib/images/pipeline";
+import { cropToAspectSmart, buildPreview } from "@/lib/images/pipeline";
+import { cadreEquivalent } from "@/lib/images/smartCrop";
 import { retirerBandes } from "@/lib/images/trimBandes";
 import { UPLOADS_DIR } from "@/lib/images/store";
+import { formatCadre } from "@/components/gabarits/Bulle";
 import {
   GABARIT_1A_HEIGHT,
   GABARIT_PHOTO_HEIGHT,
@@ -102,6 +104,29 @@ export async function POST(request: NextRequest) {
     occupancy: GABARIT_BULLE_OCCUPANCY,
   });
 
+  // Copie cadre complet, résolution plafonnée (voir `buildPreview`) : permet
+  // de recadrer/zoomer depuis une image proche de l'originale (gabarit 1A,
+  // seul consommateur pour l'instant — voir `cadreFond` ci-dessous) plutôt
+  // que sur `backdrop.jpg`, déjà rogné par le recadrage automatique.
+  const previewPath = path.join(dir, "preview.jpg");
+  await buildPreview(sourcePath, previewPath);
+
+  // Cadrage par défaut équivalent au recadrage automatique de `backdrop.jpg`,
+  // mais exprimé comme un `imageCadre` applicable à `preview.jpg` — seulement
+  // quand ça a un sens (pas de fenêtre de recadrage simple en repli centré ou
+  // fond flou, voir `SmartCropOutcome.sourceCrop`).
+  const cadreFond = outcome.backdrop.sourceCrop
+    ? formatCadre(
+        cadreEquivalent(
+          outcome.backdrop.sourceCrop.sourceWidth,
+          outcome.backdrop.sourceCrop.sourceHeight,
+          GABARIT_1A_WIDTH,
+          outcome.backdrop.height,
+          outcome.backdrop.sourceCrop,
+        ),
+      )
+    : undefined;
+
   // Stratégie de recadrage renvoyée telle quelle : l'appelant doit toujours
   // pouvoir savoir si le sujet tient entier, si un fond flou a été nécessaire,
   // ou si le détourage a échoué — jamais un succès silencieux (CLAUDE.md §5).
@@ -110,6 +135,9 @@ export async function POST(request: NextRequest) {
     originalUrl: `/api/images/${id}?variant=original`,
     croppedUrl: `/api/images/${id}?variant=cropped`,
     backdropUrl: `/api/images/${id}?variant=backdrop`,
+    previewUrl: `/api/images/${id}?variant=preview`,
+    cadreFond,
+    usedBackdrop: outcome.backdrop.usedBackdrop,
     // Hauteur réelle de la zone photo pour cette image : l'aperçu doit
     // l'appliquer comme le rendu, sinon aperçu ≠ export (CLAUDE.md §1).
     photoHeight: outcome.backdrop.height,
