@@ -111,7 +111,16 @@ export function AssistantLauncher() {
   const pathname = usePathname();
   const drag = useDraggableLauncher();
 
-  if (HIDDEN_PATHS.has(pathname)) return null;
+  // `/render/*` : pages dédiées à la capture Playwright de l'export (1080 ×
+  // 1350, le composant gabarit doit remplir tout le viewport) — trouvé le
+  // 16 sept. 2026 (retour utilisateur, export réel sur mobile) : le bouton
+  // fixe (bottom:22px, right:22px) tombe dans ce même viewport et se
+  // retrouve donc DANS le PNG exporté, sur le logo. Vérifié : `element
+  // .screenshot()` capture tout ce qui est visuellement à cet endroit, pas
+  // seulement le sous-arbre DOM du gabarit — masquer l'élément est la seule
+  // correction possible côté page de capture (le composant lui-même ne peut
+  // pas "voir" ce qui est monté à la racine du layout).
+  if (HIDDEN_PATHS.has(pathname) || pathname.startsWith("/render/")) return null;
 
   return (
     <>
