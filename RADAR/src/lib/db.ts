@@ -536,6 +536,31 @@ function initializeDb(db: any) {
     CREATE INDEX IF NOT EXISTS idx_analytics_page ON analytics_events(page);
     CREATE INDEX IF NOT EXISTS idx_analytics_session ON analytics_events(session_id);
   `);
+
+  // Migration: verification_shadow_log — calibration du seuil MIN_VERIFICATION_SCORE
+  // (chantier plan écosystème, phase 2, 2026-09-17). Un article rejeté par le
+  // contrôle qualité du matin (autoGenerate.ts) est aujourd'hui supprimé
+  // (`DELETE FROM articles`, interdit absolu RADAR/CLAUDE.md §2 : jamais montrer
+  // un article avec anomalie détectée à un humain) — son score de vérification
+  // disparaît donc avec lui, rendant impossible toute calibration future du
+  // seuil sur des données réelles. Cette table logue le score au moment de la
+  // décision, indépendamment du sort de l'article (gardé ou supprimé) — jamais
+  // le contenu de l'article lui-même, seulement la métadonnée de score. Pour
+  // les articles qui survivent et atteignent un humain, `article_id` permet de
+  // rejoindre `article_decisions` (décision humaine réelle) une fois assez de
+  // volume accumulé (cible : 40-60 articles réels).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS verification_shadow_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      article_id INTEGER,
+      event_id INTEGER NOT NULL,
+      verification_score INTEGER NOT NULL,
+      issues_count INTEGER NOT NULL,
+      passed_gate INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_verification_shadow_log_created ON verification_shadow_log(created_at);
+  `);
 }
 
 export interface Feed {

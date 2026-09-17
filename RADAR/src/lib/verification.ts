@@ -164,6 +164,54 @@ export function checkArticlePlagiarism(
   return { score, similarities };
 }
 
+export interface VerificationScoreCalibrationBucket {
+  scoreRange: string;
+  evaluated: number;
+  passedGate: number;
+  humanValidated: number;
+  humanRejected: number;
+}
+
+/**
+ * Rapport de calibration du seuil MIN_VERIFICATION_SCORE (phase 2 du plan
+ * écosystème, 2026-09-17) — lit `verification_shadow_log` (voir migration
+ * dans db.ts) plutôt que de recalculer quoi que ce soit : chaque score y est
+ * déjà celui réellement observé au moment de la décision. Regroupé par
+ * tranche de 10 points pour rendre la distribution lisible d'un coup d'œil.
+ *
+ * `humanValidated`/`humanRejected` ne comptent que les articles qui ont
+ * réellement atteint un humain (jointure sur `article_decisions`) — jamais
+ * les articles rejetés par le contrôle qualité, qui ne sont jamais montrés
+ * à personne (RADAR/CLAUDE.md §2). Ce rapport ne peut donc mesurer si le
+ * seuil actuel est trop strict pour les scores qu'il rejette déjà — utile
+ * seulement pour juger, sur ce qui passe la porte, si le seuil pourrait
+ * monter (accord humain fort même à des scores proches de 70) ou doit
+ * rester en l'état.
+ */
+export function getVerificationScoreCalibrationReport(): VerificationScoreCalibrationBucket[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT
+      (verification_score / 10) * 10 as bucket_start,
+      COUNT(*) as evaluated,
+      SUM(passed_gate) as passed_gate,
+      SUM(CASE WHEN d.decision = 'validated' THEN 1 ELSE 0 END) as human_validated,
+      SUM(CASE WHEN d.decision = 'rejected' THEN 1 ELSE 0 END) as human_rejected
+    FROM verification_shadow_log s
+    LEFT JOIN article_decisions d ON d.article_id = s.article_id AND d.source_method = 'humain'
+    GROUP BY bucket_start
+    ORDER BY bucket_start ASC
+  `).all() as { bucket_start: number; evaluated: number; passed_gate: number; human_validated: number; human_rejected: number }[];
+
+  return rows.map(r => ({
+    scoreRange: `${r.bucket_start}-${r.bucket_start + 9}`,
+    evaluated: r.evaluated,
+    passedGate: r.passed_gate,
+    humanValidated: r.human_validated,
+    humanRejected: r.human_rejected,
+  }));
+}
+
 export function generateVerificationReport(
   brief: Brief,
   article: { title: string; content: string },

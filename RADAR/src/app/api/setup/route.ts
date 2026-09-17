@@ -3,7 +3,7 @@ import { getDb } from '@/lib/db';
 
 const INITIAL_FEEDS = [
   // ── Internationaux (RSS natifs, pas de scraping) ──
-  { name: 'Autocar UK', url: 'https://www.autocar.co.uk/car-news/rss', priority: 1, requiresScraping: false },
+  { name: 'Autocar UK', url: 'https://www.autocar.co.uk/rss', priority: 1, requiresScraping: false },
   { name: 'Carscoops', url: 'https://www.carscoops.com/feed/', priority: 1, requiresScraping: false },
   { name: 'Motor1', url: 'https://www.motor1.com/rss/news/', priority: 1, requiresScraping: false },
   { name: 'CarBuzz', url: 'https://www.carbuzz.com/feed', priority: 1, requiresScraping: false },

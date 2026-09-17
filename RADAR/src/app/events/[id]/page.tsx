@@ -1138,9 +1138,22 @@ export default function EventDetail() {
                               ? 'bg-[var(--success-soft)] text-[var(--success)]'
                               : 'bg-[var(--surface-hover)] text-[var(--text-secondary)]'
                           }`}
-                          title={article.provenance === 'généré' ? 'Généré automatiquement ce matin, contrôle qualité déjà passé — reste à valider' : "Provenance de l'article"}
+                          title={article.provenance === 'généré' ? 'Généré automatiquement ce matin — reste à valider' : "Provenance de l'article"}
                         >
                           {article.provenance === 'généré' ? 'généré auto' : article.provenance}
+                        </span>
+                      )}
+                      {/* Depuis le 2026-09-17 (calibration explicite, RADAR/CLAUDE.md §2bis),
+                          un brouillon "généré auto" peut être sous le seuil de contrôle
+                          qualité (70%) — jamais supprimé en silence pour permettre une
+                          vraie calibration. Ce badge rend le risque impossible à manquer,
+                          au-delà de la seule couleur du score ci-dessus. */}
+                      {article.provenance === 'généré' && article.verification_score !== null && article.verification_score < 70 && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-[var(--danger-soft)] text-[var(--danger)] font-medium"
+                          title="Score sous le seuil habituel de 70% — conservé exprès pour calibrer ce seuil, à relire avec une attention particulière avant de valider ou rejeter."
+                        >
+                          ⚠ contrôle qualité échoué
                         </span>
                       )}
                       {lockStatus[article.id]?.locked_by && (

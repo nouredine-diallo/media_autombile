@@ -9,40 +9,49 @@ import { getAutoValidateConfig } from './autoValidateConfig';
 import { AlreadyGeneratingError } from './generationLock';
 
 /**
- * TODO: seuils provisoires (RADAR/CLAUDE.md §4.3 — jamais un seuil métier
- * définitif sans données réelles) :
- * - Fenêtre fixée arbitrairement à 8h-12h ("le matin", demande utilisateur) —
- *   à ajuster une fois un rythme de revue réel observé.
- * - Score de confiance minimal 70 pour laisser passer un brouillon
- *   auto-généré à la revue humaine — aucune donnée réelle pour le calibrer
- *   encore, posé au-dessus de la moitié de l'échelle 0-100 par prudence.
+ * TODO: seuil provisoire (RADAR/CLAUDE.md §4.3 — jamais un seuil métier
+ * définitif sans données réelles) : score de confiance minimal 70 pour
+ * laisser passer un brouillon auto-généré à la revue humaine — aucune
+ * donnée réelle pour le calibrer encore, posé au-dessus de la moitié de
+ * l'échelle 0-100 par prudence.
  *
- * Bug réel trouvé et corrigé (analyse 2026-09-09, /loop "post garanti") :
- * la ligne précédente (`new Date().getHours()`) capturait l'heure de
- * DÉMARRAGE DU PROCESS au chargement du module, pas 8h comme le
- * commentaire au-dessus l'affirmait ("TEMP-RESEARCH-FORCE" jamais
- * réellement annulé). Conséquence observée en conditions réelles : un
- * cycle démarré à 12h42 a pris 34 minutes pour la traduction, l'heure
- * système est passée à 13h avant d'atteindre cette fonction, et l'étape
- * auto-génération a été sautée en silence (aucune ligne [AUTO-GEN] dans
- * les logs de ce cycle). Une heure exacte reste fragile au même problème
- * si un cycle démarre en fin d'heure — remplacée par une fenêtre de 4h
- * (couvre largement les ~39min de traduction déjà mesurées comme pire cas),
- * alignée sur le cycle d'ingestion cron.ts (toutes les 4 heures).
+ * Historique de la fenêtre horaire fixe (8h-12h), retirée le 2026-09-17 :
+ * une première version bornait l'exécution à une plage d'heures fixe
+ * ("le matin"). Preuve en base (`pipeline_runs` id 13, 10 sept. 2026) que
+ * ça reste fragile même avec une fenêtre large : un cycle démarré à 10h00
+ * (dans la fenêtre) a pris 2h52 (traduction + scoring), et l'heure système
+ * au moment d'atteindre cette fonction était 12h52 — hors fenêtre, l'étape
+ * a été sautée en silence malgré un cycle déclenché au bon moment. Une
+ * plage horaire ne peut jamais absorber une durée de cycle imprévisible ;
+ * le seul repère fiable est "est-ce le premier cycle du jour à arriver
+ * jusqu'ici", pas une heure d'horloge murale — c'est exactement ce que
+ * `alreadyRanToday` ci-dessous vérifie déjà, sans dépendre de l'heure.
  */
-const AUTO_GEN_HOUR_START = 8;
-const AUTO_GEN_HOUR_END = 12; // exclusif
 const MIN_VERIFICATION_SCORE = 70;
 
 /**
- * Génération complète du matin pour les 2 actualités les plus pertinentes
- * (chantier 3 du plan écosystème, docs/superpowers/plans/2026-08-26-ecosystem-editorial-v2.md §6).
- * Ne fait rien en dehors de la fenêtre du matin, et ne tourne qu'une fois
- * par jour même si le cron tourne plusieurs fois pendant cette heure.
+ * TODO: valeur provisoire (RADAR/CLAUDE.md §4.3), décidée le 2026-09-17 :
+ * élargi de 2 à 5 pour espérer 2-5 brouillons validés par cron (tous les
+ * candidats évalués ne passent pas le contrôle qualité §7). Chaque
+ * candidat en plus est un appel LLM réel (génération + vérification) —
+ * actuellement gratuit (Groq), donc pas de contrainte de coût aujourd'hui,
+ * mais LLM_PROVIDER=claude doit rester utilisable en prod sans faire
+ * exploser la facture : 5 reste un nombre raisonnable même une fois Claude
+ * activé. À ajuster une fois le volume réel de brouillons validés observé.
+ */
+const CANDIDATE_POOL_SIZE = 5;
+
+/**
+ * Génération complète du matin pour les CANDIDATE_POOL_SIZE actualités les
+ * plus pertinentes (chantier 3 du plan écosystème,
+ * docs/superpowers/plans/2026-08-26-ecosystem-editorial-v2.md §6).
+ * Ne tourne qu'une fois par jour, quel que soit le nombre de cycles cron
+ * exécutés — c'est le premier cycle du jour à atteindre cette fonction qui
+ * fait le travail, pas une plage horaire fixe (voir historique ci-dessus).
  *
  * Interdit absolu RADAR/CLAUDE.md §2 : « ne jamais laisser un article généré
  * passer à la revue humaine si le contrôle automatique détecte une anomalie ».
- * Si le contrôle échoue pour un des 2 événements, son brouillon est retiré —
+ * Si le contrôle échoue pour un des événements, son brouillon est retiré —
  * jamais présenté avec un avertissement, jamais laissé pour examen. L'article
  * reste au statut 'draft' même quand tout passe : la validation humaine dans
  * RADAR (bouton "Valider") reste une étape à part entière, cohérent avec le
@@ -56,17 +65,14 @@ const MIN_VERIFICATION_SCORE = 70;
  * seulement des `console.log` (§ session 2026-08-27, priorité P1).
  */
 export async function runMorningAutoGeneration(runId: number): Promise<void> {
-  const now = new Date();
-  if (now.getHours() < AUTO_GEN_HOUR_START || now.getHours() >= AUTO_GEN_HOUR_END) return;
-
   const db = getDb();
-  const today = now.toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
   const alreadyRanToday = db
     .prepare(`SELECT COUNT(*) as c FROM pipeline_runs WHERE date(started_at) = ? AND auto_gen_attempted > 0`)
     .get(today) as { c: number };
   if (alreadyRanToday.c > 0) return;
 
-  const topEvents = db.prepare(`SELECT id FROM events ORDER BY score DESC LIMIT 2`).all() as { id: number }[];
+  const topEvents = db.prepare(`SELECT id FROM events ORDER BY score DESC LIMIT ?`).all(CANDIDATE_POOL_SIZE) as { id: number }[];
   let attempted = 0;
   let passed = 0;
   let autoValidated = 0;
@@ -80,9 +86,29 @@ export async function runMorningAutoGeneration(runId: number): Promise<void> {
       const { article, verification } = result;
       const passesGate = verification.issues.length === 0 && verification.confidenceScore >= MIN_VERIFICATION_SCORE;
 
+      // Shadow logging (phase 2 du plan écosystème, 2026-09-17) : trace le
+      // score et l'issue du contrôle qualité avant toute suppression
+      // éventuelle ci-dessous, pour pouvoir un jour recalculer
+      // MIN_VERIFICATION_SCORE sur des données réelles — voir migration
+      // `verification_shadow_log` dans db.ts pour le détail du raisonnement.
+      db.prepare(
+        `INSERT INTO verification_shadow_log (article_id, event_id, verification_score, issues_count, passed_gate) VALUES (?, ?, ?, ?, ?)`
+      ).run(article.id, event.id, verification.confidenceScore, verification.issues.length, passesGate ? 1 : 0);
+
       if (!passesGate) {
-        db.prepare(`DELETE FROM articles WHERE id = ?`).run(article.id);
-        console.log(`[AUTO-GEN] Événement ${event.id} : contrôle qualité échoué (score ${verification.confidenceScore}, ${verification.issues.length} anomalie(s)), brouillon retiré`);
+        // Exception explicitement autorisée par le créateur du projet le
+        // 2026-09-17 à l'interdit absolu RADAR/CLAUDE.md §2 — voir §2bis pour
+        // la portée exacte et la raison : sans jamais montrer les brouillons
+        // sous le seuil à un humain, aucune vraie donnée de calibration
+        // n'est possible (biais de survie total). Le brouillon N'EST PLUS
+        // supprimé : il reste en `draft`, visible sur la page événement avec
+        // son score bien en évidence (`getScoreColor`, rouge/orange sous
+        // 80 %), jamais auto-validé sans revue (le seuil 85 de
+        // `tryAutoValidate` reste hors de portée ici, cf. le `else`
+        // ci-dessous qui seul y donne accès) — la décision humaine réelle
+        // qui en résultera alimente `article_decisions`, jointe au score
+        // dans `verification_shadow_log` pour la calibration.
+        console.log(`[AUTO-GEN] Événement ${event.id} : contrôle qualité échoué (score ${verification.confidenceScore}, ${verification.issues.length} anomalie(s)) — conservé en brouillon pour revue humaine (calibration explicite, RADAR/CLAUDE.md §2bis)`);
       } else {
         passed++;
         console.log(`[AUTO-GEN] Événement ${event.id} : brouillon généré et vérifié (score ${verification.confidenceScore})`);

@@ -30,6 +30,44 @@ Ces règles priment sur toute demande ponctuelle, y compris une demande explicit
 
 ---
 
+## 2bis. Exception explicitement autorisée par le créateur du projet (2026-09-17)
+
+Le créateur du projet a explicitement demandé, en session, de contourner la règle §2
+("ne jamais laisser un article généré passer à la revue humaine si le contrôle
+automatique détecte une anomalie") pour un usage précis : **calibrer
+`MIN_VERIFICATION_SCORE` (`RADAR/src/lib/autoGenerate.ts`) sur des données réelles**.
+
+**Raison technique** : sans exposer au moins certains brouillons sous le seuil à un
+humain, il est structurellement impossible de savoir si le seuil (actuellement 70,
+provisoire) est trop strict — toutes les données de calibration seraient censurées du
+côté des rejets. Signalé explicitement à l'utilisateur avant d'agir (protocole §10) ;
+l'utilisateur a confirmé vouloir procéder, en tant que créateur du projet.
+
+**Portée exacte de l'exception, pour ne pas la lire plus large qu'elle n'est** :
+- Un brouillon auto-généré qui échoue le contrôle qualité (`autoGenerate.ts`) n'est
+  plus supprimé (`DELETE`) — il reste en `draft`, visible sur la page événement.
+- Il **n'est jamais** auto-validé sans revue : le seuil 85 de `tryAutoValidate` reste
+  totalement hors de portée pour ces brouillons (seule la branche "gate réussie" y
+  donne accès, inchangée). L'interdit sur l'auto-publication (§2, premier point) et sur
+  l'auto-validation sans seuil calibré restent pleinement en vigueur.
+- Le score est rendu **impossible à manquer** dans l'UI (`events/[id]/page.tsx`) :
+  couleur du score (`getScoreColor`, rouge/orange sous 80 %) + badge dédié
+  "⚠ contrôle qualité échoué" quand le score est sous 70 %. Ce n'est pas une
+  dégradation silencieuse (§6) — c'est une exposition volontaire et signalée.
+- La décision humaine réelle qui en résulte (valider/rejeter) continue d'alimenter
+  `article_decisions` normalement, et se rejoint avec le score dans
+  `verification_shadow_log` (voir `getVerificationScoreCalibrationReport()`,
+  `RADAR/src/lib/verification.ts`) — c'est tout l'objet de l'exception.
+
+**Ce que cette exception NE change PAS** : l'interdit §2 reste la règle par défaut pour
+tout le reste du pipeline (anti-plagiat, structure, embargo). Cette exception est
+scopée au seul contrôle qualité de `autoGenerate.ts`, pour la durée de la calibration
+(cible : 40-60 articles réels, cf. `scripts/verification-score-calibration-report.ts`).
+Une fois un nouveau seuil recalculé sur ces données, réévaluer si cette exception doit
+rester active ou si le comportement de suppression doit être restauré.
+
+---
+
 ## 3. Stack — figée, ne pas dévier sans validation utilisateur
 
 | Couche | Choix imposé | Ne pas remplacer par |
