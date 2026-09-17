@@ -4,30 +4,11 @@ import { translateTextLocalIsolated } from './translateIsolated';
 import { isMostlyFrench } from './translate';
 import { tryAcquireGenerationLock, releaseGenerationLock, AlreadyGeneratingError } from './generationLock';
 
-/**
- * Retire les balises HTML (et leurs attributs) d'un texte source RSS.
- * Trouvé le 2026-08-29 : un `<em data-start="407">...</em>` non nettoyé
- * dans `item.summary` traversait extractFacts() intact, et `verifyArticleAgainstBrief()`
- * extrayait `407` de l'attribut `data-start` comme si c'était un vrai chiffre
- * du brief — un article parfaitement correct se faisait alors signaler une
- * "anomalie" (chiffre manquant) qui n'était qu'un artefact de scraping.
- * Regex volontairement simple (pas de dépendance HTML parser — la stack est
- * figée, RADAR/CLAUDE.md §3) : supprime toute balise `<...>` en bloc, ce qui
- * élimine aussi bien la balise que les attributs qu'elle porte.
- */
-export function stripHtml(text: string | null | undefined): string {
-  if (!text) return '';
-  return text
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+// stripHtml extraite dans textUtils.ts (2026-09-17, sans import) pour rester
+// testable par `node --experimental-strip-types` — voir ce fichier pour le
+// détail des deux bugs qu'elle corrige (attributs HTML, entités numériques).
+export { stripHtml } from './textUtils';
+import { stripHtml } from './textUtils';
 
 export interface Fact {
   text: string;
