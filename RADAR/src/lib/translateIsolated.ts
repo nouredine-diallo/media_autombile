@@ -1,7 +1,33 @@
-import { Worker } from 'node:worker_threads';
+import type { Worker as WorkerType } from 'node:worker_threads';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { translateTextLocal } from './translateLocal';
+
+type Worker = WorkerType;
+
+/**
+ * `new Worker(...)` est l'un des 4 motifs que Turbopack résout et bundle
+ * spécifiquement au build (comme `import()`/`require()`), quelle que soit
+ * la façon dont `Worker` est importé — vérifié en déployant : ni
+ * `turbopackIgnore` sur l'appel, ni un renommage de l'import, ni un accès à
+ * propriété calculé n'y ont échappé (`next build` échouait toujours sur ce
+ * même appel, "Module not found: Can't resolve '.../translateWorker.js'"),
+ * puisque `dist-worker/` n'existe pas encore à ce stade du build
+ * (`build_worker()` dans deploy.sh tourne après `build_app()` pour RADAR).
+ *
+ * `require()` chargé via `eval` reste, lui, complètement opaque à
+ * l'analyse statique de N'IMPORTE QUEL bundler (Webpack ou Turbopack) —
+ * c'est l'idiome standard pour un chargement de module véritablement
+ * dynamique au runtime (ex. dépendances natives optionnelles). Utilisé ici
+ * uniquement pour ce seul appel, jamais pour contourner une vraie
+ * dépendance : `node:worker_threads` est un module intégré à Node, toujours
+ * présent, et `WORKER_PATH` est un chemin résolu au RUNTIME sur le
+ * filesystem du serveur — rien à bundler, seul Turbopack pense le
+ * contraire.
+ */
+// eslint-disable-next-line no-eval
+const dynamicRequire = eval('require') as NodeRequire;
+const NodeWorker = (dynamicRequire('node:worker_threads') as typeof import('node:worker_threads')).Worker;
 
 /**
  * Traduction locale isolée dans un worker_thread dédié (16 sept. 2026).
@@ -62,7 +88,10 @@ function failAllPending() {
 
 function getWorker(): Worker {
   if (worker) return worker;
-  const w = new Worker(WORKER_PATH);
+  // `NodeWorker` (voir plus haut) évite le bundling au build de
+  // `WORKER_PATH` — un chemin résolu au RUNTIME sur le filesystem du
+  // serveur, jamais un import.
+  const w = new NodeWorker(WORKER_PATH);
   w.on('message', (msg: { id: number; result: string | null }) => settlePending(msg.id, msg.result));
   // Un worker qui plante (ex. modèle indisponible) ne doit jamais inventer
   // un résultat — les appels en attente retombent sur `null`, déjà le
