@@ -131,6 +131,20 @@ build_worker() {
         exit 1
     fi
 
+    # translateWorker.js (16 sept. 2026) : isole la traduction locale à la
+    # demande (generateBrief) du process web — voir
+    # src/lib/translateIsolated.ts. Même filet de sécurité que
+    # pipeline-worker.js : sans lui, translateTextLocalIsolated() retombe
+    # sur la traduction directe (non isolée, avertie en console) plutôt que
+    # de planter — mais un déploiement qui ne le produit pas doit être
+    # signalé, pas laissé passer silencieusement.
+    if [ ! -f dist-worker/translateWorker.js ]; then
+        echo "  ❌ Compilation du worker incomplète (translateWorker.js absent) — dist-worker précédent restauré"
+        rm -rf dist-worker
+        [ -d dist-worker.bak ] && mv dist-worker.bak dist-worker
+        exit 1
+    fi
+
     echo "  ✅ Worker compilé OK"
 }
 build_worker

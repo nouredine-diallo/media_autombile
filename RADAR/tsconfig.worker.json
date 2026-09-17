@@ -12,6 +12,6 @@
     "strict": false,
     "allowJs": false
   },
-  "include": ["src/pipeline-worker.ts"],
+  "include": ["src/pipeline-worker.ts", "src/translateWorker.ts"],
   "exclude": ["node_modules", ".next", "dist-worker"]
 }

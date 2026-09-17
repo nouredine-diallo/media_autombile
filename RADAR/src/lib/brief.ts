@@ -1,6 +1,6 @@
 import { getDb, Item, Event } from './db';
 import { generateCarouselParagraphs } from './llm';
-import { translateTextLocal } from './translateLocal';
+import { translateTextLocalIsolated } from './translateIsolated';
 import { isMostlyFrench } from './translate';
 import { tryAcquireGenerationLock, releaseGenerationLock, AlreadyGeneratingError } from './generationLock';
 
@@ -67,7 +67,7 @@ export interface Brief {
  */
 function translateIfNeeded(text: string): Promise<string | null> {
   if (isMostlyFrench(text)) return Promise.resolve(text);
-  return translateTextLocal(text);
+  return translateTextLocalIsolated(text);
 }
 
 /**

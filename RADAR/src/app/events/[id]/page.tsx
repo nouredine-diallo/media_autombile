@@ -40,7 +40,14 @@ const ARTICLE_GENERATION_TIMEOUT_MS = 120_000; // serveur : 110s (api/generate)
 const REFINE_TIMEOUT_MS = 70_000; // serveur : 60s (api/generate/refine)
 
 function formatGenerationError(err: unknown): string {
-  if (err instanceof DOMException && err.name === 'AbortError') {
+  // Trouvé le 17 sept. 2026 (event 178259, retour utilisateur réel) : ce
+  // message ne s'affichait JAMAIS pour un abandon déclenché par
+  // `AbortSignal.timeout()` (utilisé par tous les appels de génération
+  // ci-dessus) — l'erreur qu'il produit est nommée `TimeoutError`, pas
+  // `AbortError` (seul `controller.abort()` manuel produit `AbortError`).
+  // Le message technique brut ("signal timed out") fuyait donc à la place,
+  // confirmé sur l'écran de l'utilisateur au moment de l'incident.
+  if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'TimeoutError')) {
     return 'La requête a pris trop de temps côté navigateur — le calcul continue peut-être en arrière-plan, rouvrez cette fiche dans une minute pour vérifier avant de réessayer.';
   }
   return err instanceof Error ? err.message : 'Erreur inconnue';
