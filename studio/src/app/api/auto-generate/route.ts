@@ -1,6 +1,6 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
-import { runAutoGenerate, notifyRadarAutoPreview } from "@/lib/autoGenerate";
+import { runAutoGenerate, runAutoGenerateCarousel, notifyRadarAutoPreview } from "@/lib/autoGenerate";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -11,11 +11,13 @@ export const maxDuration = 30;
  * navigateur). Déclenché une seule fois : quand un article RADAR passe à
  * 'validated' (PATCH /api/generate côté RADAR).
  *
- * Génère un APERÇU du gabarit 1A (image + titre déjà validé par RADAR) et le
- * renvoie à RADAR par callback — n'exporte jamais vers Drive ici, ça reste le
- * rôle exclusif de /api/auto-generate/confirm, déclenché par le clic humain
- * "Confirmer" (studio/CLAUDE.md §2 : jamais de validation sans confirmation
- * humaine explicite).
+ * Génère un APERÇU (gabarit 1A seul, ou un carrousel complet si
+ * `mode: "carousel"` — phase 4 du plan écosystème, 2026-09-17) à partir de
+ * contenu déjà validé par RADAR, et le renvoie par callback — n'exporte
+ * jamais vers Drive ici, ça reste le rôle exclusif de
+ * /api/auto-generate/confirm, déclenché par le clic humain "Confirmer"
+ * (studio/CLAUDE.md §2 : jamais de validation sans confirmation humaine
+ * explicite).
  *
  * Répond immédiatement (202) et poursuit en tâche de fond — même idiome que
  * /api/export (le client STUDIO ne recevrait de toute façon jamais cette
@@ -30,7 +32,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const contentId = body?.contentId;
   const title = body?.title;
-  const imageUrl = body?.imageUrl;
+  const mode = body?.mode === "carousel" ? "carousel" : "single";
 
   if (typeof contentId !== "string" || !contentId) {
     return NextResponse.json({ error: "contentId requis" }, { status: 400 });
@@ -38,6 +40,30 @@ export async function POST(request: NextRequest) {
   if (typeof title !== "string" || !title.trim()) {
     return NextResponse.json({ error: "title requis" }, { status: 400 });
   }
+
+  if (mode === "carousel") {
+    const images = body?.images;
+    const devSlides = body?.devSlides;
+    if (!Array.isArray(images) || images.length === 0) {
+      return NextResponse.json({ error: "images requis (carrousel)" }, { status: 400 });
+    }
+    if (!Array.isArray(devSlides)) {
+      return NextResponse.json({ error: "devSlides requis (carrousel)" }, { status: 400 });
+    }
+
+    runAutoGenerateCarousel({ contentId, title, images, devSlides, origin: request.nextUrl.origin }).catch((err) => {
+      console.error(`[auto-generate] Échec carrousel pour ${contentId}:`, err);
+      notifyRadarAutoPreview(contentId, {
+        ok: false,
+        mode: "carousel",
+        error: err instanceof Error ? err.message : "Erreur inconnue",
+      });
+    });
+
+    return NextResponse.json({ ok: true }, { status: 202 });
+  }
+
+  const imageUrl = body?.imageUrl;
   if (typeof imageUrl !== "string" || !imageUrl) {
     return NextResponse.json({ error: "imageUrl requis" }, { status: 400 });
   }

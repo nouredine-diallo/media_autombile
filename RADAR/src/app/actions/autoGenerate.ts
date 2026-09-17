@@ -1,8 +1,7 @@
 "use server";
 
 import { getDb } from "@/lib/db";
-import { getBestImageForEvent } from "@/lib/visualSearch";
-import { triggerAutoGenerate } from "@/lib/studioAutoGenerate";
+import { triggerAutoGeneratePreview } from "@/lib/studioAutoGenerate";
 import { updateArticleStatus } from "@/lib/articles";
 import { recordDecision } from "@/lib/killswitch";
 
@@ -61,7 +60,10 @@ export async function confirmAutoPost(
  * Relance la génération d'aperçu — utilisé si elle a échoué (STUDIO down,
  * image introuvable ce jour-là) ou si elle est restée bloquée en 'pending'
  * trop longtemps. Ne redécouvre pas la logique : réutilise exactement le
- * même déclenchement que la validation initiale.
+ * même déclenchement que la validation initiale — recalcule le mode
+ * (single/carrousel) à neuf plutôt que de rejouer celui d'avant, au cas où
+ * le score de l'événement ou les images disponibles ont changé depuis
+ * (phase 4 du plan écosystème, 2026-09-17).
  */
 export async function retryAutoGenerate(
   articleId: number,
@@ -74,12 +76,11 @@ export async function retryAutoGenerate(
   if (!article?.content_id) {
     return { success: false, error: "Article non trouvé ou non validé." };
   }
-  const imageUrl = getBestImageForEvent(article.event_id);
-  if (!imageUrl) {
+
+  const { triggered } = await triggerAutoGeneratePreview(articleId, article.content_id, article.event_id, article.title);
+  if (!triggered) {
     return { success: false, error: "Aucun visuel source disponible pour cet événement." };
   }
-
-  await triggerAutoGenerate(articleId, article.content_id, article.title, imageUrl);
   return { success: true };
 }
 

@@ -24,6 +24,14 @@ export async function POST(
   // (détourage indisponible) était invisible côté RADAR — voir db.ts pour
   // le détail de la migration.
   const fallbackCrop = body?.fallbackCrop === true;
+  // Phase 4 du plan écosystème (2026-09-17) : carrousel automatisé —
+  // `previewDataUrls` (pluriel) porte les slides quand `mode === 'carousel'`,
+  // `previewDataUrl` (singulier) reste inchangé pour le mode 'single'.
+  // STUDIO est la seule source de vérité sur le mode réellement produit,
+  // pas RADAR (qui n'a fait qu'une demande) : un repli sur 'single' décidé
+  // côté STUDIO doit se refléter ici tel qu'il a réellement eu lieu.
+  const mode = body?.mode === 'carousel' ? 'carousel' : 'single';
+  const previewDataUrls = Array.isArray(body?.previewDataUrls) ? (body.previewDataUrls as string[]) : undefined;
 
   try {
     const db = getDb();
@@ -32,15 +40,19 @@ export async function POST(
         `UPDATE articles
          SET auto_preview_status = ?,
              auto_preview_data_url = ?,
+             auto_preview_data_urls = ?,
              auto_preview_error = ?,
-             auto_preview_fallback_crop = ?
+             auto_preview_fallback_crop = ?,
+             auto_preview_mode = ?
          WHERE content_id = ?`,
       )
       .run(
         ok ? 'ready' : 'failed',
-        ok ? (previewDataUrl ?? null) : null,
+        ok && mode === 'single' ? (previewDataUrl ?? null) : null,
+        ok && mode === 'carousel' && previewDataUrls ? JSON.stringify(previewDataUrls) : null,
         ok ? null : (error ?? 'Erreur inconnue côté STUDIO'),
         ok && fallbackCrop ? 1 : 0,
+        mode,
         contentId,
       );
 

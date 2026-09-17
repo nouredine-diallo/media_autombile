@@ -7,7 +7,7 @@ import { Badge, ButtonLink } from '@/components/ui';
 import { Mascot } from '@/components/assistant/Mascot';
 import { PlanifierButton } from '@/components/PlanifierButton';
 import { AssociatePartnerButton } from '@/components/AssociatePartnerButton';
-import { IconAlert, IconCheck, IconClose, IconRefresh, IconStudio } from '@/components/icons';
+import { IconAlert, IconArrowLeft, IconArrowRight, IconCheck, IconClose, IconRefresh, IconStudio } from '@/components/icons';
 
 const POLL_INTERVAL_MS = 4000;
 const MAX_POLLS = 20; // ~80s — au-delà, on arrête de spammer et on laisse "Actualiser" manuel
@@ -20,6 +20,9 @@ interface Props {
   eventTitle: string | null;
   status: 'pending' | 'ready' | 'failed' | null;
   dataUrl: string | null;
+  /** Slides du carrousel (mode 'carousel' uniquement) — phase 4 du plan écosystème. */
+  dataUrls: string[] | null;
+  mode: 'single' | 'carousel';
   error: string | null;
   /** Finding D4 (audit 2026-09-07) : recadrage centré dégradé (détourage
    * indisponible côté STUDIO) — auparavant jamais remonté jusqu'ici. */
@@ -47,6 +50,8 @@ export function PostConfirmCard({
   eventTitle,
   status: initialStatus,
   dataUrl: initialDataUrl,
+  dataUrls: initialDataUrls,
+  mode,
   error: initialError,
   fallbackCrop: initialFallbackCrop,
   alreadyScheduled,
@@ -56,6 +61,8 @@ export function PostConfirmCard({
 }: Props) {
   const [status, setStatus] = useState(initialStatus);
   const [dataUrl, setDataUrl] = useState(initialDataUrl);
+  const [dataUrls, setDataUrls] = useState(initialDataUrls);
+  const [slideIndex, setSlideIndex] = useState(0);
   const [error, setError] = useState(initialError);
   const [fallbackCrop, setFallbackCrop] = useState(initialFallbackCrop);
   // Le poll peut s'arrêter sans jamais avoir vu de statut final (STUDIO
@@ -78,6 +85,7 @@ export function PostConfirmCard({
           if (data.status && data.status !== 'pending') {
             setStatus(data.status);
             setDataUrl(data.dataUrl ?? null);
+            setDataUrls(data.dataUrls ?? null);
             setError(data.error ?? null);
             setFallbackCrop(!!data.fallbackCrop);
           }
@@ -116,10 +124,42 @@ export function PostConfirmCard({
   return (
     <article className="flex gap-4 rounded-[var(--radius-lg)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-4 transition-colors duration-[var(--dur)] hover:border-[var(--border-default)]">
       <div
-        className="shrink-0 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-sunken)]"
+        className="relative shrink-0 overflow-hidden rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-sunken)]"
         style={{ width: 84, height: 105 }}
       >
-        {status === 'ready' && dataUrl ? (
+        {status === 'ready' && mode === 'carousel' && dataUrls && dataUrls.length > 0 ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={dataUrls[Math.min(slideIndex, dataUrls.length - 1)]}
+              alt={`Slide ${slideIndex + 1}/${dataUrls.length} du carrousel généré pour ${title}`}
+              className="h-full w-full object-cover"
+            />
+            {dataUrls.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSlideIndex((i) => (i - 1 + dataUrls.length) % dataUrls.length)}
+                  aria-label="Slide précédente"
+                  className="absolute left-0 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-r bg-black/50 text-white hover:bg-black/70"
+                >
+                  <IconArrowLeft size={12} strokeWidth={2} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSlideIndex((i) => (i + 1) % dataUrls.length)}
+                  aria-label="Slide suivante"
+                  className="absolute right-0 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-l bg-black/50 text-white hover:bg-black/70"
+                >
+                  <IconArrowRight size={12} strokeWidth={2} />
+                </button>
+                <span className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+                  {slideIndex + 1}/{dataUrls.length}
+                </span>
+              </>
+            )}
+          </>
+        ) : status === 'ready' && dataUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={dataUrl} alt={`Visuel généré pour ${title}`} className="h-full w-full object-cover" />
         ) : (
@@ -133,7 +173,7 @@ export function PostConfirmCard({
         <div className="mb-1.5 flex flex-wrap items-center gap-2">
           {status === 'ready' && (
             <Badge tone="studio">
-              Visuel généré par l&apos;IA
+              {mode === 'carousel' ? `Carrousel généré par l'IA (${dataUrls?.length ?? '?'} slides)` : "Visuel généré par l'IA"}
             </Badge>
           )}
           {status === 'ready' && fallbackCrop && (
@@ -141,7 +181,9 @@ export function PostConfirmCard({
               Cadrage simplifié
             </Badge>
           )}
-          {status === 'pending' && <Badge tone="info">Visuel en préparation…</Badge>}
+          {status === 'pending' && (
+            <Badge tone="info">{mode === 'carousel' ? 'Carrousel en préparation…' : 'Visuel en préparation…'}</Badge>
+          )}
           {status === 'failed' && <Badge tone="warn">Aperçu automatique indisponible</Badge>}
           {validatedBy === 'auto_score' && (
             <Badge

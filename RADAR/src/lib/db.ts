@@ -417,6 +417,23 @@ function initializeDb(db: any) {
     db.exec("ALTER TABLE articles ADD COLUMN auto_preview_fallback_crop INTEGER DEFAULT 0");
   }
 
+  // Migration: carrousel automatisé (phase 4 du plan écosystème, 2026-09-17)
+  // — `auto_preview_data_url` (singulier) ci-dessus reste inchangé pour le
+  // mode 'single' ; un aperçu carrousel a plusieurs slides, donc un tableau
+  // JSON de data URLs séparé plutôt qu'une deuxième colonne à faire deviner
+  // par sa présence/absence. `auto_preview_mode` dit explicitement lequel
+  // des deux lire — jamais à déduire de la présence d'une colonne ou de
+  // l'autre (CLAUDE.md §6, "aucune dégradation silencieuse"). Colonne JSON
+  // sur la table existante plutôt qu'une table dédiée : à l'échelle de 5-10
+  // utilisateurs, une table séparée avec ses propres migrations/jointures
+  // est un surcoût d'infrastructure pour un besoin qui reste petit.
+  if (!articleColumns2.some(col => col.name === 'auto_preview_mode')) {
+    db.exec("ALTER TABLE articles ADD COLUMN auto_preview_mode TEXT DEFAULT 'single'");
+  }
+  if (!articleColumns2.some(col => col.name === 'auto_preview_data_urls')) {
+    db.exec("ALTER TABLE articles ADD COLUMN auto_preview_data_urls TEXT");
+  }
+
   // Migration: add image_url to items for Mission 2 (visual search pipeline)
   const itemColumns = db.prepare("PRAGMA table_info(items)").all() as { name: string }[];
   if (!itemColumns.some(col => col.name === 'image_url')) {

@@ -1,6 +1,7 @@
 import { chromium, type Browser } from 'playwright';
 import { getDb } from './db';
-import { getItemsWithoutImages, updateItemImage, updateItemImagePreflight, getItemById, storeItemImages } from './rss';
+import { getItemsWithoutImages, updateItemImage, updateItemImagePreflight, getItemById, storeItemImages, getItemImages } from './rss';
+import { titleOverlap } from './scoring';
 import path from 'path';
 import fs from 'fs';
 
@@ -480,6 +481,60 @@ export function getBestImageForEvent(eventId: number): string | null {
   `).get(eventId) as { image_url: string } | undefined;
 
   return item?.image_url ?? null;
+}
+
+export interface SortedCarouselImage {
+  url: string;
+  source: string | null;
+}
+
+/**
+ * Toutes les images candidates connues pour les items d'un événement, triées
+ * par pertinence au titre de l'article validé (Bug B, 2026-08-28) — extrait
+ * de la route `carousel-package` (2026-09-17, phase 4 du plan écosystème)
+ * pour être appelable directement par l'automatisation serveur-à-serveur
+ * (`validation.ts` → `studioAutoGenerate.ts`) sans passer par un appel HTTP
+ * interne : un aller-retour réseau pour une opération purement locale à ce
+ * process serait une fragilité inutile (latence, gestion d'erreur dupliquée).
+ *
+ * Trouvé en inspectant l'event 1919 : même après le durcissement du
+ * clustering (`TITLE_OVERLAP_THRESHOLD`, scoring.ts), un event peut
+ * légitimement regrouper plusieurs items proches (même sujet, sources
+ * différentes) dont les images ne sont pas toutes aussi pertinentes que
+ * l'item qui a produit l'article. `assembleSlides()` (STUDIO) affecte les
+ * images par simple position — la première va au héros, etc. Sans tri, une
+ * image d'un item peu pertinent peut arriver en position héros pendant
+ * qu'une image bien plus pertinente finit en CTA ou est ignorée. Réutilise
+ * `titleOverlap()` (déjà calibré pour le clustering) plutôt que d'ajouter un
+ * nouveau mécanisme de scoring.
+ */
+export function getSortedImagesForEvent(eventId: number, articleTitle: string): SortedCarouselImage[] {
+  const db = getDb();
+  const items = db
+    .prepare(
+      `SELECT i.id, i.title, i.image_url, i.image_source
+       FROM items i
+       JOIN event_items ei ON ei.item_id = i.id
+       WHERE ei.event_id = ? AND i.image_url IS NOT NULL`
+    )
+    .all(eventId) as Array<{ id: number; title: string; image_url: string; image_source: string | null }>;
+
+  const seen = new Set<string>();
+  const scoredImages: Array<{ url: string; source: string | null; relevance: number }> = [];
+  for (const item of items) {
+    const relevance = titleOverlap(articleTitle, item.title);
+    const candidates = getItemImages(item.id);
+    const list = candidates.length > 0
+      ? candidates.map(c => ({ url: c.url, source: c.source }))
+      : [{ url: item.image_url, source: item.image_source }];
+    for (const img of list) {
+      if (!img.url || seen.has(img.url)) continue;
+      seen.add(img.url);
+      scoredImages.push({ ...img, relevance });
+    }
+  }
+  scoredImages.sort((a, b) => b.relevance - a.relevance);
+  return scoredImages.map(({ url, source }) => ({ url, source }));
 }
 
 /**

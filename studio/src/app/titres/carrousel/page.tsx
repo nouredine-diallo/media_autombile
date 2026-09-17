@@ -10,17 +10,12 @@ import { GABARITS, GABARIT_HEIGHT, GABARIT_WIDTH } from "@/components/gabarits/r
 import { BrandHomeLink } from "@/components/BrandHomeLink";
 import { RecadrageFond } from "@/components/RecadrageFond";
 import { lireHauteurPhoto, GABARIT_PHOTO_HEIGHT } from "@/components/gabarits/Gabarit1A";
-import { assembleSlides, type Slide } from "@/lib/carousel/assemble";
+import { assembleSlides, MAX_CAROUSEL_IMAGES, type Slide } from "@/lib/carousel/assemble";
 
 // Plafond desktop, jamais dépassé — voir la note équivalente dans
 // titres/page.tsx (2026-08-29) : rendu à résolution réelle puis réduit par
 // CSS, sans effet sur l'export (route séparée à pleine résolution).
 const PREVIEW_SCALE_MAX = 0.28;
-/** 1 accroche + jusqu'à 3 slides de développement + 1 CTA — plafond mesuré sur
- * les 8 posts réels de studio/inspi/TEXTPOST.txt (jamais plus de 3 slides de
- * dev observées). Uploader plus que ça gaspillerait du recadrage pour rien :
- * un événement RADAR peut remonter des dizaines d'images candidates. */
-const MAX_CAROUSEL_IMAGES = 5;
 
 interface CarouselPackage {
   contentId: string;

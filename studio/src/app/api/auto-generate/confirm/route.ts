@@ -1,8 +1,8 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { createJob, updateJob } from "@/lib/jobs/store";
-import { processExportJob } from "@/lib/export/runExport";
+import { createJob, createCarouselJob, updateJob } from "@/lib/jobs/store";
+import { processExportJob, processCarouselExportJob } from "@/lib/export/runExport";
 import { loadAutoGenerateSidecar, clearAutoGenerateSidecar } from "@/lib/autoGenerate";
 
 export const runtime = "nodejs";
@@ -59,9 +59,22 @@ export async function POST(request: NextRequest) {
   contentIdsInFlight.add(contentId);
 
   const jobId = randomUUID();
-  createJob(jobId, sidecar.gabaritId, sidecar.fieldValues);
 
-  processExportJob(jobId, sidecar.gabaritId, sidecar.fieldValues, contentId, request.nextUrl.origin)
+  // Phase 4 du plan écosystème (2026-09-17) : le sidecar porte soit
+  // `slidesSpec` (carrousel) soit `gabaritId`/`fieldValues` (single) — jamais
+  // les deux, voir `AutoGenerateSidecar` (lib/autoGenerate.ts). Même
+  // fonctions de rendu/export que le flux manuel, aucune logique dupliquée.
+  const exportPromise = sidecar.slidesSpec
+    ? (() => {
+        createCarouselJob(jobId, sidecar.slidesSpec!);
+        return processCarouselExportJob(jobId, sidecar.slidesSpec!, contentId, sidecar.caption, request.nextUrl.origin);
+      })()
+    : (() => {
+        createJob(jobId, sidecar.gabaritId!, sidecar.fieldValues!);
+        return processExportJob(jobId, sidecar.gabaritId!, sidecar.fieldValues!, contentId, request.nextUrl.origin);
+      })();
+
+  exportPromise
     .then(() => clearAutoGenerateSidecar(contentId))
     .catch((err) => {
       console.error(`[auto-generate/confirm] Job ${jobId} échoué:`, err);

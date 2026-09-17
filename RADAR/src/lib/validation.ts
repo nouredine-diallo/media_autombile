@@ -2,8 +2,7 @@ import { getDb } from './db';
 import { updateArticleStatus } from './articles';
 import { recordDecision } from './killswitch';
 import { generateArticleDeadlines } from './calendar';
-import { getBestImageForEvent } from './visualSearch';
-import { triggerAutoGenerate } from './studioAutoGenerate';
+import { triggerAutoGeneratePreview } from './studioAutoGenerate';
 
 /**
  * Tout ce qui doit se produire quand un article passe à 'validated' —
@@ -38,19 +37,19 @@ export function finalizeArticleValidation(
   generateArticleDeadlines();
 
   // Parcours "un seul geste de décision" : préparer automatiquement le
-  // visuel STUDIO. Fire-and-forget — ne doit jamais retarder l'appelant.
-  // Sauté sans bruit si l'article n'a ni content_id ni visuel source (cas
-  // déjà géré par le bouton manuel "Créer un post" existant sur /ready).
+  // visuel STUDIO (single ou carrousel — décidé par triggerAutoGeneratePreview,
+  // phase 4 du plan écosystème). Fire-and-forget — ne doit jamais retarder
+  // l'appelant. Sauté sans bruit si l'article n'a pas de content_id (cas
+  // déjà géré par le bouton manuel "Créer un post" existant sur /ready) ;
+  // l'absence de visuel source est, elle, gérée à l'intérieur de
+  // triggerAutoGeneratePreview, pas ici.
   const article = db.prepare(
     `SELECT content_id, event_id, title FROM articles WHERE id = ?`
   ).get(articleId) as { content_id: string | null; event_id: number; title: string } | undefined;
   if (article?.content_id) {
-    const imageUrl = getBestImageForEvent(article.event_id);
-    if (imageUrl) {
-      triggerAutoGenerate(articleId, article.content_id, article.title, imageUrl).catch((err) => {
-        console.error('[validation] triggerAutoGenerate a levé une exception:', err);
-      });
-    }
+    triggerAutoGeneratePreview(articleId, article.content_id, article.event_id, article.title).catch((err) => {
+      console.error('[validation] triggerAutoGeneratePreview a levé une exception:', err);
+    });
   }
 
   return true;

@@ -1,3 +1,11 @@
+/** 1 accroche + jusqu'à 3 slides de développement + 1 CTA — plafond mesuré sur
+ * les 8 posts réels de studio/inspi/TEXTPOST.txt (jamais plus de 3 slides de
+ * dev observées). Uploader plus que ça gaspillerait du recadrage pour rien :
+ * un événement RADAR peut remonter des dizaines d'images candidates. Utilisé
+ * à la fois par l'écran manuel (`titres/carrousel/page.tsx`) et par
+ * l'automatisation (`runAutoGenerateCarousel`, `lib/autoGenerate.ts`). */
+export const MAX_CAROUSEL_IMAGES = 5;
+
 /** Une slide du carrousel en cours de composition — éditable avant export. */
 export interface Slide {
   gabaritId: string;

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getBrief, getCarouselSlides } from "@/lib/brief";
-import { getItemImages } from "@/lib/rss";
-import { titleOverlap } from "@/lib/scoring";
+import { getSortedImagesForEvent } from "@/lib/visualSearch";
 
 /**
  * GET /api/events/[contentId]/carousel-package
@@ -42,50 +41,11 @@ export async function GET(
   const brief = getBrief(event.id);
   const slides = await getCarouselSlides(event.id);
 
-  // Images : toutes les candidates connues pour les items de l'événement,
-  // dédupliquées en conservant l'ordre (meilleure d'abord par item). Repli sur
-  // `items.image_url` pour les items plus anciens sans ligne `item_images`
-  // (migration additive, voir étape A).
-  const items = db
-    .prepare(
-      `SELECT i.id, i.title, i.image_url, i.image_source
-       FROM items i
-       JOIN event_items ei ON ei.item_id = i.id
-       WHERE ei.event_id = ? AND i.image_url IS NOT NULL`
-    )
-    .all(event.id) as Array<{ id: number; title: string; image_url: string; image_source: string | null }>;
-
-  /**
-   * Tri par pertinence au titre de l'article (Bug B, 2026-08-28) — trouvé en
-   * inspectant l'event 1919 : même après le durcissement du clustering
-   * (TITLE_OVERLAP_THRESHOLD, scoring.ts), un event peut légitimement
-   * regrouper plusieurs items proches (même sujet, sources différentes) dont
-   * les images ne sont pas toutes aussi pertinentes que l'item qui a produit
-   * l'article. `assembleSlides()` (STUDIO, titres/carrousel/page.tsx) affecte
-   * les images par simple position — la première va au héros, etc. Sans tri,
-   * une image d'un item peu pertinent peut arriver en position héros pendant
-   * qu'une image bien plus pertinente finit en CTA ou est ignorée.
-   * Réutilise `titleOverlap()` (déjà calibré pour le clustering) plutôt que
-   * d'ajouter un nouveau mécanisme de scoring — les images les plus proches
-   * du titre validé passent en premier, l'ordre positionnel de STUDIO reste
-   * inchangé (pas de duplication de logique côté STUDIO).
-   */
-  const seen = new Set<string>();
-  const scoredImages: Array<{ url: string; source: string | null; relevance: number }> = [];
-  for (const item of items) {
-    const relevance = titleOverlap(article.title, item.title);
-    const candidates = getItemImages(item.id);
-    const list = candidates.length > 0
-      ? candidates.map(c => ({ url: c.url, source: c.source }))
-      : [{ url: item.image_url, source: item.image_source }];
-    for (const img of list) {
-      if (!img.url || seen.has(img.url)) continue;
-      seen.add(img.url);
-      scoredImages.push({ ...img, relevance });
-    }
-  }
-  scoredImages.sort((a, b) => b.relevance - a.relevance);
-  const images = scoredImages.map(({ url, source }) => ({ url, source }));
+  // Images triées par pertinence au titre de l'article — voir
+  // getSortedImagesForEvent() (visualSearch.ts) pour le raisonnement complet
+  // (extrait ici le 2026-09-17, phase 4 du plan écosystème, pour être aussi
+  // appelable par l'automatisation serveur-à-serveur sans dupliquer ce tri).
+  const images = getSortedImagesForEvent(event.id, article.title);
 
   return NextResponse.json({
     contentId: article.content_id,

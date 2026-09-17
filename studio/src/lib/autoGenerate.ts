@@ -7,6 +7,8 @@ import { cropToAspectSmart } from "@/lib/images/pipeline";
 import { retirerBandes } from "@/lib/images/trimBandes";
 import { GABARIT_1A_WIDTH, GABARIT_1A_HEIGHT, GABARIT_PHOTO_HEIGHT } from "@/components/gabarits/Gabarit1A";
 import { renderGabaritToPng } from "@/lib/render/renderGabarit";
+import { assembleSlides, MAX_CAROUSEL_IMAGES, type AssembleSlidesImage } from "@/lib/carousel/assemble";
+import type { CarouselSlideSpec } from "@/lib/jobs/store";
 
 const CONTENT_ID_RE = /^[A-Za-z0-9_-]+$/;
 const PREVIEWS_DIR = path.join(UPLOADS_DIR, "..", "previews");
@@ -25,9 +27,28 @@ export interface AutoGenerateParams {
   origin: string;
 }
 
+/** Variante carrousel de `AutoGenerateParams` — phase 4 du plan écosystème (2026-09-17). */
+export interface AutoGenerateCarouselParams {
+  contentId: string;
+  title: string;
+  images: Array<{ url: string; source: string | null }>;
+  devSlides: string[];
+  origin: string;
+}
+
+/**
+ * Sidecar persisté sur disque pour reconfirmer un export identique plus
+ * tard (`/api/auto-generate/confirm`). `slidesSpec` (carrousel) et
+ * `gabaritId`/`fieldValues` (single) sont mutuellement exclusifs — même
+ * dualité que `ExportJob` (`lib/jobs/store.ts`), pas une coïncidence : le
+ * confirm rejoue exactement ce que l'aperçu a préparé, quel que soit le mode.
+ */
 export interface AutoGenerateSidecar {
-  gabaritId: string;
-  fieldValues: Record<string, string>;
+  gabaritId?: string;
+  fieldValues?: Record<string, string>;
+  slidesSpec?: CarouselSlideSpec[];
+  /** Légende à déposer avec l'export carrousel (mode carrousel uniquement). */
+  caption?: string;
   createdAt: string;
 }
 
@@ -36,26 +57,13 @@ function sidecarPath(contentId: string): string {
 }
 
 /**
- * Génération automatique du visuel "1 image + titre" (gabarit 1A) depuis un
- * article RADAR déjà validé — parcours "un seul geste de décision" (plan
- * écosystème 2026-08-29). Ne réutilise volontairement PAS le routeur LLM de
- * titres (`titles/router.ts`) : RADAR fournit déjà un titre rédigé et
- * validé par un humain, en régénérer un ici serait une invention (l'article
- * approuvé n'est plus l'autorité du contenu) et ajouterait une dépendance
- * fragile (quota Groq) au chemin automatique.
- *
- * N'exporte rien vers Drive et ne prévient personne d'autre que RADAR (via
- * le callback `/api/events/[contentId]/auto-preview`) — c'est un APERÇU,
- * jamais une publication. La confirmation humaine explicite (studio/CLAUDE.md
- * §2) reste `/api/auto-generate/confirm`, déclenché uniquement par le clic
- * "Confirmer" côté RADAR.
+ * Télécharge une image candidate et produit ses variantes recadrées
+ * (fond plein cadre + recadrage strict, gabarits famille 1) — étape 1+2 de
+ * `runAutoGenerate`, extraite le 2026-09-17 (phase 4 du plan écosystème)
+ * pour être réutilisée aussi par `runAutoGenerateCarousel` sans dupliquer
+ * le téléchargement/recadrage à chaque image du lot.
  */
-export async function runAutoGenerate(params: AutoGenerateParams): Promise<void> {
-  const { contentId, title, imageUrl, origin } = params;
-  if (!CONTENT_ID_RE.test(contentId)) {
-    throw new Error("contentId invalide");
-  }
-
+async function downloadAndCropImage(imageUrl: string, origin: string): Promise<AssembleSlidesImage & { fallbackToCenter: boolean }> {
   const parsedUrl = new URL(imageUrl);
   if (!["http:", "https:"].includes(parsedUrl.protocol)) {
     throw new Error("imageUrl invalide");
@@ -107,7 +115,35 @@ export async function runAutoGenerate(params: AutoGenerateParams): Promise<void>
     { width: GABARIT_1A_WIDTH, height: GABARIT_PHOTO_HEIGHT },
   );
 
-  const backdropUrl = `${origin}/api/images/${id}?variant=backdrop`;
+  return {
+    backdropUrl: `${origin}/api/images/${id}?variant=backdrop`,
+    croppedUrl: `${origin}/api/images/${id}?variant=cropped`,
+    fallbackToCenter: cropOutcome.backdrop.fallbackToCenter,
+  };
+}
+
+/**
+ * Génération automatique du visuel "1 image + titre" (gabarit 1A) depuis un
+ * article RADAR déjà validé — parcours "un seul geste de décision" (plan
+ * écosystème 2026-08-29). Ne réutilise volontairement PAS le routeur LLM de
+ * titres (`titles/router.ts`) : RADAR fournit déjà un titre rédigé et
+ * validé par un humain, en régénérer un ici serait une invention (l'article
+ * approuvé n'est plus l'autorité du contenu) et ajouterait une dépendance
+ * fragile (quota Groq) au chemin automatique.
+ *
+ * N'exporte rien vers Drive et ne prévient personne d'autre que RADAR (via
+ * le callback `/api/events/[contentId]/auto-preview`) — c'est un APERÇU,
+ * jamais une publication. La confirmation humaine explicite (studio/CLAUDE.md
+ * §2) reste `/api/auto-generate/confirm`, déclenché uniquement par le clic
+ * "Confirmer" côté RADAR.
+ */
+export async function runAutoGenerate(params: AutoGenerateParams): Promise<void> {
+  const { contentId, title, imageUrl, origin } = params;
+  if (!CONTENT_ID_RE.test(contentId)) {
+    throw new Error("contentId invalide");
+  }
+
+  const { backdropUrl, fallbackToCenter } = await downloadAndCropImage(imageUrl, origin);
   const fieldValues: Record<string, string> = { imageUrl: backdropUrl, title };
 
   // --- 3. Rendu Playwright (même fonction que l'export réel — zéro écart, CLAUDE.md §1) ---
@@ -135,7 +171,77 @@ export async function runAutoGenerate(params: AutoGenerateParams): Promise<void>
     ok: true,
     previewDataUrl: dataUrl,
     gabaritId: "1a",
-    fallbackCrop: cropOutcome.backdrop.fallbackToCenter,
+    fallbackCrop: fallbackToCenter,
+  });
+}
+
+/**
+ * Variante carrousel de `runAutoGenerate()` — phase 4 du plan écosystème
+ * (2026-09-17). Télécharge chaque image candidate (`downloadAndCropImage`,
+ * partagée avec le chemin single), assemble les slides avec la même
+ * fonction que l'écran manuel (`assembleSlides`, `lib/carousel/assemble.ts`
+ * — extraite en phase 3 précisément pour ce cas d'usage), rend chaque slide
+ * (même `renderGabaritToPng`, CLAUDE.md §1), puis persiste et notifie RADAR.
+ *
+ * Comme `runAutoGenerate` : jamais d'export Drive ici (c'est un APERÇU),
+ * jamais de régénération LLM du texte (RADAR fournit déjà titre et slides
+ * de développement, déjà validés/générés en amont).
+ */
+export async function runAutoGenerateCarousel(params: AutoGenerateCarouselParams): Promise<void> {
+  const { contentId, title, images, devSlides, origin } = params;
+  if (!CONTENT_ID_RE.test(contentId)) {
+    throw new Error("contentId invalide");
+  }
+  if (images.length === 0) {
+    throw new Error("Aucune image candidate pour ce carrousel");
+  }
+
+  // --- 1+2. Téléchargement + recadrage de chaque image candidate, dans
+  // l'ordre déjà trié par pertinence par RADAR (getSortedImagesForEvent) —
+  // une image dont le téléchargement échoue (URL morte, hébergeur bloqué)
+  // est sautée plutôt que d'abandonner tout le carrousel pour une seule
+  // source défaillante parmi plusieurs candidates.
+  const uploaded: AssembleSlidesImage[] = [];
+  let anyFallbackToCenter = false;
+  for (const image of images.slice(0, MAX_CAROUSEL_IMAGES)) {
+    try {
+      const cropped = await downloadAndCropImage(image.url, origin);
+      uploaded.push(cropped);
+      anyFallbackToCenter = anyFallbackToCenter || cropped.fallbackToCenter;
+    } catch (err) {
+      console.warn(`[auto-generate] Image candidate ignorée pour ${contentId} (${image.url}):`, err instanceof Error ? err.message : err);
+    }
+  }
+  if (uploaded.length === 0) {
+    throw new Error("Aucune image candidate n'a pu être téléchargée pour ce carrousel");
+  }
+
+  // --- 3. Même assemblage que l'écran manuel (titres/carrousel/page.tsx) ---
+  const slides = assembleSlides({ title, devSlides }, uploaded);
+
+  // --- 4. Rendu Playwright de chaque slide (même fonction que l'export réel) ---
+  const pngBuffers: Buffer[] = [];
+  for (const slide of slides) {
+    pngBuffers.push(await renderGabaritToPng(slide.gabaritId, slide.fieldValues, origin));
+  }
+
+  // --- 5. Persistance de la spec carrousel, même principe que le mode single ---
+  await mkdir(PREVIEWS_DIR, { recursive: true });
+  const slidesSpec: CarouselSlideSpec[] = slides.map((s) => ({ gabaritId: s.gabaritId, fieldValues: s.fieldValues }));
+  const sidecar: AutoGenerateSidecar = {
+    slidesSpec,
+    caption: title,
+    createdAt: new Date().toISOString(),
+  };
+  await writeFile(sidecarPath(contentId), JSON.stringify(sidecar), "utf-8");
+
+  // --- 6. Callback vers RADAR avec toutes les slides en data URL ---
+  const previewDataUrls = pngBuffers.map((buf) => `data:image/png;base64,${buf.toString("base64")}`);
+  await notifyRadarAutoPreview(contentId, {
+    ok: true,
+    mode: "carousel",
+    previewDataUrls,
+    fallbackCrop: anyFallbackToCenter,
   });
 }
 
@@ -166,7 +272,16 @@ const NOTIFY_RETRY_DELAYS_MS = [1000, 3000];
 
 export async function notifyRadarAutoPreview(
   contentId: string,
-  payload: { ok: boolean; previewDataUrl?: string; gabaritId?: string; error?: string; fallbackCrop?: boolean },
+  payload: {
+    ok: boolean;
+    previewDataUrl?: string;
+    /** Slides du carrousel (mode 'carousel' uniquement) — phase 4 du plan écosystème. */
+    previewDataUrls?: string[];
+    mode?: "single" | "carousel";
+    gabaritId?: string;
+    error?: string;
+    fallbackCrop?: boolean;
+  },
 ): Promise<void> {
   const radarUrl = process.env.RADAR_URL;
   if (!radarUrl) return;
