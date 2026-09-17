@@ -8,6 +8,7 @@ import { Mascot } from '@/components/assistant/Mascot';
 import { PlanifierButton } from '@/components/PlanifierButton';
 import { AssociatePartnerButton } from '@/components/AssociatePartnerButton';
 import { IconAlert, IconArrowLeft, IconArrowRight, IconCheck, IconClose, IconRefresh, IconStudio } from '@/components/icons';
+import { PostPreviewOverlay } from '@/components/PostPreviewOverlay';
 
 const POLL_INTERVAL_MS = 4000;
 const MAX_POLLS = 20; // ~80s — au-delà, on arrête de spammer et on laisse "Actualiser" manuel
@@ -17,6 +18,10 @@ interface Props {
   contentId: string | null;
   title: string;
   chapeau: string | null;
+  /** Texte complet de l'article — pour l'aperçu au survol/tap (restructuration
+   * UI, 17 sept. 2026) : sans lui, l'humain confirme un article qu'il n'a
+   * jamais lu, en particulier critique pour 'auto_score' (personne n'a relu). */
+  content: string;
   eventTitle: string | null;
   status: 'pending' | 'ready' | 'failed' | null;
   dataUrl: string | null;
@@ -47,6 +52,7 @@ export function PostConfirmCard({
   contentId,
   title,
   chapeau,
+  content,
   eventTitle,
   status: initialStatus,
   dataUrl: initialDataUrl,
@@ -224,6 +230,33 @@ export function PostConfirmCard({
 
         {status === 'ready' && !confirmed && !rejected && (
           <div className="flex gap-2">
+            <PostPreviewOverlay
+              data={{
+                title,
+                chapeau,
+                content,
+                eventTitle,
+                images: mode === 'carousel' ? (dataUrls ?? []) : dataUrl ? [dataUrl] : [],
+                imagesAreRendered: true,
+              }}
+              actions={
+                <>
+                  <ButtonLink href={studioModifyHref} external variant="secondary" size="md">
+                    Modifier
+                  </ButtonLink>
+                  <form action={confirmAction}>
+                    <button
+                      type="submit"
+                      disabled={confirming}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-md)] border border-transparent bg-[var(--success)] px-3.5 text-[13px] font-medium text-white transition-colors duration-[var(--dur-fast)] hover:opacity-90 disabled:opacity-45"
+                    >
+                      <IconCheck size={14} strokeWidth={1.75} />
+                      {confirming ? 'Confirmation…' : 'Confirmer'}
+                    </button>
+                  </form>
+                </>
+              }
+            />
             <ButtonLink href={studioModifyHref} external variant="secondary" size="md">
               Modifier
             </ButtonLink>

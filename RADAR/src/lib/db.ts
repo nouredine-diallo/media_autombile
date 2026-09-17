@@ -736,7 +736,11 @@ export function getPipelineStatus(): { lastRun: PipelineRun | null; recentRuns: 
 
 export function getDashboardAgenda() {
   const db = getDb();
-  const IN_PROGRESS_LIMIT = 5;
+  // Réduit de 5 à 3 le 17 sept. 2026 (restructuration UI, Zone 2 "3
+  // actualités les plus pertinentes") — le lien "Voir les X →" en bas
+  // renvoie déjà vers /events pour la liste complète, 3 items suffisent
+  // pour un coup d'œil sans disputer l'attention à la Zone 1.
+  const IN_PROGRESS_LIMIT = 3;
 
   // 🔴 Urgent : articles en draft > 48h
   const urgent = db.prepare(`
@@ -769,7 +773,7 @@ export function getDashboardAgenda() {
   // complet sans aucune limite, rien n'est réellement perdu au-delà.
   const READY_LIMIT = 200;
   const ready = db.prepare(`
-    SELECT a.id, a.title, a.content_id, a.validated_at, a.chapeau,
+    SELECT a.id, a.title, a.content_id, a.validated_at, a.chapeau, a.content,
       a.exported_at, a.drive_url,
       (SELECT i.image_url FROM items i
        JOIN event_items ei ON ei.item_id = i.id
@@ -782,12 +786,18 @@ export function getDashboardAgenda() {
            WHEN i.image_source = 'rss' THEN 4
            ELSE 5
          END
-       LIMIT 1) as image_url
+       LIMIT 1) as image_url,
+      -- Échéance de publication (17 sept. 2026, restructuration UI) — fusionnée
+      -- ici plutôt que dans une section "Échéances" séparée : c'est cette liste,
+      -- pas une autre, qui porte aujourd'hui les publications planifiées réelles.
+      (SELECT ce.start_date FROM calendar_events ce
+       WHERE ce.article_id = a.id AND ce.event_type = 'publication_instagram'
+       ORDER BY ce.start_date ASC LIMIT 1) as publish_date
     FROM articles a
     WHERE a.status = 'validated'
     ORDER BY a.validated_at DESC
     LIMIT ${READY_LIMIT}
-  `).all() as { id: number; title: string; content_id: string | null; validated_at: string | null; chapeau: string | null; image_url: string | null; exported_at: string | null; drive_url: string | null }[];
+  `).all() as { id: number; title: string; content_id: string | null; validated_at: string | null; chapeau: string | null; content: string; image_url: string | null; exported_at: string | null; drive_url: string | null; publish_date: string | null }[];
 
   // 🤝 Partenaires : rapports à envoyer
   const partnerTasks = db.prepare(`
@@ -797,11 +807,15 @@ export function getDashboardAgenda() {
     ORDER BY p.campaign_end ASC
   `).all() as { id: number; name: string; brand: string | null; campaign_end: string | null }[];
 
-  // 📅 Échéances calendrier : les 7 prochains jours (deadlines, publications, campagnes)
+  // 📅 Échéances calendrier : les 7 prochains jours (deadlines, campagnes...).
+  // `publication_instagram` exclu depuis le 17 sept. 2026 (restructuration
+  // UI) : cette échéance-là est maintenant affichée directement sur la ligne
+  // de l'article concerné (Zone 1 / "Articles validés"), pas répétée ici.
   const calendarUpcoming = db.prepare(`
     SELECT id, title, event_type, start_date, color
     FROM calendar_events
     WHERE start_date >= date('now') AND start_date <= date('now', '+7 days')
+      AND event_type != 'publication_instagram'
     ORDER BY start_date ASC
     LIMIT 5
   `).all() as { id: number; title: string; event_type: string; start_date: string; color: string }[];
@@ -816,9 +830,28 @@ export function getDashboardAgenda() {
   const autoGenRun = db.prepare(
     `SELECT auto_gen_attempted, auto_gen_passed, auto_gen_auto_validated FROM pipeline_runs WHERE date(started_at) = ? AND auto_gen_attempted > 0 ORDER BY id DESC LIMIT 1`
   ).get(today) as { auto_gen_attempted: number; auto_gen_passed: number; auto_gen_auto_validated: number } | undefined;
+  // Champs étendus le 17 sept. 2026 (restructuration UI, Zone 1 "À poster
+  // maintenant") : la carte a besoin de l'aperçu déjà généré (auto_preview_*),
+  // du texte complet (aperçu au survol/tap) et de l'échéance, sans quoi Zone 1
+  // devrait refaire une requête séparée pour ce qu'elle affiche déjà ailleurs.
   const morningArticlesAll = autoGenRun ? db.prepare(
-    `SELECT id, event_id, title, content_id, status, validated_by FROM articles WHERE provenance = 'généré' AND date(generated_at) = ? ORDER BY generated_at DESC`
-  ).all(today) as { id: number; event_id: number; title: string; content_id: string | null; status: string; validated_by: string | null }[] : [];
+    `SELECT a.id, a.event_id, a.title, a.chapeau, a.content, a.content_id, a.status, a.validated_by,
+       a.auto_preview_status, a.auto_preview_data_url, a.auto_preview_data_urls, a.auto_preview_mode,
+       e.score as event_score,
+       (SELECT ce.start_date FROM calendar_events ce
+        WHERE ce.article_id = a.id AND ce.event_type = 'publication_instagram'
+        ORDER BY ce.start_date ASC LIMIT 1) as publish_date
+     FROM articles a
+     JOIN events e ON e.id = a.event_id
+     WHERE a.provenance = 'généré' AND date(a.generated_at) = ?
+     ORDER BY a.generated_at DESC`
+  ).all(today) as {
+    id: number; event_id: number; title: string; chapeau: string | null; content: string;
+    content_id: string | null; status: string; validated_by: string | null;
+    auto_preview_status: string | null; auto_preview_data_url: string | null;
+    auto_preview_data_urls: string | null; auto_preview_mode: string | null;
+    event_score: number; publish_date: string | null;
+  }[] : [];
   // Un brouillon du matin qui a franchi le seuil de confiance saute la revue
   // humaine (plan écosystème 2026-08-29) — il apparaît "prêt à confirmer"
   // (lien vers /ready) plutôt que "à valider" (lien vers /events/[id]),

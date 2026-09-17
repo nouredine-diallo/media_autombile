@@ -5,6 +5,7 @@ import { Badge, ButtonLink, EmptyState, Thumb } from "@/components/ui";
 import { PlanifierButton } from "@/components/PlanifierButton";
 import { AssociatePartnerButton } from "@/components/AssociatePartnerButton";
 import { PostConfirmCard } from "@/components/PostConfirmCard";
+import { PostPreviewOverlay } from "@/components/PostPreviewOverlay";
 import {
   IconArrowRight,
   IconCheck,
@@ -113,6 +114,7 @@ export default function ReadyForInstagram() {
                   contentId={article.content_id}
                   title={article.title}
                   chapeau={article.chapeau}
+                  content={article.content}
                   eventTitle={article.event_title}
                   status={article.auto_preview_status}
                   dataUrl={article.auto_preview_data_url}
@@ -174,6 +176,22 @@ export default function ReadyForInstagram() {
                 </div>
 
                 <div className="flex shrink-0 items-start gap-2">
+                  <PostPreviewOverlay
+                    data={{
+                      title: article.title,
+                      chapeau: article.chapeau,
+                      content: article.content,
+                      eventTitle: article.event_title,
+                      images: article.auto_preview_data_urls
+                        ? (JSON.parse(article.auto_preview_data_urls) as string[])
+                        : article.auto_preview_data_url
+                          ? [article.auto_preview_data_url]
+                          : article.image_url
+                            ? [article.image_url]
+                            : [],
+                      imagesAreRendered: !!(article.auto_preview_data_url || article.auto_preview_data_urls),
+                    }}
+                  />
                   {article.content_id && (
                     <AssociatePartnerButton contentId={article.content_id} />
                   )}

@@ -14,14 +14,16 @@ import {
   ButtonLink,
   EmptyState,
   SectionHeader,
-  StatTile,
   Thumb,
 } from "@/components/ui";
 import { Mascot } from "@/components/assistant/Mascot";
+import { PostPreviewOverlay } from "@/components/PostPreviewOverlay";
+import { QuickConfirmButton } from "@/components/QuickConfirmButton";
 import {
   IconAlert,
   IconArrowRight,
   IconCalendar,
+  IconChevronDown,
   IconCheck,
   IconClock,
   IconImageOff,
@@ -81,7 +83,6 @@ export default async function Home() {
   const {
     urgent,
     inProgress,
-    hiddenInProgressCount,
     ready,
     partnerTasks,
     calendarUpcoming,
@@ -130,50 +131,84 @@ export default async function Home() {
       />
 
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
-        {/* Coup d'œil en 30 secondes — la Direction s'arrête ici.
-            grid-cols-1 sur mobile (2026-08-29) : en grid-cols-3 fixe, les 3
-            tuiles s'écrasaient sur un téléphone au point de rendre le
-            contenu illisible — jamais vérifié sur un vrai petit écran avant. */}
-        <div className="mb-5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-          <StatTile
-            value={counters.totalEvents}
-            label="Événements suivis"
-            href="/events"
-          />
-          <StatTile
-            value={counters.drafts}
-            label="En rédaction"
-            href="/events"
-            tone={counters.drafts > 0 ? "info" : "neutral"}
-          />
-          <StatTile
-            value={counters.validated}
-            label="Validés"
-            href="/ready"
-            tone={counters.validated > 0 ? "success" : "neutral"}
-            primary={counters.validated > 0}
-          />
-        </div>
+        {/* Restructuration UI du 17 sept. 2026 : les 3 tuiles chiffrées
+            (Événements suivis / En rédaction / Validés) disparaissent d'ici —
+            "Validés" est déjà le badge de comptage sur "Articles validés"
+            plus bas, "Événements suivis" devient le lien texte "Voir les X"
+            en bas de Zone 2, "En rédaction" (0 la plupart du temps) n'avait
+            pas de destination propre et faisait doublon avec "Urgent"/les
+            brouillons du matin ci-dessous. Pipeline automatique + Drive
+            déplacés dans "Outils avancés" (repliable, en bas de page) : ils
+            ne disputent plus l'attention aux deux zones d'action. */}
 
-        {/* flex-col sur mobile (2026-08-29) : en flex-row fixe, DriveStatusBadge
-            écrasait la largeur disponible pour PipelineStatusIndicator au point
-            de faire retomber son texte en un mot par ligne. */}
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="min-w-0 flex-1">
-            <PipelineStatusIndicator />
-          </div>
-          <DriveStatusBadge />
-        </div>
+        {/* Zone 1 — "À poster maintenant" : brouillons auto-générés dont la
+            confiance mesurée a déjà dépassé le seuil de validation (Phase 6
+            du plan écosystème) — personne n'a encore lu le texte, mais le
+            visuel est déjà prêt. Masquée tant qu'elle est vide plutôt que
+            d'afficher une zone "priorité absolue" sans rien dedans. */}
+        {morningAutoGen && morningAutoGen.readyToConfirm.length > 0 && (
+          <section className="mb-6">
+            <SectionHeader
+              label="À poster maintenant"
+              icon={IconCheck}
+              tone="success"
+              count={morningAutoGen.readyToConfirm.length}
+            />
+            <div className="space-y-2">
+              {morningAutoGen.readyToConfirm.map((post) => {
+                const images = post.auto_preview_data_urls
+                  ? (JSON.parse(post.auto_preview_data_urls) as string[])
+                  : post.auto_preview_data_url
+                    ? [post.auto_preview_data_url]
+                    : [];
+                return (
+                  <div
+                    key={post.id}
+                    className="flex items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--success-border)] bg-[var(--success-soft)] px-3.5 py-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="t-label block truncate text-[var(--text-primary)]">
+                        {post.title}
+                      </span>
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <span className="font-data t-caption text-[var(--text-muted)]">
+                          Score {post.event_score}
+                        </span>
+                        {post.publish_date && (
+                          <span className="font-data t-caption text-[var(--success)]">
+                            Publier {relativeDayLabel(post.publish_date)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <PostPreviewOverlay
+                      data={{
+                        title: post.title,
+                        chapeau: post.chapeau,
+                        content: post.content,
+                        images,
+                        imagesAreRendered: true,
+                      }}
+                      actions={<QuickConfirmButton articleId={post.id} />}
+                    />
+                    <QuickConfirmButton articleId={post.id} />
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
-        {/* Brouillons du matin — rend visible ce que le cron produit déjà en
-            arrière-plan (chantier 3). Sans cette section, un brouillon
-            'draft' généré à 8h est invisible : "En production" n'affiche
-            que les événements SANS article, "Articles validés" exige
-            status='validated'. */}
-        {morningAutoGen && (
+        {/* Brouillons générés ce matin, encore à valider par un humain —
+            distinct de la Zone 1 ci-dessus (dont la confiance mesurée a déjà
+            franchi le seuil d'auto-validation). Sans cette section, un
+            brouillon 'draft' généré à 8h serait invisible : "En production"
+            n'affiche que les événements SANS article, "Articles validés"
+            exige status='validated'. */}
+        {morningAutoGen && (morningAutoGen.drafts.length > 0 || morningAutoGen.passed === 0) && (
           <section className="mb-6">
             <div className="mb-2.5 flex items-center gap-2">
-              <h2 className="t-eyebrow">Brouillons du matin</h2>
+              <h2 className="t-eyebrow">Brouillons du matin — à valider</h2>
               <span className="inline-flex items-center gap-1.5 rounded-[var(--radius-full)] bg-[var(--accent-soft)] px-2 py-0.5 text-[11px] font-medium leading-5 text-[var(--accent)]">
                 GÉNÉRÉ PAR L&apos;IA
               </span>
@@ -196,42 +231,8 @@ export default async function Home() {
               </div>
             </div>
             <p className="t-caption mb-3 -mt-1 text-[var(--text-muted)]">
-              {morningAutoGen.passed}/{morningAutoGen.attempted} ont passé le contrôle qualité automatique ce matin
-              {morningAutoGen.autoValidated > 0 && (
-                <> — <span className="text-[var(--success)]">{morningAutoGen.autoValidated} prêt{morningAutoGen.autoValidated > 1 ? "s" : ""} à confirmer</span>, aucun humain ne les a encore relus</>
-              )}
-              .
+              {morningAutoGen.passed}/{morningAutoGen.attempted} ont passé le contrôle qualité automatique ce matin.
             </p>
-
-            {/* Prêts à confirmer — le score a franchi le seuil, personne n'a
-                encore lu le texte. Distinct visuellement (vert = prêt) et va
-                vers /ready (l'écran de confirmation), jamais vers /events. */}
-            {morningAutoGen.readyToConfirm.length > 0 && (
-              <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {morningAutoGen.readyToConfirm.map((post) => (
-                  <Link
-                    key={post.id}
-                    href="/ready"
-                    className="group flex flex-col gap-2.5 rounded-[var(--radius-lg)] border border-[var(--success-border)] bg-[var(--success-soft)] p-4 transition-colors duration-[var(--dur)] hover:border-[var(--success)]"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-raised)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--success)]">
-                        <IconCheck size={10} strokeWidth={2} />
-                        Auto-validé
-                      </span>
-                      <span className="ml-auto t-caption text-[var(--success)]">prêt à confirmer</span>
-                    </div>
-                    <span className="t-label min-w-0 text-[var(--text-primary)] line-clamp-2">
-                      {post.title}
-                    </span>
-                    <span className="mt-auto inline-flex items-center gap-1 text-[12px] font-medium text-[var(--success)] opacity-0 transition-opacity duration-[var(--dur)] group-hover:opacity-100">
-                      Voir sur /ready
-                      <IconArrowRight size={13} strokeWidth={2} />
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            )}
 
             {morningAutoGen.drafts.length > 0 && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -353,11 +354,17 @@ export default async function Home() {
           </section>
         )}
 
-        {/* En production */}
+        {/* Zone 2 — "3 actualités les plus pertinentes" (restructuration UI,
+            17 sept. 2026) : les événements du jour au score le plus haut,
+            encore sans article — génération manuelle, contrairement à la
+            Zone 1. Plafonnée à 3 (IN_PROGRESS_LIMIT, db.ts) pour ne pas
+            disputer l'attention à la Zone 1 ; "Voir les X →" en bas remplace
+            à la fois l'ancien lien "+N autres" et la tuile "Événements
+            suivis" retirée plus haut — les deux menaient déjà à /events. */}
         {inProgress.length > 0 && (
           <section className="mb-6">
             <SectionHeader
-              label="En production"
+              label="3 actualités les plus pertinentes"
               icon={IconPenLine}
               tone="info"
               count={counters.eventsWithoutArticle}
@@ -390,15 +397,12 @@ export default async function Home() {
                   />
                 </Row>
               ))}
-              {hiddenInProgressCount > 0 && (
-                <Link
-                  href="/events"
-                  className="t-caption flex items-center justify-center gap-1.5 py-2 text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]"
-                >
-                  +{hiddenInProgressCount} autres en attente
-                  <IconArrowRight size={12} strokeWidth={2} />
-                </Link>
-              )}
+              <Link
+                href="/events"
+                className="t-caption flex items-center justify-center gap-1.5 py-2 text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]"
+              >
+                Voir les {counters.totalEvents} →
+              </Link>
             </div>
           </section>
         )}
@@ -427,12 +431,30 @@ export default async function Home() {
                     <span className="t-label block truncate text-[var(--text-primary)]">
                       {item.title}
                     </span>
-                    {item.chapeau && (
-                      <span className="t-caption block truncate text-[var(--text-muted)]">
-                        {item.chapeau}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {item.chapeau && (
+                        <span className="t-caption truncate text-[var(--text-muted)]">
+                          {item.chapeau}
+                        </span>
+                      )}
+                      {/* Échéance fusionnée ici plutôt que dans une section
+                          "Échéances" séparée (restructuration UI, 17 sept. 2026). */}
+                      {item.publish_date && (
+                        <span className="font-data t-caption shrink-0 text-[var(--success)]">
+                          Publier {relativeDayLabel(item.publish_date)}
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  <PostPreviewOverlay
+                    data={{
+                      title: item.title,
+                      chapeau: item.chapeau,
+                      content: item.content,
+                      images: item.image_url ? [item.image_url] : [],
+                      imagesAreRendered: false,
+                    }}
+                  />
                   {!item.image_url && (
                     <Badge tone="warn" icon={IconAlert} className="hidden sm:inline-flex">
                       sans visuel
@@ -555,6 +577,24 @@ export default async function Home() {
             </div>
           </section>
         )}
+
+        {/* Outils avancés — Pipeline automatique + Drive, repliés par défaut
+            (restructuration UI, 17 sept. 2026) : accessibles en 1 clic pour
+            qui en a besoin, sans disputer l'attention aux deux zones d'action
+            du haut de page. <details> natif : repliable sans JS, accessible
+            par défaut, zéro dépendance nouvelle. */}
+        <details className="group mb-6 rounded-[var(--radius-lg)] border border-[var(--border-subtle)]">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3.5 py-3 text-[var(--text-secondary)]">
+            <IconChevronDown size={14} strokeWidth={2} className="transition-transform group-open:rotate-180" />
+            <span className="t-label">Outils avancés</span>
+          </summary>
+          <div className="flex flex-col gap-3 border-t border-[var(--border-subtle)] px-3.5 py-3 sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1">
+              <PipelineStatusIndicator />
+            </div>
+            <DriveStatusBadge />
+          </div>
+        </details>
       </main>
 
       <HomeShortcuts />
