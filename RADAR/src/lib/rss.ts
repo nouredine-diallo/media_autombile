@@ -2,13 +2,27 @@ import Parser from 'rss-parser';
 import type Database from 'better-sqlite3';
 import { getDb, Feed, Item } from './db';
 
+// Trouvé le 2026-09-17 en creusant les échecs "XML malformé" (InsideEVs,
+// entre autres) : rss-parser appelle `https.get`/`http.get` en interne (lu
+// dans node_modules/rss-parser/lib/parser.js), jamais `fetch` — il ne
+// décompresse donc jamais un contenu `content-encoding: gzip`, même quand
+// le serveur le renvoie sans que le client l'ait demandé (CDN qui force la
+// compression, vu réellement sur insideevs.com malgré l'absence de
+// `Accept-Encoding` dans nos en-têtes). Les octets gzip bruts (magic number
+// `1f 8b`) atterrissaient directement dans le parseur XML — d'où l'erreur
+// "Non-whitespace before first tag, Char: " (0x1f = premier octet
+// gzip), confirmée en inspectant les octets réels de la réponse. `fetch`
+// (undici, natif Node 18+) décompresse gzip/br/deflate automatiquement —
+// on récupère le texte nous-mêmes via `fetch`, on ne délègue que le parsing
+// XML à rss-parser (`parseString`, pas `parseURL`).
+const FEED_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+  'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+};
+const FEED_FETCH_TIMEOUT_MS = 15000;
+
 const parser = new Parser({
-  timeout: 15000,
-  headers: {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-    'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-  },
   customFields: {
     item: [
       ['enclosure', 'enclosure'],
@@ -81,7 +95,15 @@ function extractImageUrl(item: Record<string, unknown>): string | null {
  */
 export async function fetchFeed(feed: Feed): Promise<ParsedItem[]> {
   console.log(`Fetching feed: ${feed.name} from ${feed.url}`);
-  const feedData = await parser.parseURL(feed.url);
+  const res = await fetch(feed.url, {
+    headers: FEED_HEADERS,
+    signal: AbortSignal.timeout(FEED_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new Error(`Flux "${feed.name}" a répondu ${res.status}`);
+  }
+  const xml = await res.text();
+  const feedData = await parser.parseString(xml);
   console.log(`Feed ${feed.name} parsed, found ${(feedData.items || []).length} items`);
 
   return (feedData.items || []).map(item => {
