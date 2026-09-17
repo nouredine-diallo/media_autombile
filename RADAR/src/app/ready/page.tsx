@@ -8,6 +8,7 @@ import { PostConfirmCard } from "@/components/PostConfirmCard";
 import {
   IconArrowRight,
   IconCheck,
+  IconDownload,
   IconImage,
   IconImageOff,
   IconInbox,
@@ -182,14 +183,46 @@ export default function ReadyForInstagram() {
                       <IconCheck size={14} strokeWidth={1.75} />
                       Ouvrir dans Drive
                     </ButtonLink>
+                  ) : article.exported_at && article.auto_preview_status === "ready" && article.auto_preview_mode === "carousel" && article.auto_preview_data_urls ? (
+                    // Phase 5 du plan écosystème (2026-09-17) : le carrousel auto-généré
+                    // n'est jamais passé par un clic navigateur (RADAR a confirmé
+                    // serveur-à-serveur) — rien n'a donc jamais été téléchargé
+                    // automatiquement, contrairement au flux manuel ci-dessous. Le rendu
+                    // existe déjà : `auto_preview_data_urls` porte les mêmes PNG que
+                    // l'export final (CLAUDE.md §1, zéro écart aperçu/export), pas besoin
+                    // de rappeler STUDIO ni de dépendre de Drive.
+                    <div className="flex items-center gap-1">
+                      {(JSON.parse(article.auto_preview_data_urls) as string[]).map((url, i) => (
+                        <a
+                          key={i}
+                          href={url}
+                          download={`slide-${i + 1}.png`}
+                          title={`Télécharger la slide ${i + 1}`}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-[var(--text-secondary)] transition-colors duration-[var(--dur-fast)] hover:border-[var(--border-strong)]"
+                        >
+                          <IconDownload size={14} strokeWidth={1.75} />
+                        </a>
+                      ))}
+                    </div>
+                  ) : article.exported_at && article.auto_preview_status === "ready" && article.auto_preview_data_url ? (
+                    // Même raisonnement que ci-dessus, mode single-image.
+                    <a
+                      href={article.auto_preview_data_url}
+                      download="post.png"
+                      className="t-caption inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2 text-[var(--text-secondary)] transition-colors duration-[var(--dur-fast)] hover:border-[var(--border-strong)]"
+                    >
+                      <IconDownload size={14} strokeWidth={1.75} />
+                      Télécharger le visuel
+                    </a>
                   ) : article.exported_at ? (
-                    // Exporté sans Drive configuré (2026-08-28) : le fichier a été
-                    // téléchargé en ZIP/PNG depuis STUDIO au moment de l'export, il
-                    // ne vit plus nulle part côté serveur à ce stade (le job STUDIO
-                    // est éphémère, cf. GUIDE-UTILISATEUR.md §18) — proposer un lien
-                    // ici serait un lien mort. On dit la vérité plutôt que de laisser
-                    // croire que rien n'a été exporté (bug corrigé : avant ce
-                    // correctif, ce cas retombait silencieusement sur "Créer un post").
+                    // Exporté sans Drive configuré (2026-08-28), flux MANUEL (pas
+                    // d'auto-preview) : le fichier a été téléchargé en ZIP/PNG depuis
+                    // STUDIO au moment du clic export, il ne vit plus nulle part côté
+                    // serveur à ce stade (le job STUDIO est éphémère, cf.
+                    // GUIDE-UTILISATEUR.md §18) — proposer un lien ici serait un lien
+                    // mort. On dit la vérité plutôt que de laisser croire que rien n'a
+                    // été exporté (bug corrigé : avant ce correctif, ce cas retombait
+                    // silencieusement sur "Créer un post").
                     <span
                       className="t-caption inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2 text-[var(--text-secondary)]"
                       title="Exporté depuis STUDIO en local (Drive non configuré) — le fichier a déjà été téléchargé pendant l'export."
