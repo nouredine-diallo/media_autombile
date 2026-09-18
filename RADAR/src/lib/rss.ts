@@ -1,9 +1,9 @@
 import Parser from 'rss-parser';
 import type Database from 'better-sqlite3';
 import { getDb, Feed, Item } from './db';
-import { isProductRoundup } from './textUtils';
+import { isProductRoundup, isWebinarAnnouncement } from './textUtils';
 
-export { isProductRoundup };
+export { isProductRoundup, isWebinarAnnouncement };
 
 // Trouvé le 2026-09-17 en creusant les échecs "XML malformé" (InsideEVs,
 // entre autres) : rss-parser appelle `https.get`/`http.get` en interne (lu
@@ -195,10 +195,12 @@ export function storeItems(feedId: number, items: ParsedItem[]): { stored: numbe
 
   const insertMany = db.transaction((items: ParsedItem[]) => {
     for (const item of items) {
-      // Voir isProductRoundup() ci-dessus — compilations "Green Deals"
-      // d'Electrek, jamais des voitures. Compté séparément, jamais un
-      // rejet silencieux (RADAR/CLAUDE.md §6).
-      if (isProductRoundup(item.title)) {
+      // Voir isProductRoundup()/isWebinarAnnouncement() (textUtils.ts) —
+      // compilations "Green Deals" (Electrek) et annonces de webinaires
+      // (Charged EVs), jamais des articles d'actualité auto. Comptées
+      // ensemble sous le même compteur (même catégorie de bruit pour le
+      // pipeline), jamais un rejet silencieux (RADAR/CLAUDE.md §6).
+      if (isProductRoundup(item.title) || isWebinarAnnouncement(item.title)) {
         offTopicRoundups++;
         continue;
       }

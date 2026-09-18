@@ -68,9 +68,43 @@ export function stripHtml(text: string | null | undefined): string {
  * filtre exhaustif de pertinence automobile, qui n'existe pas. Placée ici
  * (pas dans rss.ts) pour rester testable par `node --experimental-strip-types`
  * — même raison que stripHtml ci-dessus.
+ *
+ * Étendue le 18 sept. 2026 (analyse rétroactive) : la même compilation
+ * republiée avec une mise à jour en direct porte une annotation entre
+ * crochets après "more" — "...smart devices, more [Updated]" (item réel
+ * Electrek, événement 123894) — non couverte par le motif d'origine qui
+ * exige une fin de chaîne stricte après "more". Vérifié sur les 2704 items
+ * de la base au 18 sept. 2026 : cette variante n'ajoute qu'1 item de plus,
+ * toujours chez Electrek, zéro faux positif ailleurs.
  */
 export function isProductRoundup(title: string): boolean {
-  return /,\s*more\.?$/i.test(title.trim());
+  return /,\s*more\.?(\s*\[[^\]]*\])?$/i.test(title.trim());
+}
+
+/**
+ * Trouvé le 18 sept. 2026 en analysant si le risque "contenu non-automobile
+ * scorant comme un vrai candidat" (isProductRoundup ci-dessus) était propre
+ * à Electrek ou plus général. Réponse : oui, plus général, mais pas partout
+ * — sur les 57 flux actifs, seul Charged EVs (média B2B fournisseurs EV,
+ * pas un média auto grand public) publie une colonne récurrente d'annonces
+ * de webinaires ("Today's webinars: Live EV engineering sessions, <jour>",
+ * ou "Webinar: <titre>") qui n'est jamais un article d'actualité — juste un
+ * rappel de calendrier. Preuve concrète du risque réel : l'événement 120867
+ * ("Today's webinars... jeudi 17 septembre") a été généré en article réel
+ * par le run automatique du 18 sept. (score 53, brouillon) avant que ce
+ * filtre n'existe — exactement le scénario que ce filtre doit empêcher.
+ *
+ * Mesuré sur les 68 items réels de Charged EVs : 7/68 (10,3%) correspondent
+ * à ce motif, 0 faux positif — aucune vraie annonce de véhicule/technologie
+ * ne commence par "Webinar:" ou "Today's webinars:". Les autres flux EV/
+ * énergie (CleanTechnica, EV Obsession) ont un problème différent — du
+ * contenu hors-sujet thématique (politique climatique, énergie marine...)
+ * sans motif de titre reconnaissable — signalé séparément à l'utilisateur,
+ * pas couvert ici : un filtre thématique inventé sans données réelles de
+ * calibration serait un seuil métier inventé (RADAR/CLAUDE.md §4.3).
+ */
+export function isWebinarAnnouncement(title: string): boolean {
+  return /^(today.s webinars?:|webinar:)/i.test(title.trim());
 }
 
 /**

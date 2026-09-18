@@ -32,3 +32,16 @@ test("isProductRoundup — insensible à la casse et tolère un point final", ()
   assert.equal(isProductRoundup("Some roundup, MORE"), true);
   assert.equal(isProductRoundup("Some roundup, more."), true);
 });
+
+/**
+ * Régression pour l'extension trouvée le 18 sept. 2026 (analyse rétroactive
+ * des events déjà en base) : la même compilation republiée avec une mise à
+ * jour en direct porte une annotation entre crochets après "more" (item réel
+ * Electrek, événement 123894).
+ */
+test("isProductRoundup — tolère une annotation entre crochets après 'more' (cas réel 'Updated')", () => {
+  assert.equal(
+    isProductRoundup("Continuing post-Labor Day Green Deals hub – EVs, power stations, tools, smart devices, more [Updated]"),
+    true,
+  );
+});
