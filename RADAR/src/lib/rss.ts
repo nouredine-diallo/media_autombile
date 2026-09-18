@@ -1,6 +1,9 @@
 import Parser from 'rss-parser';
 import type Database from 'better-sqlite3';
 import { getDb, Feed, Item } from './db';
+import { isProductRoundup } from './textUtils';
+
+export { isProductRoundup };
 
 // Trouvé le 2026-09-17 en creusant les échecs "XML malformé" (InsideEVs,
 // entre autres) : rss-parser appelle `https.get`/`http.get` en interne (lu
@@ -178,7 +181,7 @@ function isNearDuplicate(title: string, db: Database.Database): boolean {
   return false;
 }
 
-export function storeItems(feedId: number, items: ParsedItem[]): { stored: number; duplicates: number; nearDuplicates: number } {
+export function storeItems(feedId: number, items: ParsedItem[]): { stored: number; duplicates: number; nearDuplicates: number; offTopicRoundups: number } {
   const db = getDb();
   const insert = db.prepare(`
     INSERT OR IGNORE INTO items (feed_id, title, url, content, summary, published_at, image_url, image_source)
@@ -188,9 +191,18 @@ export function storeItems(feedId: number, items: ParsedItem[]): { stored: numbe
   let stored = 0;
   let duplicates = 0;
   let nearDuplicates = 0;
+  let offTopicRoundups = 0;
 
   const insertMany = db.transaction((items: ParsedItem[]) => {
     for (const item of items) {
+      // Voir isProductRoundup() ci-dessus — compilations "Green Deals"
+      // d'Electrek, jamais des voitures. Compté séparément, jamais un
+      // rejet silencieux (RADAR/CLAUDE.md §6).
+      if (isProductRoundup(item.title)) {
+        offTopicRoundups++;
+        continue;
+      }
+
       // Finding D3 (audit 2026-09-07) : isNearDuplicate() n'était appelée
       // qu'APRÈS l'échec de l'INSERT sur la contrainte UNIQUE(title) — donc
       // uniquement sur des items déjà identiques au caractère près à un
@@ -225,7 +237,7 @@ export function storeItems(feedId: number, items: ParsedItem[]): { stored: numbe
   });
 
   insertMany(items);
-  return { stored, duplicates, nearDuplicates };
+  return { stored, duplicates, nearDuplicates, offTopicRoundups };
 }
 
 export function getFeeds(): Feed[] {

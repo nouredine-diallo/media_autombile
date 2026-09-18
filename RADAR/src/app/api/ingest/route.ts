@@ -9,15 +9,15 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 export async function POST() {
   const runId = startPipelineRun('full');
   const feeds = getFeeds().filter(f => f.requires_scraping === 0);
-  const results: { feed: string; stored: number; duplicates: number; error?: string }[] = [];
+  const results: { feed: string; stored: number; duplicates: number; offTopicRoundups: number; error?: string }[] = [];
   let totalStored = 0;
 
   for (const feed of feeds) {
     try {
       const items = await withTimeout(fetchFeed(feed), 12000);
-      const { stored, duplicates } = storeItems(feed.id, items);
+      const { stored, duplicates, offTopicRoundups } = storeItems(feed.id, items);
       recordFeedFetchSuccess(feed.id);
-      results.push({ feed: feed.name, stored, duplicates });
+      results.push({ feed: feed.name, stored, duplicates, offTopicRoundups });
       totalStored += stored;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -26,6 +26,7 @@ export async function POST() {
         feed: feed.name,
         stored: 0,
         duplicates: 0,
+        offTopicRoundups: 0,
         error: message,
       });
     }

@@ -43,13 +43,15 @@ async function runPipeline(): Promise<void> {
   try {
     const feeds = getFeeds().filter(f => f.requires_scraping === 0);
     let totalStored = 0;
+    let totalOffTopicRoundups = 0;
 
     for (const feed of feeds) {
       try {
         const items = await withTimeout(fetchFeed(feed), 12000);
-        const { stored } = storeItems(feed.id, items);
+        const { stored, offTopicRoundups } = storeItems(feed.id, items);
         recordFeedFetchSuccess(feed.id);
         totalStored += stored;
+        totalOffTopicRoundups += offTopicRoundups;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`[CRON] Error ingesting ${feed.name}:`, message);
@@ -57,7 +59,7 @@ async function runPipeline(): Promise<void> {
       }
     }
 
-    console.log(`[CRON] Ingested ${totalStored} new items`);
+    console.log(`[CRON] Ingested ${totalStored} new items` + (totalOffTopicRoundups > 0 ? ` (${totalOffTopicRoundups} compilation(s) hors-sujet écartée(s), voir isProductRoundup dans rss.ts)` : ''));
 
     let eventsCreated = 0;
     let scoringError: string | undefined;
