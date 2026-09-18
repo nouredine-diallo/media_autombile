@@ -35,3 +35,21 @@ test("extractNumbers — non-régression : chiffres simples, unités, nombres en
   assert.deepEqual(extractNumbers("500 ch et 3 sources confirment"), [500, 3]);
   assert.deepEqual(extractNumbers("aucun chiffre ici"), []);
 });
+
+/**
+ * Régression pour le bug trouvé le 18 sept. 2026 sur un run réel (événement
+ * Volvo XC60/XC90, score rejeté sur des chiffres fantômes "902028",
+ * "602028", "82028") : un suffixe de modèle à 2 chiffres ("XC90") suivi
+ * d'une espace puis d'une année à 4 chiffres ("2028") était lu à tort comme
+ * un groupe de milliers ("90" + les 3 premiers chiffres de "2028"), laissant
+ * le dernier chiffre collé sans espace au résultat fusionné.
+ */
+test("extractNumbers — ne fusionne pas un suffixe de modèle avec l'année qui le suit (cas réel Volvo XC90 2028)", () => {
+  assert.deepEqual(
+    extractNumbers("Les Volvo XC60 et XC90 2028 viennent de franchir une etape importante"),
+    [60, 90, 2028]
+  );
+  // Le groupe de milliers légitime le plus proche possible (3 chiffres suivis
+  // d'un 4e collé) ne doit pas non plus se fusionner à tort.
+  assert.deepEqual(extractNumbers("modele 500 2028"), [500, 2028]);
+});

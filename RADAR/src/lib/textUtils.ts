@@ -101,12 +101,27 @@ const FRENCH_NUMBER_WORDS: Record<string, number> = {
  * séparés dans le texte de l'article (l'espace casse le motif `\d+`), donc
  * ni "4" ni "000" ne correspondait au "4000" du brief — faux rejet sur un
  * article par ailleurs exact. Normalise les groupes de milliers séparés
- * par une espace (normale, insécable, ou fine insécable — les trois formes
- * rencontrées en français) en un seul nombre avant toute extraction,
- * plutôt que de multiplier les motifs de regex un par un.
+ * par une espace (normale U+0020, insécable U+00A0, ou fine insécable
+ * U+202F — les trois formes rencontrées en français) en un seul nombre
+ * avant toute extraction, plutôt que de multiplier les motifs de regex un
+ * par un.
+ *
+ * Deuxième bug trouvé le 18 sept. 2026 sur un run réel (événement Volvo
+ * XC60/XC90, brief contenant "...XC90 2028...") : sans le `(?!\d)` final,
+ * "90 2028" (un suffixe de modèle "90" suivi, après une espace, d'une année
+ * "2028") était lu comme un groupe de milliers valide — le motif ne
+ * consommait que les 3 premiers chiffres de "2028" ("202"), fusionnait
+ * "90"+"202" en "90202", et laissait le dernier chiffre ("8") collé sans
+ * espace au résultat, donnant le nombre aberrant "902028" une fois relu par
+ * le motif de base d'extractNumbers(). Le lookahead négatif interdit de
+ * fusionner un groupe de 3 chiffres qui est lui-même immédiatement suivi
+ * d'un autre chiffre — un vrai groupe de milliers est toujours suivi d'une
+ * espace, d'une lettre ou d'une fin de texte, jamais d'un autre chiffre.
  */
 function normalizeThousandsSeparators(text: string): string {
-  return text.replace(/\d{1,3}(?:[   ]\d{3})+/g, (m) => m.replace(/[   ]/g, ''));
+  return text.replace(/\d{1,3}(?:[   ]\d{3})+(?!\d)/g, (m) =>
+    m.replace(/[   ]/g, '')
+  );
 }
 
 /**
