@@ -1,3 +1,5 @@
+import { champsImagePourGabarit, type ImageAvecCadreOriginal } from "@/components/gabarits/Gabarit1A";
+
 /** 1 accroche + jusqu'à 3 slides de développement + 1 CTA — plafond mesuré sur
  * les 8 posts réels de studio/inspi/TEXTPOST.txt (jamais plus de 3 slides de
  * dev observées). Uploader plus que ça gaspillerait du recadrage pour rien :
@@ -24,11 +26,13 @@ export interface AssembleSlidesPackage {
 }
 
 /** Ce qu'assembleSlides() a besoin de connaître d'une image uploadée — même
- * logique que ci-dessus, découplé du type `UploadedImage` de l'écran. */
-export interface AssembleSlidesImage {
-  backdropUrl: string;
-  croppedUrl: string;
-}
+ * logique que ci-dessus, découplé du type `UploadedImage` de l'écran.
+ * Étend `ImageAvecCadreOriginal` (Gabarit1A.tsx) : les champs optionnels
+ * (`previewUrl`/`cadreFond`/`usedBackdrop`/`photoHeight`) permettent le
+ * recadrage depuis l'originale (2026-09-19) sans casser l'appelant serveur
+ * existant (`runAutoGenerateCarousel`), qui peut continuer à ne fournir que
+ * `backdropUrl`/`croppedUrl` — retombe alors sur l'ancien comportement. */
+export type AssembleSlidesImage = ImageAvecCadreOriginal;
 
 /**
  * Assigne les images uploadées aux slides (§2.1 du plan écosystème) : la
@@ -43,8 +47,6 @@ export interface AssembleSlidesImage {
  * et ne touche à rien d'autre qu'à ses arguments.
  */
 export function assembleSlides(pkg: AssembleSlidesPackage, uploaded: AssembleSlidesImage[]): Slide[] {
-  const imgUrl = (img: AssembleSlidesImage) => img.backdropUrl || img.croppedUrl;
-
   const heroIdx = 0;
   const ctaIdx = uploaded.length > 1 ? uploaded.length - 1 : 0;
   const devPool = uploaded.slice(1, Math.max(1, uploaded.length - 1));
@@ -55,7 +57,7 @@ export function assembleSlides(pkg: AssembleSlidesPackage, uploaded: AssembleSli
       gabaritId: "1a",
       textKey: "title",
       imageIndex: heroIdx,
-      fieldValues: { imageUrl: imgUrl(uploaded[heroIdx]), title: pkg.title },
+      fieldValues: { ...champsImagePourGabarit(uploaded[heroIdx], "1a"), title: pkg.title },
     },
   ];
 
@@ -65,7 +67,7 @@ export function assembleSlides(pkg: AssembleSlidesPackage, uploaded: AssembleSli
       gabaritId: "1b",
       textKey: "paragraph",
       imageIndex,
-      fieldValues: { imageUrl: imgUrl(uploaded[imageIndex]), paragraph: pkg.devSlides[i] },
+      fieldValues: { ...champsImagePourGabarit(uploaded[imageIndex], "1b"), paragraph: pkg.devSlides[i] },
     });
   }
 
@@ -73,7 +75,7 @@ export function assembleSlides(pkg: AssembleSlidesPackage, uploaded: AssembleSli
     gabaritId: "cta",
     textKey: "message",
     imageIndex: ctaIdx,
-    fieldValues: { imageUrl: imgUrl(uploaded[ctaIdx]) },
+    fieldValues: champsImagePourGabarit(uploaded[ctaIdx], "cta"),
   });
 
   return slides;

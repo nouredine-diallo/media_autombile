@@ -18,7 +18,12 @@ import { GABARITS, GABARIT_HEIGHT, GABARIT_WIDTH } from "@/components/gabarits/r
 import { MontageDirect, type BulleCible } from "@/components/MontageDirect";
 import { BrandHomeLink } from "@/components/BrandHomeLink";
 import { RecadrageFond } from "@/components/RecadrageFond";
-import { lireHauteurPhoto, GABARIT_PHOTO_HEIGHT } from "@/components/gabarits/Gabarit1A";
+import {
+  lireHauteurPhoto,
+  GABARIT_PHOTO_HEIGHT,
+  GABARITS_RECADRAGE_ORIGINAL,
+  champsImagePourGabarit,
+} from "@/components/gabarits/Gabarit1A";
 import { BLOCK_TOP_PERCENT, BLOCK_SPAN } from "@/components/gabarits/TitleFooter";
 import { CTA_TEXT_ZONE_HEIGHT } from "@/components/gabarits/GabaritCTA";
 import { GABARIT_2A_BULLE } from "@/components/gabarits/Gabarit2A";
@@ -478,27 +483,16 @@ export default function TitresPage() {
     // Recadrer/zoomer (RecadrageFond, geste déjà existant) depuis une image
     // proche de l'originale plutôt que sur `backdropUrl`, déjà rogné par le
     // recadrage automatique — l'utilisateur ne perd plus la marge coupée.
-    // Limité à la famille 1 (1a/1b/1c, seuls gabarits où RecadrageFond est
-    // proposé, voir plus bas) : ce sont les seuls sans 3e couche (`sujetUrl`)
-    // qui devrait sinon être réalignée sur ce nouveau cadre. Étendu à 1b/1c
-    // le 16 sept. 2026, après avoir fait déclarer `photoHeight` à leur route
-    // d'export générique (registry.tsx, render/[gabaritId]/page.tsx) — sans
-    // ça elle le recalculait depuis le fichier `imageUrl`, correct pour
-    // `backdrop.jpg` mais faux pour `preview.jpg` (autre ratio).
+    // Décision partagée avec l'écran carrousel (`champsImagePourGabarit`,
+    // Gabarit1A.tsx) : limitée aux gabarits sans 3e couche (`sujetUrl`) qui
+    // devrait sinon être réalignée sur ce nouveau cadre — voir
+    // `GABARITS_RECADRAGE_ORIGINAL` pour la liste et son historique.
     const utiliserPreview = Boolean(
-      fond &&
-        ["1a", "1b", "1c"].includes(selectedGabarit) &&
-        !fond.usedBackdrop &&
-        fond.previewUrl &&
-        fond.cadreFond,
+      fond && GABARITS_RECADRAGE_ORIGINAL.has(selectedGabarit) && !fond.usedBackdrop && fond.previewUrl && fond.cadreFond,
     );
     if (fond) {
-      values.imageUrl = utiliserPreview ? fond.previewUrl! : fond.backdropUrl;
-      if (utiliserPreview) values.imageCadre = fond.cadreFond!;
+      Object.assign(values, champsImagePourGabarit(fond, selectedGabarit));
       if (fond.sujetUrl) values.sujetUrl = fond.sujetUrl;
-      // Sans cette ligne, l'aperçu composerait la photo sur 74 % pendant que
-      // le rendu utiliserait la hauteur réelle : aperçu ≠ export.
-      if (fond.photoHeight) values.photoHeight = String(fond.photoHeight);
     }
     const champsBulle = def.fields.filter(
       (f) => f.kind === "image" && f.key.startsWith("bulle") && !f.key.endsWith("SujetUrl"),
@@ -1139,15 +1133,22 @@ export default function TitresPage() {
                   photos={images.slice(1).map((i) => ({ bulleUrl: i.bulleUrl, sujetBulleUrl: i.bulleSujetUrl }))}
                 />
               )}
-              {/* Recadrage manuel de l'image de fond — gabarits famille 1
-                  (image seule) uniquement, à la demande explicite du
-                  2026-09-14. Le moteur de rendu (Gabarit1A.tsx) acceptait déjà
-                  ce champ (`imageCadre`) ; seule l'interface manquait. */}
-              {["1a", "1b", "1c"].includes(selectedGabarit) && images[0] && (
+              {/* Recadrage manuel de l'image de fond — gabarits sans 3e
+                  couche détourée (`GABARITS_RECADRAGE_ORIGINAL`), à la demande
+                  explicite du 2026-09-14. Étendu à "cta" le 19 sept. 2026 :
+                  son fond occupe tout le cadre (pas de zone photo réduite),
+                  d'où la hauteur conditionnelle ci-dessous. Le moteur de rendu
+                  (Gabarit1A.tsx/GabaritCTA.tsx) acceptait déjà ce champ
+                  (`imageCadre`) ; seule l'interface manquait. */}
+              {GABARITS_RECADRAGE_ORIGINAL.has(selectedGabarit) && images[0] && (
                 <RecadrageFond
                   echelle={previewScale}
                   largeur={GABARIT_WIDTH}
-                  hauteur={lireHauteurPhoto(previewValues.photoHeight) || GABARIT_PHOTO_HEIGHT}
+                  hauteur={
+                    selectedGabarit === "cta"
+                      ? GABARIT_HEIGHT
+                      : lireHauteurPhoto(previewValues.photoHeight) || GABARIT_PHOTO_HEIGHT
+                  }
                   valeur={previewValues.imageCadre}
                   onChange={(v) => setReglages((p) => ({ ...p, imageCadre: v }))}
                 />

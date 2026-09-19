@@ -9,7 +9,12 @@ import { apiFetch } from "@/lib/apiFetch";
 import { GABARITS, GABARIT_HEIGHT, GABARIT_WIDTH } from "@/components/gabarits/registry";
 import { BrandHomeLink } from "@/components/BrandHomeLink";
 import { RecadrageFond } from "@/components/RecadrageFond";
-import { lireHauteurPhoto, GABARIT_PHOTO_HEIGHT } from "@/components/gabarits/Gabarit1A";
+import {
+  lireHauteurPhoto,
+  GABARIT_PHOTO_HEIGHT,
+  GABARITS_RECADRAGE_ORIGINAL,
+  champsImagePourGabarit,
+} from "@/components/gabarits/Gabarit1A";
 import { assembleSlides, MAX_CAROUSEL_IMAGES, type Slide } from "@/lib/carousel/assemble";
 
 // Plafond desktop, jamais dépassé — voir la note équivalente dans
@@ -31,6 +36,14 @@ interface UploadedImage {
   id: string;
   croppedUrl: string;
   backdropUrl: string;
+  /** Champs ajoutés le 19 sept. 2026 pour le recadrage depuis l'originale —
+   * voir `champsImagePourGabarit` (Gabarit1A.tsx). Déjà renvoyés par les deux
+   * routes d'upload (`import-urls`, `upload-batch`) ; seule cette interface
+   * les ignorait jusqu'ici. */
+  previewUrl?: string;
+  cadreFond?: string;
+  usedBackdrop?: boolean;
+  photoHeight?: number;
 }
 
 type LoadStatus = "idle" | "loading-package" | "uploading" | "ready" | "error";
@@ -138,10 +151,15 @@ export default function CarrouselPage() {
     setSlides((prev) => {
       const next = [...prev];
       const img = uploaded[imageIndex];
+      const gabaritId = next[index].gabaritId;
       next[index] = {
         ...next[index],
         imageIndex,
-        fieldValues: { ...next[index].fieldValues, imageUrl: img.backdropUrl || img.croppedUrl },
+        // Repart des champs par défaut de la nouvelle image (originale +
+        // cadrage suggéré si disponible pour ce gabarit) plutôt que de ne
+        // remplacer que `imageUrl` — sinon un ancien `imageCadre`/`photoHeight`
+        // resterait collé à une image qui n'est plus celle affichée.
+        fieldValues: { ...next[index].fieldValues, ...champsImagePourGabarit(img, gabaritId) },
       };
       return next;
     });
@@ -202,14 +220,23 @@ export default function CarrouselPage() {
     setUploaded(nextUploaded);
     setSlides((prev) =>
       prev.map((s) => {
-        const newIndex = Math.min(
-          s.imageIndex === idx ? 0 : s.imageIndex > idx ? s.imageIndex - 1 : s.imageIndex,
-          nextUploaded.length - 1,
-        );
+        // L'image référencée par cette slide a été retirée : elle retombe
+        // sur la première restante et doit reprendre SES champs par défaut
+        // (originale + cadrage propres à cette image). Si la slide pointait
+        // vers une autre image qui a juste changé d'indice (décalage après
+        // suppression), c'est toujours la même photo : ne pas toucher à un
+        // cadrage que l'opérateur a peut-être déjà ajusté à la main.
+        const imageSupprimee = s.imageIndex === idx;
+        const newIndex = Math.min(imageSupprimee ? 0 : s.imageIndex > idx ? s.imageIndex - 1 : s.imageIndex, nextUploaded.length - 1);
         const img = nextUploaded[newIndex];
-        return img
-          ? { ...s, imageIndex: newIndex, fieldValues: { ...s.fieldValues, imageUrl: img.backdropUrl || img.croppedUrl } }
-          : s;
+        if (!img) return s;
+        return {
+          ...s,
+          imageIndex: newIndex,
+          fieldValues: imageSupprimee
+            ? { ...s.fieldValues, ...champsImagePourGabarit(img, s.gabaritId) }
+            : s.fieldValues,
+        };
       }),
     );
   }
@@ -465,13 +492,19 @@ function SlideCard({
           >
             <Preview {...slide.fieldValues} />
           </div>
-          {/* Recadrage manuel du fond — famille 1 uniquement (1A/1B/1C),
-              même contrôle que /titres et l'éditeur détaillé. */}
-          {["1a", "1b", "1c"].includes(slide.gabaritId) && (
+          {/* Recadrage manuel du fond depuis l'originale — mêmes gabarits et
+              même contrôle que /titres (GABARITS_RECADRAGE_ORIGINAL,
+              Gabarit1A.tsx). "cta" occupe tout le cadre (pas de zone photo
+              réduite, voir GabaritCTA.tsx), d'où la hauteur conditionnelle. */}
+          {GABARITS_RECADRAGE_ORIGINAL.has(slide.gabaritId) && (
             <RecadrageFond
               echelle={previewScale}
               largeur={GABARIT_WIDTH}
-              hauteur={lireHauteurPhoto(slide.fieldValues.photoHeight) || GABARIT_PHOTO_HEIGHT}
+              hauteur={
+                slide.gabaritId === "cta"
+                  ? GABARIT_HEIGHT
+                  : lireHauteurPhoto(slide.fieldValues.photoHeight) || GABARIT_PHOTO_HEIGHT
+              }
               valeur={slide.fieldValues.imageCadre}
               onChange={onCadreChange}
             />

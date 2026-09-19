@@ -100,6 +100,55 @@ export function lireHauteurPhoto(valeur: string | undefined): number {
   return Number.isFinite(n) && n > 0 && n <= GABARIT_1A_HEIGHT ? n : GABARIT_PHOTO_HEIGHT;
 }
 
+/**
+ * Gabarits dont le fond peut afficher l'image proche de l'originale
+ * (`previewUrl`/`cadreFond`) plutôt que la variante déjà recadrée
+ * (`backdropUrl`) — ceux qui n'ont pas de 3e couche détourée (`sujetUrl`) à
+ * réaligner sur un nouveau cadrage (voir titres/page.tsx, `buildPreviewValues`,
+ * 2026-09-16). Étendu à "cta" le 19 sept. 2026 : son fond est structurellement
+ * identique (plein cadre, `imageCadre` lu par le même `lireCadre`/
+ * `transformFond`, voir GabaritCTA.tsx) et sans `sujetUrl` non plus — seule
+ * l'interface de recadrage manquait, pas le moteur de rendu.
+ */
+export const GABARITS_RECADRAGE_ORIGINAL = new Set(["1a", "1b", "1c", "cta"]);
+
+/** Ce que `champsImagePourGabarit` a besoin de connaître d'une image
+ * uploadée — sous-ensemble volontairement minimal de `UploadedImage` (écran
+ * single-image) et `AssembleSlidesImage` (écran carrousel), pour rester
+ * appelable par les deux sans dépendre de l'un ou l'autre. */
+export interface ImageAvecCadreOriginal {
+  backdropUrl: string;
+  croppedUrl: string;
+  previewUrl?: string;
+  cadreFond?: string;
+  usedBackdrop?: boolean;
+  photoHeight?: number;
+}
+
+/**
+ * Décide quelle variante d'image utiliser pour un gabarit donné (originale
+ * recadrable, ou fond déjà rogné en repli) et le cadrage par défaut qui va
+ * avec. Extrait de `titres/page.tsx` (`buildPreviewValues`, 2026-09-14) pour
+ * être partagé avec l'écran carrousel (`assembleSlides`, `titres/carrousel/
+ * page.tsx`) sans dupliquer cette décision à trois endroits.
+ */
+export function champsImagePourGabarit(img: ImageAvecCadreOriginal, gabaritId: string): Record<string, string> {
+  const utiliserPreview = Boolean(
+    GABARITS_RECADRAGE_ORIGINAL.has(gabaritId) && !img.usedBackdrop && img.previewUrl && img.cadreFond,
+  );
+  return {
+    imageUrl: utiliserPreview ? img.previewUrl! : (img.backdropUrl || img.croppedUrl),
+    // Toujours renseignés (jamais omis) : un appelant qui remplace l'image
+    // d'une slide déjà cadrée (`{...ancien, ...champsImagePourGabarit(...)}`,
+    // voir titres/carrousel/page.tsx `updateSlideImage`) doit aussi remettre
+    // à zéro un `imageCadre`/`photoHeight` qui appartenait à l'ancienne photo
+    // — chaîne vide = repli sur les valeurs par défaut (`lireCadre`,
+    // `lireHauteurPhoto`), pas une valeur à part.
+    imageCadre: utiliserPreview ? img.cadreFond! : "",
+    photoHeight: img.photoHeight ? String(img.photoHeight) : "",
+  };
+}
+
 export default function Gabarit1A({ imageUrl, title, eyebrow, photoHeight, imageCadre, titreCadre }: Gabarit1AProps) {
   const hauteurPhoto = lireHauteurPhoto(photoHeight);
   const cf = lireCadre(imageCadre);

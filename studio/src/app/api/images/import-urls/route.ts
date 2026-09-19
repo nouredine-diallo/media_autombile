@@ -119,6 +119,7 @@ export async function POST(request: NextRequest) {
     previewUrl: string;
     cadreFond?: string;
     usedBackdrop: boolean;
+    photoHeight?: number;
     fallbackCrop: boolean;
   }> = [];
 
@@ -181,6 +182,13 @@ export async function POST(request: NextRequest) {
         previewUrl: `/api/images/${id}?variant=preview`,
         cadreFond,
         usedBackdrop: outcome.backdrop.usedBackdrop,
+        // Hauteur réelle de la zone photo pour cette image — voir
+        // upload-batch/route.ts, même raison (aperçu doit appliquer la même
+        // valeur que le rendu, sinon aperçu ≠ export, CLAUDE.md §1). Manquait
+        // ici jusqu'au 19 sept. 2026 : le flux carrousel (import serveur-à-
+        // serveur depuis RADAR, seul appelant de cette route) ne pouvait donc
+        // jamais proposer le recadrage depuis l'original sur ses slides.
+        photoHeight: outcome.backdrop.height,
         // Finding B8 (audit 2026-09-07) : voir upload-batch/route.ts, même correctif.
         fallbackCrop: outcome.backdrop.fallbackToCenter,
       });
