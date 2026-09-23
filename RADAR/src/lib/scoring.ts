@@ -1,7 +1,7 @@
 import { getDb, Item, Event } from './db';
 import { getEmbedding, cosineSimilarity, serializeEmbedding, deserializeEmbedding } from './embeddings';
 import { autoTagEvent } from './auto-tag';
-import { translateEvents } from './translate';
+import { translateEventsIsolated as translateEvents } from './translateEventsIsolated';
 
 /**
  * Recalibré 0.88 → 0.955 le 2026-09-14 (analyse "clustering — vraie source du

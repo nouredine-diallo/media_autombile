@@ -145,6 +145,22 @@ build_worker() {
         exit 1
     fi
 
+    # translateEventsWorker.js (23 sept. 2026) : isole la traduction batch des
+    # événements (cycle cron, scoring.ts) dans un PROCESS séparé (pas un
+    # worker_thread comme translateWorker.js ci-dessus) — voir
+    # src/lib/translateEventsIsolated.ts. Un worker_thread partage le process
+    # de radar-pipeline ; un crash natif ONNX (observé en prod, "Napi::Error")
+    # le tuerait quand même. Même filet de sécurité : sans ce fichier,
+    # translateEventsIsolated() retombe sur la traduction directe (non isolée,
+    # avertie en console) plutôt que de planter, mais un déploiement qui ne le
+    # produit pas doit être signalé, pas laissé passer silencieusement.
+    if [ ! -f dist-worker/translateEventsWorker.js ]; then
+        echo "  ❌ Compilation du worker incomplète (translateEventsWorker.js absent) — dist-worker précédent restauré"
+        rm -rf dist-worker
+        [ -d dist-worker.bak ] && mv dist-worker.bak dist-worker
+        exit 1
+    fi
+
     echo "  ✅ Worker compilé OK"
 }
 build_worker
