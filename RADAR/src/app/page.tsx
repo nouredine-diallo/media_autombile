@@ -333,7 +333,7 @@ export default async function Home() {
             />
             <div className="space-y-2">
               {urgent.map((item) => (
-                <Row key={item.id} href={`/events/${item.id}`} tone="urgent">
+                <Row key={item.id} href={`/events/${item.event_id}`} tone="urgent">
                   <div className="min-w-0 flex-1">
                     <span className="t-label block truncate text-[var(--text-primary)]">
                       {item.title}

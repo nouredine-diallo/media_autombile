@@ -743,14 +743,19 @@ export function getDashboardAgenda() {
   const IN_PROGRESS_LIMIT = 3;
 
   // 🔴 Urgent : articles en draft > 48h
+  // Trouvé le 23 sept. 2026 (retour utilisateur réel, 6 événements urgents en
+  // erreur "Événement non trouvé" en prod) : la carte renvoie vers la fiche
+  // ÉVÉNEMENT (/events/[id]), pas vers l'article — il faut donc `event_id`,
+  // pas `a.id` (l'id de l'article, une séquence différente qui ne coïncide
+  // avec un id d'event que par hasard).
   const urgent = db.prepare(`
-    SELECT a.id, a.title, a.generated_at,
+    SELECT a.id, a.event_id, a.title, a.generated_at,
       CAST((julianday('now') - julianday(a.generated_at)) * 24 AS INTEGER) as hours_waiting
     FROM articles a
     WHERE a.status = 'draft'
       AND a.generated_at < datetime('now', '-2 days')
     ORDER BY a.generated_at ASC
-  `).all() as { id: number; title: string; generated_at: string; hours_waiting: number }[];
+  `).all() as { id: number; event_id: number; title: string; generated_at: string; hours_waiting: number }[];
 
   // 🟠 En production : événements sans article (limités, avec count total)
   const allInProgress = db.prepare(`
