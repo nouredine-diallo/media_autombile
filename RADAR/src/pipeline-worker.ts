@@ -41,6 +41,7 @@
 import { createServer } from 'node:http';
 import { startCron, stopCron, runPipeline, getCronStatus } from './lib/cron';
 import { closeDb } from './lib/db';
+import { shutdownTranslateEventsWorker } from './lib/translateEventsIsolated';
 
 const PORT = Number(process.env.PIPELINE_WORKER_PORT || 3010);
 const HOST = '127.0.0.1';
@@ -113,6 +114,7 @@ function registerGracefulShutdown(): void {
         if (getCronStatus().running) {
           console.log('[PIPELINE-WORKER] Cycle en cours non terminé après le délai — arrêt quand même');
         }
+        shutdownTranslateEventsWorker();
         closeDb();
         console.log('[PIPELINE-WORKER] Arrêt propre terminé');
         process.exit(0);
