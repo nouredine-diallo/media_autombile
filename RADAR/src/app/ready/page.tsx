@@ -2,18 +2,14 @@ import { getDb } from "@/lib/db";
 import { buildStudioLink } from "@/lib/studio-prefill";
 import { PageHeader } from "@/components/PageHeader";
 import { Badge, ButtonLink, EmptyState, Thumb } from "@/components/ui";
-import { PlanifierButton } from "@/components/PlanifierButton";
-import { AssociatePartnerButton } from "@/components/AssociatePartnerButton";
 import { PostConfirmCard } from "@/components/PostConfirmCard";
-import { PostPreviewOverlay } from "@/components/PostPreviewOverlay";
+import { ReadyExportedActions } from "@/components/ReadyExportedActions";
 import {
   IconArrowRight,
   IconCheck,
-  IconDownload,
   IconImage,
   IconImageOff,
   IconInbox,
-  IconStudio,
 } from "@/components/icons";
 
 interface Article {
@@ -32,8 +28,6 @@ interface Article {
   drive_url: string | null;
   is_scheduled: number;
   auto_preview_status: 'pending' | 'ready' | 'failed' | null;
-  auto_preview_data_url: string | null;
-  auto_preview_data_urls: string | null;
   auto_preview_error: string | null;
   auto_preview_fallback_crop: number | null;
   auto_preview_mode: 'single' | 'carousel' | null;
@@ -48,8 +42,20 @@ export default function ReadyForInstagram() {
   // source sans toucher à l'article validé — il doit rester visible ici quand
   // même (sinon cette page dit "aucun article" pendant que le Dashboard en
   // compte plusieurs, les deux vues doivent toujours raconter la même chose).
+  // `auto_preview_data_url`/`auto_preview_data_urls` (des PNG en base64,
+  // ~22 Mo mesurés en prod pour seulement 8 articles le 23 sept. 2026) sont
+  // volontairement exclus de cette requête — cause directe de la lenteur de
+  // chargement de cette page. Chargés paresseusement côté client une fois la
+  // page affichée (PostConfirmCard, ReadyExportedActions), via la même route
+  // API déjà utilisée pour le polling (`/api/articles/[id]/auto-preview`),
+  // en pleine résolution (aucune compression) : seul le MOMENT du
+  // chargement change, jamais la qualité du visuel proposé au téléchargement.
   const articles = db.prepare(`
-    SELECT a.*, e.title as event_title,
+    SELECT a.id, a.content_id, a.event_id, a.title, a.chapeau, a.content,
+      a.word_count, a.status, a.generated_at, a.exported_at, a.drive_url,
+      a.validated_by, a.verification_score,
+      a.auto_preview_status, a.auto_preview_error, a.auto_preview_fallback_crop, a.auto_preview_mode,
+      e.title as event_title,
       (SELECT i.image_url FROM items i
        JOIN event_items ei ON ei.item_id = i.id
        WHERE ei.event_id = a.event_id AND i.image_url IS NOT NULL
@@ -65,8 +71,7 @@ export default function ReadyForInstagram() {
       EXISTS(
         SELECT 1 FROM calendar_events ce
         WHERE ce.article_id = a.id AND ce.event_type = 'publication_instagram'
-      ) as is_scheduled,
-      a.auto_preview_status, a.auto_preview_data_url, a.auto_preview_data_urls, a.auto_preview_error, a.auto_preview_fallback_crop, a.auto_preview_mode
+      ) as is_scheduled
     FROM articles a
     LEFT JOIN events e ON a.event_id = e.id
     WHERE a.status = 'validated'
@@ -117,8 +122,8 @@ export default function ReadyForInstagram() {
                   content={article.content}
                   eventTitle={article.event_title}
                   status={article.auto_preview_status}
-                  dataUrl={article.auto_preview_data_url}
-                  dataUrls={article.auto_preview_data_urls ? JSON.parse(article.auto_preview_data_urls) : null}
+                  dataUrl={null}
+                  dataUrls={null}
                   mode={article.auto_preview_mode === 'carousel' ? 'carousel' : 'single'}
                   error={article.auto_preview_error}
                   fallbackCrop={!!article.auto_preview_fallback_crop}
@@ -175,98 +180,20 @@ export default function ReadyForInstagram() {
                   </p>
                 </div>
 
-                <div className="flex shrink-0 items-start gap-2">
-                  <PostPreviewOverlay
-                    data={{
-                      title: article.title,
-                      chapeau: article.chapeau,
-                      content: article.content,
-                      eventTitle: article.event_title,
-                      images: article.auto_preview_data_urls
-                        ? (JSON.parse(article.auto_preview_data_urls) as string[])
-                        : article.auto_preview_data_url
-                          ? [article.auto_preview_data_url]
-                          : article.image_url
-                            ? [article.image_url]
-                            : [],
-                      imagesAreRendered: !!(article.auto_preview_data_url || article.auto_preview_data_urls),
-                    }}
-                  />
-                  {article.content_id && (
-                    <AssociatePartnerButton contentId={article.content_id} />
-                  )}
-                  <PlanifierButton articleId={article.id} alreadyScheduled={!!article.is_scheduled} />
-                  {article.exported_at && article.drive_url ? (
-                    <ButtonLink href={article.drive_url} external variant="secondary" size="md">
-                      <IconCheck size={14} strokeWidth={1.75} />
-                      Ouvrir dans Drive
-                    </ButtonLink>
-                  ) : article.exported_at && article.auto_preview_status === "ready" && article.auto_preview_mode === "carousel" && article.auto_preview_data_urls ? (
-                    // Phase 5 du plan écosystème (2026-09-17) : le carrousel auto-généré
-                    // n'est jamais passé par un clic navigateur (RADAR a confirmé
-                    // serveur-à-serveur) — rien n'a donc jamais été téléchargé
-                    // automatiquement, contrairement au flux manuel ci-dessous. Le rendu
-                    // existe déjà : `auto_preview_data_urls` porte les mêmes PNG que
-                    // l'export final (CLAUDE.md §1, zéro écart aperçu/export), pas besoin
-                    // de rappeler STUDIO ni de dépendre de Drive.
-                    <div className="flex items-center gap-1">
-                      {(JSON.parse(article.auto_preview_data_urls) as string[]).map((url, i) => (
-                        <a
-                          key={i}
-                          href={url}
-                          download={`slide-${i + 1}.png`}
-                          title={`Télécharger la slide ${i + 1}`}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-subtle)] text-[var(--text-secondary)] transition-colors duration-[var(--dur-fast)] hover:border-[var(--border-strong)]"
-                        >
-                          <IconDownload size={14} strokeWidth={1.75} />
-                        </a>
-                      ))}
-                    </div>
-                  ) : article.exported_at && article.auto_preview_status === "ready" && article.auto_preview_data_url ? (
-                    // Même raisonnement que ci-dessus, mode single-image.
-                    <a
-                      href={article.auto_preview_data_url}
-                      download="post.png"
-                      className="t-caption inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2 text-[var(--text-secondary)] transition-colors duration-[var(--dur-fast)] hover:border-[var(--border-strong)]"
-                    >
-                      <IconDownload size={14} strokeWidth={1.75} />
-                      Télécharger le visuel
-                    </a>
-                  ) : article.exported_at ? (
-                    // Exporté sans Drive configuré (2026-08-28), flux MANUEL (pas
-                    // d'auto-preview) : le fichier a été téléchargé en ZIP/PNG depuis
-                    // STUDIO au moment du clic export, il ne vit plus nulle part côté
-                    // serveur à ce stade (le job STUDIO est éphémère, cf.
-                    // GUIDE-UTILISATEUR.md §18) — proposer un lien ici serait un lien
-                    // mort. On dit la vérité plutôt que de laisser croire que rien n'a
-                    // été exporté (bug corrigé : avant ce correctif, ce cas retombait
-                    // silencieusement sur "Créer un post").
-                    <span
-                      className="t-caption inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] px-3 py-2 text-[var(--text-secondary)]"
-                      title="Exporté depuis STUDIO en local (Drive non configuré) — le fichier a déjà été téléchargé pendant l'export."
-                    >
-                      <IconCheck size={14} strokeWidth={1.75} className="text-[var(--success)]" />
-                      Exporté (local)
-                    </span>
-                  ) : (
-                    <ButtonLink
-                      href={buildStudioLink({
-                        title: article.title,
-                        source: (article.event_title || "RADAR").slice(0, 50),
-                        imageUrl: article.image_url,
-                        contentId: article.content_id || "",
-                        briefHeadline:
-                          article.chapeau?.slice(0, 200) || article.title.slice(0, 200),
-                      })}
-                      external
-                      variant="studio"
-                      size="md"
-                    >
-                      <IconStudio size={14} strokeWidth={1.75} />
-                      Créer un post
-                    </ButtonLink>
-                  )}
-                </div>
+                <ReadyExportedActions
+                  articleId={article.id}
+                  contentId={article.content_id}
+                  title={article.title}
+                  chapeau={article.chapeau}
+                  content={article.content}
+                  eventTitle={article.event_title}
+                  imageUrl={article.image_url}
+                  exportedAt={article.exported_at}
+                  driveUrl={article.drive_url}
+                  isScheduled={!!article.is_scheduled}
+                  autoPreviewStatus={article.auto_preview_status}
+                  autoPreviewMode={article.auto_preview_mode}
+                />
               </article>
               )
             )}

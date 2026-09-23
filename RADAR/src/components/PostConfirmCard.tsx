@@ -78,6 +78,40 @@ export function PostConfirmCard({
   // deux CLAUDE.md).
   const [stalled, setStalled] = useState(false);
   const pollCount = useRef(0);
+  const fetchedInitial = useRef(false);
+
+  /**
+   * Charge paresseusement le rendu (dataUrl/dataUrls) au montage — le
+   * Server Component (/ready) ne les embarque plus dans le HTML initial
+   * depuis le 23 sept. 2026 (~22 Mo de PNG base64 mesurés en prod pour
+   * seulement 8 articles validés, cause directe de sa lenteur de
+   * chargement). Seul `status` (texte léger) est connu au premier rendu ;
+   * le visuel réel arrive par ce fetch, sur la même route déjà utilisée
+   * pour le polling ci-dessous — la Mascotte "thinking" déjà affichée pour
+   * `status === 'pending'` sert aussi de repli visuel pendant ce court
+   * chargement, aucun nouvel état UI à inventer.
+   */
+  useEffect(() => {
+    if (fetchedInitial.current) return;
+    if (dataUrl !== null || dataUrls !== null) return;
+    if (status === null) return;
+    fetchedInitial.current = true;
+    (async () => {
+      try {
+        const res = await fetch(`/api/articles/${articleId}/auto-preview`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status) setStatus(data.status);
+          setDataUrl(data.dataUrl ?? null);
+          setDataUrls(data.dataUrls ?? null);
+          setError(data.error ?? null);
+          setFallbackCrop(!!data.fallbackCrop);
+        }
+      } catch {
+        // Repli : la Mascotte reste affichée, aucun blocage sur un échec réseau isolé
+      }
+    })();
+  }, [articleId, dataUrl, dataUrls, status]);
 
   useEffect(() => {
     if (status !== 'pending') return;
