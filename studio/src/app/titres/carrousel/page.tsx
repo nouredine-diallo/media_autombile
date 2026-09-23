@@ -15,6 +15,8 @@ import {
   GABARITS_RECADRAGE_ORIGINAL,
   champsImagePourGabarit,
 } from "@/components/gabarits/Gabarit1A";
+import { BLOCK_TOP_PERCENT, BLOCK_SPAN } from "@/components/gabarits/TitleFooter";
+import { CTA_TEXT_ZONE_HEIGHT } from "@/components/gabarits/GabaritCTA";
 import { assembleSlides, MAX_CAROUSEL_IMAGES, type Slide } from "@/lib/carousel/assemble";
 
 // Plafond desktop, jamais dépassé — voir la note équivalente dans
@@ -167,10 +169,16 @@ export default function CarrouselPage() {
 
   /** Recadrage manuel du fond d'une slide (gabarits famille 1) — même
    * mécanisme que /titres et l'éditeur détaillé, demande du 2026-09-14. */
-  function updateSlideCadre(index: number, imageCadre: string) {
+  /**
+   * Un seul champ de cadrage à la fois (image, titre ou CTA — tous des
+   * chaînes `"zoom,dx,dy"` au même format, voir `RecadrageFond.tsx`) :
+   * généralisé le 23 sept. 2026 pour ajouter le recadrage du titre sans
+   * dupliquer cette fonction une deuxième fois.
+   */
+  function updateSlideCadre(index: number, champ: "imageCadre" | "titreCadre" | "ctaCadre", valeur: string) {
     setSlides((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], fieldValues: { ...next[index].fieldValues, imageCadre } };
+      next[index] = { ...next[index], fieldValues: { ...next[index].fieldValues, [champ]: valeur } };
       return next;
     });
   }
@@ -386,7 +394,9 @@ export default function CarrouselPage() {
                   previewScale={previewScale}
                   onTextChange={(v) => updateSlideText(i, v)}
                   onImageChange={(idx) => updateSlideImage(i, idx)}
-                  onCadreChange={(v) => updateSlideCadre(i, v)}
+                  onCadreChange={(v) => updateSlideCadre(i, "imageCadre", v)}
+                  onTitreCadreChange={(v) => updateSlideCadre(i, "titreCadre", v)}
+                  onCtaCadreChange={(v) => updateSlideCadre(i, "ctaCadre", v)}
                 />
               ))}
             </div>
@@ -459,6 +469,8 @@ function SlideCard({
   onTextChange,
   onImageChange,
   onCadreChange,
+  onTitreCadreChange,
+  onCtaCadreChange,
 }: {
   index: number;
   total: number;
@@ -468,6 +480,8 @@ function SlideCard({
   onTextChange: (value: string) => void;
   onImageChange: (imageIndex: number) => void;
   onCadreChange: (imageCadre: string) => void;
+  onTitreCadreChange: (titreCadre: string) => void;
+  onCtaCadreChange: (ctaCadre: string) => void;
 }) {
   const def = GABARITS[slide.gabaritId];
   const Preview = def?.Component;
@@ -508,6 +522,34 @@ function SlideCard({
               valeur={slide.fieldValues.imageCadre}
               onChange={onCadreChange}
             />
+          )}
+          {/* Recadrage manuel du titre — ajouté le 23 sept. 2026 (retour
+              utilisateur réel : présent sur /titres depuis le 15 sept.,
+              jamais porté ici). Même mécanisme, même zone (BLOCK_TOP_PERCENT/
+              BLOCK_SPAN, TitleFooter.tsx) que l'écran image unique, gabarit
+              par gabarit puisque chaque slide peut avoir le sien. */}
+          {!["1b", "cta"].includes(slide.gabaritId) && (
+            <div style={{ position: "absolute", left: 0, top: GABARIT_HEIGHT * (BLOCK_TOP_PERCENT / 100) * previewScale }}>
+              <RecadrageFond
+                echelle={previewScale}
+                largeur={GABARIT_WIDTH}
+                hauteur={GABARIT_HEIGHT * (BLOCK_SPAN / 100)}
+                valeur={slide.fieldValues.titreCadre}
+                onChange={onTitreCadreChange}
+              />
+            </div>
+          )}
+          {/* Même principe pour le texte du CTA (slide de fin uniquement). */}
+          {slide.gabaritId === "cta" && (
+            <div style={{ position: "absolute", left: 0, top: GABARIT_HEIGHT * 0.08 * previewScale }}>
+              <RecadrageFond
+                echelle={previewScale}
+                largeur={GABARIT_WIDTH}
+                hauteur={CTA_TEXT_ZONE_HEIGHT}
+                valeur={slide.fieldValues.ctaCadre}
+                onChange={onCtaCadreChange}
+              />
+            </div>
           )}
         </div>
       )}

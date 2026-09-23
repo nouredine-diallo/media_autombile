@@ -131,10 +131,26 @@ export interface ImageAvecCadreOriginal {
  * avec. Extrait de `titres/page.tsx` (`buildPreviewValues`, 2026-09-14) pour
  * être partagé avec l'écran carrousel (`assembleSlides`, `titres/carrousel/
  * page.tsx`) sans dupliquer cette décision à trois endroits.
+ *
+ * Trouvé le 23 sept. 2026 (retour utilisateur réel — "j'ai l'impression que
+ * le recadrage depuis l'original n'est pas actif") : `utiliserPreview`
+ * exigeait aussi `img.cadreFond`, qui n'existe que si le détourage a réussi
+ * à isoler un sujet net (`cropToAspectSmart`, `import-urls`/`upload-batch`).
+ * Sur une photo où la segmentation échoue ou ne trouve aucun sujet — limite
+ * connue et documentée pour les prises de vue studio à fond uni/dégradé,
+ * `STUDIO_AUTOMOBILE-CLAUDE.md` §1.1 — `cadreFond` reste `undefined` et le
+ * code retombait SILENCIEUSEMENT sur l'image déjà rognée (`backdropUrl`),
+ * sans jamais laisser l'opérateur revenir à l'originale. Corrigé : la seule
+ * condition qui compte est la disponibilité de `previewUrl` (l'originale à
+ * résolution plafonnée) — `cadreFond`, quand il existe, ne sert plus qu'à
+ * pré-remplir un cadrage de départ plus pertinent que l'identité
+ * (`lireCadre("")` renvoie déjà zoom 1/pan 0 par défaut) ; son absence ne
+ * bloque plus l'accès à l'originale, elle prive juste ce départ de
+ * suggestion intelligente.
  */
 export function champsImagePourGabarit(img: ImageAvecCadreOriginal, gabaritId: string): Record<string, string> {
   const utiliserPreview = Boolean(
-    GABARITS_RECADRAGE_ORIGINAL.has(gabaritId) && !img.usedBackdrop && img.previewUrl && img.cadreFond,
+    GABARITS_RECADRAGE_ORIGINAL.has(gabaritId) && !img.usedBackdrop && img.previewUrl,
   );
   return {
     imageUrl: utiliserPreview ? img.previewUrl! : (img.backdropUrl || img.croppedUrl),
@@ -144,7 +160,7 @@ export function champsImagePourGabarit(img: ImageAvecCadreOriginal, gabaritId: s
     // à zéro un `imageCadre`/`photoHeight` qui appartenait à l'ancienne photo
     // — chaîne vide = repli sur les valeurs par défaut (`lireCadre`,
     // `lireHauteurPhoto`), pas une valeur à part.
-    imageCadre: utiliserPreview ? img.cadreFond! : "",
+    imageCadre: utiliserPreview ? (img.cadreFond ?? "") : "",
     photoHeight: img.photoHeight ? String(img.photoHeight) : "",
   };
 }
