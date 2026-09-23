@@ -354,18 +354,31 @@ export async function clusterItemsIntoEvents(): Promise<number> {
    * cette VM) est le vrai goulot, pas un bug ponctuel à corriger — chaque
    * run ne traite plus qu'un lot borné, le reste du backlog se rattrape
    * sur les cycles suivants au lieu de bloquer tout le pipeline d'un coup.
-   * Les événements les plus récents (id décroissant) passent en premier :
-   * `events.score` n'est pas encore calculé à ce stade du pipeline
-   * (calculateScores() tourne après), la fraîcheur est le seul signal
-   * disponible ici — cohérent avec RADAR/CLAUDE.md §11 (fraîcheur du flux
-   * avant tout). TODO : valeur provisoire, jamais mesurée sur un vrai
+   *
+   * Famine trouvée le 23 sept. 2026 (retour utilisateur réel, event 185475
+   * toujours en anglais 4 jours après sa création) : le tri "plus récents
+   * (id décroissant) d'abord" ne garantissait AUCUNE progression sur le
+   * backlog — chaque cycle qui ingère plus de 100 nouveaux événements fait
+   * repasser les anciens derrière les nouveaux, indéfiniment (constaté :
+   * 2195/2296 événements non traduits, 2176 avec un id plus récent que
+   * l'événement bloqué). Corrigé en réservant une moitié du plafond aux plus
+   * récents (fraîcheur du flux, RADAR/CLAUDE.md §11) et l'autre moitié aux
+   * plus anciens du backlog (garantit une progression bornée et déterministe
+   * quel que soit le rythme d'ingestion — plus jamais de famine permanente).
+   * TODO : plafond total toujours provisoire, jamais mesuré sur un vrai
    * historique de plusieurs jours (CLAUDE.md §4.3).
    */
   const TRANSLATE_BATCH_LIMIT = 100;
+  const TRANSLATE_NEWEST_SHARE = Math.floor(TRANSLATE_BATCH_LIMIT / 2);
 
   // Translate event titles/summaries to French
   const untranslatedAll = allEvents.filter(e => !e.title_fr).sort((a, b) => b.id - a.id);
-  const untranslated = untranslatedAll.slice(0, TRANSLATE_BATCH_LIMIT);
+  const newestBatch = untranslatedAll.slice(0, TRANSLATE_NEWEST_SHARE);
+  const oldestBatch = untranslatedAll
+    .slice(TRANSLATE_NEWEST_SHARE)
+    .sort((a, b) => a.id - b.id)
+    .slice(0, TRANSLATE_BATCH_LIMIT - newestBatch.length);
+  const untranslated = [...newestBatch, ...oldestBatch];
   if (untranslated.length > 0) {
     const remaining = untranslatedAll.length - untranslated.length;
     console.log(
