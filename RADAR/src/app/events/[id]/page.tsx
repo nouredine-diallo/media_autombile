@@ -282,12 +282,11 @@ export default function EventDetail() {
 
   const fetchEvent = async () => {
     try {
-      const response = await apiFetch('/api/events');
+      const response = await apiFetch(`/api/events?id=${eventId}`);
       const data = await response.json();
-      const found = data.events?.find((e: Event) => e.id === parseInt(eventId));
-      setEvent(found || null);
-      
-      if (found) {
+      setEvent(data.event || null);
+
+      if (data.event) {
         await Promise.all([fetchBrief(true), fetchArticles(), fetchTags()]);
       }
     } catch (err) {

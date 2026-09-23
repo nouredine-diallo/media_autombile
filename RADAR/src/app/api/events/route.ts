@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getEventsWithItems } from '@/lib/scoring';
+import { getEventsWithItems, getEventWithItemsById } from '@/lib/scoring';
 import { getDb } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const assignedTo = searchParams.get('assigned_to');
+  const id = searchParams.get('id');
+
+  if (id) {
+    const event = getEventWithItemsById(parseInt(id, 10));
+    return NextResponse.json({ event });
+  }
 
   const db = getDb();
   let events;

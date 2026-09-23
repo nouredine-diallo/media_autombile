@@ -487,6 +487,35 @@ export interface EventWithItems extends Event {
   tags: string[];
 }
 
+/**
+ * Trouvé le 23 sept. 2026 (retour utilisateur réel, 6 événements urgents en
+ * erreur "Événement non trouvé" en prod) : la fiche événement cherchait l'id
+ * dans les 50 meilleurs événements (`getEventsWithItems`, trié par score) —
+ * un événement urgent (article en draft depuis longtemps) n'a aucune raison
+ * d'être dans ce top 50 par score. Lookup direct par id, sans filtre de score
+ * ni limite, pour que toute fiche événement existante reste accessible.
+ */
+export function getEventWithItemsById(id: number): EventWithItems | null {
+  const db = getDb();
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(id) as Event | undefined;
+  if (!event) return null;
+
+  const items = db.prepare(
+    'SELECT i.*, f.name as feed_name FROM items i JOIN event_items ei ON i.id = ei.item_id JOIN feeds f ON i.feed_id = f.id WHERE ei.event_id = ?'
+  ).all(event.id) as (Item & { feed_name: string })[];
+
+  const feedNames = [...new Set(items.map(i => i.feed_name))];
+
+  const tags = db.prepare('SELECT tag FROM event_tags WHERE event_id = ? ORDER BY tag').all(event.id) as { tag: string }[];
+
+  return {
+    ...event,
+    items,
+    feed_names: feedNames,
+    tags: tags.map(t => t.tag),
+  };
+}
+
 export function getEventsWithItems(limit: number = 50): EventWithItems[] {
   const db = getDb();
   const events = db.prepare(
