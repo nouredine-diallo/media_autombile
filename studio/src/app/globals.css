@@ -3,14 +3,20 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  /* Rouge de marque (mesuré sur le logo réel, moyenne RGB 139/29/29).
-     Source de vérité unique — UI et gabarits doivent passer par ces tokens.
+  /* Rouge de marque — aligné le 24 sept. 2026 (audit cohérence de marque)
+     sur RADAR/src/app/globals.css, seule des deux valeurs à porter une
+     vérification datée (contraste de lisibilité texte/icône mesuré sur 24
+     usages) : les TROIS teintes étaient les mêmes ici, mais --brand et
+     --brand-pressed étaient inversés entre les deux apps — un bouton
+     "couleur principale" n'avait donc pas la même couleur dans RADAR et
+     STUDIO pour la même équipe. Source de vérité unique — UI et gabarits
+     doivent passer par ces tokens.
      --brand         aplat des fonds pleins (boutons, tuiles sélectionnées)
      --brand-hover   variante intermédiaire, état hover
-     --brand-pressed variante claire, état pressé */
-  --brand: #8b1d1d;
+     --brand-pressed variante sombre, état pressé */
+  --brand: #ca3e3e;
   --brand-hover: #8f2626;
-  --brand-pressed: #ca3e3e;
+  --brand-pressed: #8b1d1d;
 }
 
 @theme inline {

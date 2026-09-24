@@ -6,12 +6,23 @@ import { runDatabaseBackupSafe } from './backup';
 import { runVacuumIfDueSafe } from './vacuum';
 
 interface CronConfig {
-  ingestInterval: string;  // cron expression, default: every 4 hours
+  ingestInterval: string;  // cron expression, default: 2x/jour
   enabled: boolean;
 }
 
+/**
+ * Trouvé le 24 sept. 2026 (audit de conformité) : cette valeur par défaut
+ * disait encore "toutes les 4h" alors qu'ECOSYSTEM.md documente un
+ * changement décidé le 14 sept. 2026 vers 2×/jour (6h/18h heure de Paris) —
+ * et qu'aucune table `pipeline_config` n'existait dans la base inspectée,
+ * donc ce fallback (jamais mis à jour) était le comportement réellement en
+ * vigueur, pas la doc. Corrigé pour que le code redevienne la source de
+ * vérité : si `pipeline_config` a réellement été modifiée une fois via
+ * l'interface admin, cette valeur par défaut ne change rien pour cette
+ * installation-là — elle ne s'applique qu'en l'absence de config explicite.
+ */
 const DEFAULT_CONFIG: CronConfig = {
-  ingestInterval: '0 */4 * * *', // every 4 hours
+  ingestInterval: '0 4,16 * * *', // 2x/jour, 6h/18h heure de Paris (hiver, UTC+1)
   enabled: true,
 };
 

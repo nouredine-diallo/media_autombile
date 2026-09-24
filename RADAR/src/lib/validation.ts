@@ -25,12 +25,22 @@ export function finalizeArticleValidation(
 ): boolean {
   const db = getDb();
 
-  const applied = updateArticleStatus(articleId, 'validated');
+  // Trouvé le 24 sept. 2026 (audit robustesse) : ces trois écritures
+  // tournaient hors transaction — un crash entre la première et les
+  // suivantes pouvait laisser un article `status='validated'` sans la ligne
+  // `article_decisions` correspondante (fausse le calibrage §2bis) ou sans
+  // `validated_by` renseigné (le seul champ qui distingue une validation
+  // humaine d'une validation auto pour cette même exception). Une seule
+  // transaction : soit les trois réussissent, soit aucune n'est appliquée.
+  const applied = db.transaction(() => {
+    if (!updateArticleStatus(articleId, 'validated')) return false;
+    recordDecision(articleId, 'validated', method);
+    db.prepare(`UPDATE articles SET validated_by = ? WHERE id = ?`).run(method, articleId);
+    return true;
+  })();
   if (!applied) {
     return false;
   }
-  recordDecision(articleId, 'validated', method);
-  db.prepare(`UPDATE articles SET validated_by = ? WHERE id = ?`).run(method, articleId);
 
   // Anticipe le besoin : dès la validation, une échéance de publication
   // apparaît au calendrier — idempotent (ne crée rien si déjà fait).

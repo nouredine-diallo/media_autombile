@@ -156,10 +156,18 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ success: true, alreadyValidated: true });
       }
     } else if (status) {
-      updateArticleStatus(id, status);
-      if (status === 'rejected') {
-        recordDecision(id, status, 'humain');
-      }
+      // Même correctif que finalizeArticleValidation (validation.ts,
+      // audit robustesse du 24 sept. 2026) : les deux écritures dans une
+      // seule transaction, pour ne jamais laisser un article "rejected" en
+      // base sans la ligne article_decisions qui alimente le kill-switch et
+      // la calibration.
+      const db = getDb();
+      db.transaction(() => {
+        updateArticleStatus(id, status);
+        if (status === 'rejected') {
+          recordDecision(id, status, 'humain');
+        }
+      })();
     }
     
     if (content) {

@@ -4,6 +4,62 @@ import { getItemsWithoutImages, updateItemImage, updateItemImagePreflight, getIt
 import { titleOverlap } from './scoring';
 import path from 'path';
 import fs from 'fs';
+import dns from 'node:dns/promises';
+import net from 'node:net';
+
+/**
+ * Portée depuis studio/src/app/api/images/import-urls/route.ts (audit
+ * sécurité du 24 sept. 2026) — même protection SSRF, absente ici alors que
+ * `downloadImage` ci-dessous fetch une URL scrapée depuis une page tierce
+ * (donc influençable par une source RSS compromise). Duplication ENTRE les
+ * deux apps (pas de package partagé entre RADAR et STUDIO, hors périmètre
+ * de ce correctif) — dans STUDIO pour la référence complète et le
+ * raisonnement détaillé de chaque plage d'adresse.
+ */
+function isPrivateAddress(ip: string): boolean {
+  if (net.isIPv4(ip)) {
+    return (
+      /^127\./.test(ip) ||
+      /^10\./.test(ip) ||
+      /^192\.168\./.test(ip) ||
+      /^169\.254\./.test(ip) || // lien-local + métadonnées cloud (AWS/GCP/Azure/Oracle)
+      /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ||
+      /^0\./.test(ip)
+    );
+  }
+  if (net.isIPv6(ip)) {
+    const lower = ip.toLowerCase();
+    return (
+      lower === '::1' ||
+      lower.startsWith('fe80:') || // lien-local
+      lower.startsWith('fc') || lower.startsWith('fd') || // unique-local
+      lower.startsWith('::ffff:127.')
+    );
+  }
+  return true; // forme non reconnue : refuser plutôt que deviner
+}
+
+/**
+ * Valide le schéma ET résout le nom d'hôte pour rejeter toute cible privée
+ * AVANT le fetch — une validation d'URL seule (schéma http/https) ne dit
+ * rien de l'adresse IP réelle derrière un nom de domaine.
+ */
+async function isUrlSafeToFetch(rawUrl: string): Promise<boolean> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+
+  try {
+    const { address } = await dns.lookup(parsed.hostname);
+    return !isPrivateAddress(address);
+  } catch {
+    return false; // résolution DNS échouée : on refuse plutôt que de laisser fetch() réessayer
+  }
+}
 
 const VISUAL_SEARCH_DIR = path.join(process.cwd(), 'visual-cache');
 const MIN_IMAGE_WIDTH = 400;
@@ -304,6 +360,12 @@ export async function scrapeArticleImages(
  */
 export async function downloadImage(imageUrl: string): Promise<string | null> {
   try {
+    // Trouvé le 24 sept. 2026 (audit sécurité) : `imageUrl` vient d'une page
+    // tierce scrapée (source RSS), jamais vérifiée avant ce fetch — une
+    // source compromise pourrait pointer vers une adresse interne (métadonnées
+    // cloud, autre service sur le VPC). Voir isUrlSafeToFetch ci-dessus.
+    if (!(await isUrlSafeToFetch(imageUrl))) return null;
+
     if (!fs.existsSync(VISUAL_SEARCH_DIR)) {
       fs.mkdirSync(VISUAL_SEARCH_DIR, { recursive: true });
     }

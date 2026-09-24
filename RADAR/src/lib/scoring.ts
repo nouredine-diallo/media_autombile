@@ -270,17 +270,25 @@ export async function clusterItemsIntoEvents(): Promise<number> {
   // qu'un content_id texte informel, pas de vraie colonne event_id/FK
   // (vérifié sur le schéma, RADAR/src/lib/db.ts) : l'erreur "foreign key
   // mismatch" vue dans les logs vient d'ailleurs, pas de cette table.
+  //
+  // Trouvé le 24 sept. 2026 (audit robustesse) : ce DELETE tournait hors
+  // transaction, séparé de la réinsertion (`clearAndStoreEvents`, plus bas) par tout
+  // le calcul de clustering. Un crash pile entre les deux (le scénario OOM
+  // killer déjà documenté ailleurs dans ce projet, studio/CLAUDE.md) vidait
+  // la table events jusqu'au prochain cycle (4-12h) sans que rien ne le
+  // signale comme un état anormal. `foreign_keys` ne peut pas être changé
+  // DANS une transaction SQLite active (restriction du moteur, pas un choix)
+  // — la pragma reste donc hors transaction, mais le DELETE et la
+  // réinsertion sont maintenant dans la MÊME transaction (voir plus bas) :
+  // soit les deux réussissent, soit aucun n'est appliqué.
   db.pragma('foreign_keys = OFF');
-  if (protectedEventIds.length > 0) {
-    const placeholders = protectedEventIds.map(() => '?').join(',');
-    db.prepare(`DELETE FROM event_items WHERE event_id NOT IN (${placeholders})`).run(...protectedEventIds);
-    db.prepare(`DELETE FROM events WHERE id NOT IN (${placeholders})`).run(...protectedEventIds);
-  } else {
-    db.exec('DELETE FROM event_items');
-    db.exec('DELETE FROM events');
-  }
-  db.pragma('foreign_keys = ON');
 
+  // Calcul de clustering pur (aucune écriture DB) — ne lit que
+  // `clusterableItems`, déjà chargé en mémoire, jamais la table `events`
+  // elle-même. Peut donc se faire avant le DELETE sans risque : le DELETE et
+  // la réinsertion qui suivent n'ont plus qu'à s'exécuter, dans la même
+  // transaction, sans calcul entre les deux qui pourrait laisser la fenêtre
+  // de crash ouverte.
   const templateWordsByFeed = computeFeedTemplateWords(clusterableItems);
 
   const events: { title: string; summary: string; itemIds: number[]; score: number }[] = [];
@@ -309,17 +317,30 @@ export async function clusterItemsIntoEvents(): Promise<number> {
 
     events.push(cluster);
   }
-  
-  // Store events and associations
+
+  // Nettoyage + réinsertion dans UNE SEULE transaction (voir note plus haut
+  // sur la pragma foreign_keys, qui reste volontairement hors transaction) :
+  // soit le nettoyage et la réinsertion réussissent tous les deux, soit
+  // aucun n'est appliqué — plus jamais de fenêtre où la table events peut
+  // rester vidée par un crash entre les deux.
   const insertEvent = db.prepare(
     'INSERT INTO events (content_id, title, summary, source_count, score) VALUES (?, ?, ?, ?, ?)'
   );
   const insertEventItem = db.prepare(
     'INSERT INTO event_items (event_id, item_id) VALUES (?, ?)'
   );
-  
+
   let eventCounter = 0;
-  const storeEvents = db.transaction(() => {
+  const clearAndStoreEvents = db.transaction(() => {
+    if (protectedEventIds.length > 0) {
+      const placeholders = protectedEventIds.map(() => '?').join(',');
+      db.prepare(`DELETE FROM event_items WHERE event_id NOT IN (${placeholders})`).run(...protectedEventIds);
+      db.prepare(`DELETE FROM events WHERE id NOT IN (${placeholders})`).run(...protectedEventIds);
+    } else {
+      db.exec('DELETE FROM event_items');
+      db.exec('DELETE FROM events');
+    }
+
     for (const event of events) {
       eventCounter++;
       const contentId = `LMA-EVT-${Date.now()}-${eventCounter}`;
@@ -336,8 +357,9 @@ export async function clusterItemsIntoEvents(): Promise<number> {
       }
     }
   });
-  
-  storeEvents();
+
+  clearAndStoreEvents();
+  db.pragma('foreign_keys = ON');
 
   // Auto-tag all new events
   const allEvents = db.prepare('SELECT * FROM events').all() as Event[];
