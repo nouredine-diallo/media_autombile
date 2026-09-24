@@ -3,7 +3,7 @@ import { getBrief, Brief } from './brief';
 import { generateChained, generateArticleSmart } from './llm';
 import { getActiveStyleRulesForPrompt, recordStyleRuleUsage, formatStyleRulesForPrompt } from './styleRules';
 import { getDegradedModeStatus } from './killswitch';
-import { verifyArticleAgainstBrief, VerificationResult } from './verification';
+import { generateVerificationReport, VerificationResult } from './verification';
 import { tryAcquireGenerationLock, releaseGenerationLock, AlreadyGeneratingError } from './generationLock';
 
 export interface Article {
@@ -122,11 +122,11 @@ export async function generateArticle(eventId: number, provenance: string = 'ass
 }
 
 /**
- * Génère un article puis exécute immédiatement le contrôle numérique
- * (`verifyArticleAgainstBrief`) et l'enregistre — auparavant dupliqué entre
- * `POST /api/generate` et le chantier de génération automatique du matin.
- * Une seule fonction, un seul chemin, réutilisée par les deux (§chantier 3
- * du plan écosystème 2026-08-27).
+ * Génère un article puis exécute immédiatement le contrôle qualité complet
+ * du §7 (chiffres + anti-plagiat + garde-fou de longueur) et l'enregistre —
+ * auparavant dupliqué entre `POST /api/generate` et le chantier de
+ * génération automatique du matin. Une seule fonction, un seul chemin,
+ * réutilisée par les deux (§chantier 3 du plan écosystème 2026-08-27).
  */
 export async function generateAndVerifyArticle(
   eventId: number,
@@ -170,13 +170,49 @@ async function generateAndVerifyArticleUnlocked(
   // regardés par le contrôle. Le chapeau fait partie du texte réellement
   // livré à la revue humaine, il doit compter comme tel.
   const contentWithChapeau = article.chapeau ? `${article.chapeau}\n\n${article.content}` : article.content;
-  const verification = verifyArticleAgainstBrief(brief, contentWithChapeau, article.title);
   const db = getDb();
+
+  // Trouvé le 24 sept. 2026 (audit de conformité RADAR/CLAUDE.md §7) : ce
+  // chemin — emprunté par TOUT article avant sa présentation à un humain,
+  // génération manuelle ET pré-contrôle de l'auto-génération du matin
+  // (`autoGenerate.ts`, `passesGate`) — n'exécutait QUE la vérification des
+  // chiffres. L'anti-plagiat (`generateVerificationReport`, point 2 du §7)
+  // existait déjà et était déjà correctement utilisé par `tryAutoValidate`
+  // (le seuil qui saute la revue humaine), mais jamais ici — un article à
+  // forte similarité pouvait donc atteindre la revue humaine sans aucun
+  // signal automatique. Réutilise la même fonction déjà éprouvée plutôt que
+  // de dupliquer la logique de plagiat une seconde fois.
+  const sourceItems = db
+    .prepare('SELECT title, content FROM items i JOIN event_items ei ON i.id = ei.item_id WHERE ei.event_id = ?')
+    .all(eventId) as { title: string; content: string | null }[];
+  const report = generateVerificationReport(brief, { title: article.title, content: contentWithChapeau }, sourceItems);
+
+  const issues = [...report.verification.issues];
+  if (report.plagiarism.score > 30) {
+    issues.push(`Similarité élevée avec les sources (${report.plagiarism.score}%) — reformuler avant validation`);
+  }
+
+  // Garde-fou de longueur minimal (§7 point 3, "structure : longueur et
+  // format dans les bornes du guide de style") — PAS le contrôle promis :
+  // la Couche 2 du guide de style (RADAR/CLAUDE.md §5, "longueur cible d'un
+  // article") n'a jamais été écrite par le rédacteur en chef, et §4.3
+  // interdit explicitement d'inventer un seuil métier à sa place. Ce
+  // garde-fou ne bloque que les cas pathologiques (génération quasi vide ou
+  // qui a dérivé en boucle), jamais un jugement de style.
+  // TODO: remplacer par un vrai contrôle dès que la Couche 2 existe.
+  if (article.word_count < 10) {
+    issues.push(`Article anormalement court (${article.word_count} mots) — probable échec de génération`);
+  } else if (article.word_count > 2000) {
+    issues.push(`Article anormalement long (${article.word_count} mots) — probable dérive de génération`);
+  }
+
+  const verification: VerificationResult = { ...report.verification, issues };
+
   db.prepare(`UPDATE articles SET verification_score = ?, verification_issues = ? WHERE id = ?`)
-    .run(verification.confidenceScore, JSON.stringify(verification.issues), article.id);
+    .run(report.overallScore, JSON.stringify(issues), article.id);
 
   return {
-    article: { ...article, verification_score: verification.confidenceScore, verification_issues: JSON.stringify(verification.issues) },
+    article: { ...article, verification_score: report.overallScore, verification_issues: JSON.stringify(issues) },
     verification,
   };
 }
