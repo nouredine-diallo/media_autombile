@@ -141,12 +141,12 @@ Tu as confirmé la proposition du score composite existant (`computeCompositeSco
 
 ## 0. Deux constats hors périmètre, mais qui ne peuvent pas attendre
 
-**A. Clé API Groq en dur dans le code, avec une vraie valeur.**
-`RADAR/src/lib/llm.ts:13` :
+**A. Clé API Groq en dur dans le code, avec une vraie valeur (CORRIGÉ depuis dans `RADAR/src/lib/llm.ts` — le fallback en dur a été retiré).**
+`RADAR/src/lib/llm.ts:13` (à l'époque de cette note) :
 ```ts
-const GROQ_API_KEY = process.env.GROQ_API_KEY || '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';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '[REDACTED — clé révoquée, voir note du 24 sept. 2026]';
 ```
-Ce n'est pas un exemple — c'est une clé qui ressemble à une clé Groq valide, committée dans le dépôt Git (donc dans l'historique, même si retirée demain). **Recommandation : la révoquer sur console.groq.com dès que possible, générer une nouvelle clé, la mettre uniquement dans `.env.local`, et supprimer le fallback en dur** (le code doit échouer explicitement si `GROQ_API_KEY` est absent, jamais se rabattre sur une clé embarquée). Je ne l'ai pas testée pour savoir si elle est encore active — pas la peine de vérifier, le risque est le même dans les deux cas.
+Redigé le 24 sept. 2026 : cette valeur était une vraie clé Groq, restée en clair dans ce fichier de planification (donc dans l'historique Git même après retrait du code applicatif). **Elle doit être considérée compromise et révoquée sur console.groq.com si ce n'est pas déjà fait** — la retirer d'ici ne l'invalide pas rétroactivement dans l'historique déjà poussé sur GitHub.
 
 **B. Un vrai bug de voix, silencieux depuis le début.**
 - `RADAR/src/lib/translate.ts` (traduction FR des titres/résumés anglais) instruit le LLM : *"Vouvoiement"*.
