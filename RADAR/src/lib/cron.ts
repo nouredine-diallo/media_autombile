@@ -58,7 +58,15 @@ async function runPipeline(): Promise<void> {
 
     for (const feed of feeds) {
       try {
-        const items = await withTimeout(fetchFeed(feed), 12000);
+        // Plafond porté à 35s le 24 sept. 2026 (audit robustesse) : fetchFeed()
+        // fait maintenant une retentative interne après un aléa réseau
+        // (RETRY_DELAY_MS + jusqu'à 2×FEED_FETCH_TIMEOUT_MS dans le pire cas,
+        // rss.ts) — l'ancien plafond de 12s coupait ce cycle avant même la fin
+        // d'UNE SEULE tentative (15s), laissant la promesse orpheline
+        // continuer en tâche de fond après l'abandon (risque de rejet non
+        // géré si elle échouait plus tard). 35s reste négligeable pour un
+        // pipeline de fond qui tourne toutes les 6-12h (RADAR/CLAUDE.md §11).
+        const items = await withTimeout(fetchFeed(feed), 35000);
         const { stored, offTopicRoundups } = storeItems(feed.id, items);
         recordFeedFetchSuccess(feed.id);
         totalStored += stored;

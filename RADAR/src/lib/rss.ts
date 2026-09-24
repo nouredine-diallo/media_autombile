@@ -96,7 +96,7 @@ function extractImageUrl(item: Record<string, unknown>): string | null {
  * `recordFeedFetchSuccess`, sans changer l'architecture des deux appelants
  * (CLAUDE.md §6, "aucune dégradation silencieuse").
  */
-export async function fetchFeed(feed: Feed): Promise<ParsedItem[]> {
+async function fetchFeedOnce(feed: Feed): Promise<ParsedItem[]> {
   console.log(`Fetching feed: ${feed.name} from ${feed.url}`);
   const res = await fetch(feed.url, {
     headers: FEED_HEADERS,
@@ -121,6 +121,31 @@ export async function fetchFeed(feed: Feed): Promise<ParsedItem[]> {
       imageUrl: extractImageUrl(raw),
     };
   });
+}
+
+/**
+ * Trouvé le 24 sept. 2026 (audit robustesse) : un seul aléa réseau
+ * transitoire (DNS, 5xx ponctuel, coupure d'une seconde) faisait échouer
+ * tout un flux jusqu'au cycle suivant (4-12h) — visible (déjà loggé et
+ * enregistré par `recordFeedFetchFailure`, jamais silencieux), mais sans
+ * aucune auto-récupération pour l'aléa le plus courant et le moins grave.
+ * Une seule retentative après un court délai : absorbe le cas transitoire
+ * sans rien changer au comportement en cas d'échec persistant (l'appelant
+ * continue de logger/passer au flux suivant exactement comme avant si la
+ * 2e tentative échoue aussi).
+ */
+const RETRY_DELAY_MS = 2000;
+
+export async function fetchFeed(feed: Feed): Promise<ParsedItem[]> {
+  try {
+    return await fetchFeedOnce(feed);
+  } catch (err) {
+    console.warn(
+      `[RSS] Échec du flux "${feed.name}" (${err instanceof Error ? err.message : String(err)}) — nouvelle tentative dans ${RETRY_DELAY_MS}ms`
+    );
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    return await fetchFeedOnce(feed);
+  }
 }
 
 /**

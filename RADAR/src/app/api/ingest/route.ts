@@ -14,7 +14,10 @@ export async function POST() {
 
   for (const feed of feeds) {
     try {
-      const items = await withTimeout(fetchFeed(feed), 12000);
+      // Plafond porté à 35s le 24 sept. 2026 — même raison que cron.ts :
+      // fetchFeed() fait maintenant une retentative interne (rss.ts), l'ancien
+      // plafond de 12s coupait avant la fin d'une seule tentative (15s).
+      const items = await withTimeout(fetchFeed(feed), 35000);
       const { stored, duplicates, offTopicRoundups } = storeItems(feed.id, items);
       recordFeedFetchSuccess(feed.id);
       results.push({ feed: feed.name, stored, duplicates, offTopicRoundups });
